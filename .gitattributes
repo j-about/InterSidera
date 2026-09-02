@@ -1,0 +1,17 @@
+# Normalise line endings: every text file is stored and checked out with LF.
+* text=auto eol=lf
+
+# Binary assets and data files (never normalised, never diffed as text).
+*.png binary
+*.webp binary
+*.ico binary
+*.woff2 binary
+*.bsp binary
+*.bpc binary
+*.parquet binary
+
+# Generated files: collapsed in diffs on GitHub, still tracked (see engineering_standards/git).
+docs/openapi.json linguist-generated=true
+frontend/src/api/schema.d.ts linguist-generated=true
+frontend/package-lock.json linguist-generated=true
+backend/uv.lock linguist-generated=true

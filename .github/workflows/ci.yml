@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # CI never downloads de441 or MPCORB and never contacts Nominatim or Horizons (brief: engineering_standards/ci).
+  SKYAPI_AUTO_FETCH: "false"
+  SKYAPI_EPHEMERIS: de440s.bsp
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      # pyright (PyPI) is a Node wrapper: it needs node on PATH and downloads the npm package once.
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/pyright-python
+          key: pyright-${{ runner.os }}-${{ hashFiles('backend/uv.lock') }}
+          restore-keys: pyright-${{ runner.os }}-
+      - uses: astral-sh/setup-uv@v10
+        with:
+          working-directory: backend
+          enable-cache: true
+          cache-dependency-glob: "**/uv.lock"   # resolved relative to working-directory (backend/)
+      # --locked asserts that uv.lock is current (make check runs `uv lock --check` for the same purpose).
+      - run: uv sync --locked
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+      - run: uv run pyright
+      - run: uv run pytest -m "not slow"
+      # Contract drift gate, backend half: the committed OpenAPI document must match the code.
+      - run: uv run python -m skyapi.tools.dump_openapi --out ../docs/openapi.json
+      - run: git ls-files --error-unmatch -- ../docs/openapi.json && git diff --exit-code -- ../docs/openapi.json
+      # M1: actions/cache@v6 for data/de440s.bsp keyed on backend/data/data_files.toml
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          # Resolved against the repository root, not the job working directory.
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test
+      # Contract drift gate, frontend half: generated types must match the committed OpenAPI document.
+      - run: npm run gen:types
+      - run: git ls-files --error-unmatch -- src/api/schema.d.ts && git diff --exit-code -- src/api/schema.d.ts
+      - run: node --check ../scripts/check_i18n.mjs
+      - run: node ../scripts/check_i18n.mjs
+      - run: npm exec -- prettier --no-config --print-width 100 --single-quote --check ../scripts
+      - run: npm run build
+
+  # e2e (M3): needs [backend, frontend]; starts the API on de440s and serves the built frontend;
+  #           `npx playwright install --with-deps chromium`; runs chromium-desktop and chromium-mobile;
+  #           actions/upload-artifact@v7 (if: ${{ !cancelled() }}, path: frontend/test-results and
+  #           frontend/playwright-report, if-no-files-found: ignore).
+  # docker (M7): docker/setup-buildx-action@v4 + docker/build-push-action@v7 for both images
+  #           (push: false, platforms: linux/amd64).

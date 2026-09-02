@@ -1,0 +1,81 @@
+[project]
+name = "skyapi"
+version = "0.1.0"
+description = "InterSidera sky API (Skyfield-backed, stateless, cacheable GET endpoints)"
+readme = "README.md"
+authors = [
+    { name = "j-about", email = "142051449+j-about@users.noreply.github.com" }
+]
+# PEP 639 license expression; the repository LICENSE file is the source of truth.
+license = "MIT"
+# D4: `<3.15` keeps uv.lock unforked and blocks Python 3.15 pre-releases silently.
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    # D5 / ADR-0003: same `fastapi dev|run`, uvicorn[standard] and httpx as `fastapi[standard]`,
+    # without the hosted-SaaS `fastapi-cloud-cli` (brief restraint rule).
+    "fastapi[standard-no-fastapi-cloud-cli]>=0.141,<1",
+    "pydantic-settings>=2.15,<3",
+]
+# M1 adds: "skyfield>=1.55,<2" "numpy>=2.5,<3" "pandas>=3.0,<4" "pyarrow>=25.0,<26"
+# [project.scripts] sky-data = "skyapi.cli.sky_data:main" is added at M1 when the module exists.
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1,<10",
+    "pytest-cov>=7.1,<8",
+    "hypothesis>=6.167,<7",
+    # 0.x tool: bounded at the minor (recorded deviation from the `<next-major` rule).
+    "ruff>=0.16.5,<0.17",
+    "pyright>=1.1.411,<2",
+    # ADR-0004: Starlette 1.6 TestClient prefers httpx2 and warns on httpx 0.x;
+    # with filterwarnings = ["error"] that warning would fail every API test.
+    "httpx2>=2.12,<3",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.9,<0.13.0"]
+build-backend = "uv_build"
+
+# D10 / ADR-0003: fastapi-cli 0.0.32 has no `--factory`; it reads this entrypoint from
+# `Path.cwd()/pyproject.toml`, so every backend command runs with `--directory backend`.
+[tool.fastapi]
+entrypoint = "skyapi.main:app"
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# Brief engineering_standards/backend_python: exactly these rule sets, per-file ignores
+# limited to tests. E501 stays enabled (D25); unbreakable URLs get `# noqa: E501`.
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "N", "RUF", "PT", "ANN"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["skyapi"]
+
+[tool.pyright]
+include = ["src", "tests"]
+# Brief: pyright strict on `src/`, basic on `tests/`.
+strict = ["src"]
+typeCheckingMode = "basic"
+pythonVersion = "3.14"
+pythonPlatform = "Linux"
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config --import-mode=importlib"
+markers = [
+    "unit: pure functions, no app, no network",
+    "api: through TestClient against the app factory",
+    "conformance: accuracy against committed Horizons/Skyfield fixtures",
+    "slow: excluded from `make check` (`pytest -m \"not slow\"`), run by `make test`",
+]
+# Every warning is an error so third-party deprecations surface immediately; add only
+# narrowly targeted `ignore:<message>:<Category>:<module>` entries, each with a comment.
+filterwarnings = ["error"]

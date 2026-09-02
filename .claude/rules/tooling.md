@@ -1,0 +1,42 @@
+---
+paths:
+  - "Makefile"
+  - ".github/**"
+  - ".node-version"
+  - ".python-version"
+  - "backend/.python-version"
+  - ".env.example"
+  - ".editorconfig"
+  - ".gitattributes"
+  - ".gitignore"
+  - "frontend/package.json"
+  - "frontend/package-lock.json"
+  - "frontend/.npmrc"
+  - "frontend/tsconfig*.json"
+  - "frontend/vite.config.ts"
+  - "frontend/eslint.config.js"
+  - "frontend/.prettierrc"
+  - "frontend/.prettierignore"
+  - "frontend/playwright.config.ts"
+  - "backend/pyproject.toml"
+  - "backend/uv.lock"
+  - "scripts/**"
+---
+
+# Tooling rules (Makefile, CI, configs, version files)
+
+- Version policy: latest stable at project start, re-checked at each milestone; never pre-releases. `package.json` uses caret ranges except `typescript: ~6.0.3` (ADR-0001); `pyproject.toml` uses `>=x.y,<next-major`, 0.x tools bounded at the minor (`ruff>=0.16.5,<0.17`). Both lockfiles are committed.
+- Frozen until the ADR revisit trigger fires: TypeScript stays 6.0.x, npm stays the bundled 11.x, Python stays 3.14 (`requires-python = ">=3.14,<3.15"`), the two npm `overrides` (`eslint-plugin-jsx-a11y -> eslint`, `openapi-typescript -> typescript`, ADR-0002) stay. Never `--legacy-peer-deps`. Every new dependency needs an ADR.
+- `.node-version` = `24` and `.python-version` = `3.14` (root and `backend/`, because uv does not search beyond the project boundary). CI reads `node-version-file: .node-version` relative to the repository root.
+- Makefile: `SHELL := /bin/bash`, `.SHELLFLAGS := -eu -o pipefail -c`, no `.ONESHELL`; backend commands are `uv run --directory backend ...` (never `--project`, never `cd`); Node commands go through `fnm exec --using=$(CURDIR)/.node-version`; npm through `npm --prefix frontend`; never a root `npx`.
+- `--env-file $(CURDIR)/.env` is passed only on run targets (`dev-api`, later `data`, `up`); check, test and types targets never load `.env`, so `make check` is hermetic from a clean clone.
+- `make check` mirrors CI and CI mirrors `make check`: any step added to one is added to the other in the same commit. The contract drift gate is `git ls-files --error-unmatch` then `git diff --exit-code` on `docs/openapi.json` and `frontend/src/api/schema.d.ts` (plain `git diff` ignores untracked files).
+- `scripts/check_i18n.mjs` is syntax-checked with `node --check` and formatted by a config-free prettier run (`SCRIPTS_PRETTIER` in the Makefile: `--no-config --print-width 100 --single-quote`, mirrored as a CI step). ESLint is not used on `scripts/`: ESLint 10 refuses files outside its base path (`frontend/`). `scripts/*.py` (from M1) are linted with the backend ruff config (`ruff check --config backend/pyproject.toml scripts`), recipe line added at M1 with the first script.
+- `frontend/package-lock.json` must contain the `linux-x64-gnu` optional binaries (`@rolldown/binding-linux-x64-gnu`, `@tailwindcss/oxide-linux-x64-gnu`, `lightningcss-linux-x64-gnu`): development is aarch64, CI is x86-64. Regenerate from a clean `node_modules` if one is missing. `lockfileVersion` is 3. `.npmrc` has `engine-strict=true`.
+- Vite 8 vocabulary only: `build.rolldownOptions` (never `rollupOptions`), `output.codeSplitting` (never `manualChunks`), `oxc` (never `esbuild`). Vitest 4: `test.projects` (never `workspace`), explicit `test.exclude`. Prettier Tailwind plugin key: `tailwindStylesheet: "./src/styles/app.css"`.
+- `@vitejs/plugin-basic-ssl` is enabled only for `vite dev` in development mode (not preview, not test), so Playwright runs over plain HTTP on 4173.
+- TypeScript 6 defaults `types` to `[]`: list `vite/client`, `vitest/globals` and `node` explicitly; no `baseUrl`.
+- CI: `actions/checkout@v7`, `actions/setup-node@v7`, `astral-sh/setup-uv@v10`, `actions/cache@v6` (later `upload-artifact@v7`, `docker/setup-buildx-action@v4`, `docker/build-push-action@v7`); `permissions: contents: read`; no `pull_request_target`; `SKYAPI_AUTO_FETCH=false` and `SKYAPI_EPHEMERIS=de440s.bsp` in the workflow env; CI never downloads de441 or MPCORB and never contacts Nominatim or Horizons.
+- The backend CI job runs `setup-node` and caches `~/.cache/pyright-python` because the PyPI `pyright` is a Node wrapper that downloads the npm package on first run.
+- `.env.example` documents every `SKYAPI_` variable with safe defaults and comments on their own lines; paths are relative to `backend/`; `SKY_DATA_DIR` (M7) stays commented until compose exists.
+- Generated files (`docs/openapi.json`, `frontend/src/api/schema.d.ts`, both lockfiles) are marked `linguist-generated` in `.gitattributes` and never hand-edited.

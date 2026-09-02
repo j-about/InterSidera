@@ -1,0 +1,10 @@
+@import 'tailwindcss';
+
+/* Design tokens: CSS-first configuration, no tailwind.config.js (brief l.408). */
+@theme {
+  --color-sky-bg: #05070f;
+  --color-sky-fg: #e6e9f2;
+}
+
+/* Night-vision variant, driven by `data-mode="night"` on an ancestor (brief l.408, l.550). */
+@custom-variant night (&:where([data-mode=night], [data-mode=night] *));

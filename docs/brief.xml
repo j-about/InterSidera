@@ -1,0 +1,586 @@
+<!--
+  Claude Code brief — sky observation web application
+  Version 1.2 — 2026-09-02 (all version numbers verified on that date; contract revised after two independent reader tests).
+  Usage: save this file as docs/brief.xml in the repository, open Claude Code at the repository root and send:
+  "Read docs/brief.xml in full and execute it starting at M0."
+-->
+
+<role>
+  You are Claude Code acting as the sole senior engineer on this repository: a full-stack developer (Python/FastAPI, TypeScript/React, real-time 3D with Babylon.js) with working knowledge of positional astronomy (reference frames, time scales, ephemerides). You build the application described in this brief autonomously, milestone by milestone, with tests and documentation, committing locally and never pushing.
+  You optimise for correctness (Skyfield is the astronomical authority and the API contract is binding), maintainability (typed, tested, documented) and restraint (no dependency, feature or abstraction beyond this brief without a recorded reason).
+  Reading order: environment, product, tech_stack, architecture, api_contract, functional_requirements, non_functional_requirements, data_sources_and_licensing, repository_layout, engineering_standards, milestones, workflow, pitfalls, acceptance. When two sections conflict, apply this precedence: legal and licensing constraints > security and privacy > api_contract > architecture > [M] functional requirements > non-functional budgets > [S] requirements > style preferences.
+</role>
+
+<environment>
+  - Host: Debian on WSL 2 under Windows, driven from the Claude Code extension in Visual Studio Code; shell: bash. Present: uv (Python toolchain and packages), fnm (Node versions), git. Verify at M0: `uv --version`, `fnm --version`, `git --version`, `docker --version`, `docker compose version`. Docker Desktop with WSL integration may be absent: in that case still write the Dockerfiles and compose.yaml, validate with `docker compose config` when possible, and record image builds as a manual step in docs/backlog.md.
+  - Python 3.14 is installed by uv on demand (`uv python install 3.14`); Node 24 by fnm (`fnm install 24`). Run every command through `uv run ...` and an fnm-activated shell (or `fnm exec --using=24 ...`) so that nothing depends on the ambient shell.
+  - Repository: the current working directory is the root of a Git repository already synchronised with GitHub; it contains only README.md and LICENSE. The project name is this directory's name; do not rename it. Never run `git push`, never change remotes, never modify LICENSE.
+  - Network: outbound HTTPS is available for PyPI, npm, GitHub, codeberg.org, JPL/NAIF, CDS/VizieR and the Minor Planet Center. If a download fails, retry with backoff, continue with what is available and record the gap in docs/plan.md. `SKYAPI_EPHEMERIS` selects the ephemeris: the code default is `de441.bsp` (production value, documented as such in `.env.example`); `.env.example` and CI set `de440s.bsp` for development; `sky-data fetch` downloads the selected file; `sky-data fetch --full` always adds de441.
+  - Disk and time: de441 is about 3.1 GB and MPCORB about 250 MB; downloads may take tens of minutes. Never load such files into your own context: inspect with `head -c`, `wc -c` or a Python one-liner, never `cat`.
+  - Ports: API 8000, Vite 5173 (HTTPS in development), nginx 80/443 in compose. How to reach the dev server from a phone on the LAN through WSL 2 is documented in docs/dev-wsl2.md.
+  - Secrets: none are needed; `.env.example` documents every `SKYAPI_` variable with safe defaults.
+</environment>
+
+<product>
+  A multi-user, account-free web application that shows the sky — every star of the Hipparcos catalog, the Sun, the Moon, the planets and Pluto, deep-sky objects, asteroids and comets — as seen from the user's location (geolocated or entered) or from the surface of another body of the Solar System, in real time by default and at any moment of the past or future within the ephemeris. Constellation lines, names and boundaries can be shown or hidden. On phones and tablets with a rear camera, the sky can be overlaid on the camera image in augmented reality.
+  Users: curious people and amateur astronomers, on phones first, tablets and desktops second, in French or English. No accounts, no persistence, no collaboration: the server is stateless and each user's state lives in their URL, which makes any view shareable by copying the address.
+  What good looks like: correct (validated against JPL Horizons), smooth (no stalls while time flows), honest (validity ranges and approximations always visible), light (a session costs a few megabytes), and quietly beautiful (dark, minimal, readable at night).
+  Naming: the product name is the repository directory name; use it in the UI title, the web manifest and the README.
+</product>
+
+<tech_stack>
+  Reference snapshot verified on 2026-09-02. At M0, re-check the latest stable versions (`npm view <pkg> version`, https://pypi.org/pypi/<pkg>/json, GitHub releases) and use them; read the migration notes before adopting a newer major; never use pre-releases; pin caret ranges in package.json and `>=x.y,<next-major` ranges in pyproject.toml; commit both lockfiles.
+  - Backend: Python 3.14 (3.14.7 current; 3.15 is expected on 2026-10-01: stay on 3.14 until every dependency supports 3.15), uv (latest), FastAPI 0.141 (Starlette 1.x, Pydantic 2.x; later 0.14x releases are drop-in), Skyfield 1.55 (`parse_constellations_json`, DE441 multi-segment support), NumPy 2.x, pandas (latest stable), pyarrow, pydantic-settings, uvicorn and the `fastapi` CLI from fastapi[standard].
+  - Frontend: Node 24 LTS through fnm (Node 26 becomes LTS on 2026-10-28; bumping `.node-version` is a one-line change to do later, not now), npm 11, TypeScript (latest stable), React 19.2 (19.2.8), Vite 8.1 (Rolldown-based), @vitejs/plugin-react 6 (Oxc), Tailwind CSS 4.3 (4.3.3), Babylon.js 9.23 (@babylonjs/core 9.23.0), Vitest, Playwright, ESLint flat config with typescript-eslint, Prettier.
+  - Delivery: Docker Compose (`compose.yaml`), images from `python:3.14-slim` with uv copied from `ghcr.io/astral-sh/uv`, `node:24` for the frontend build stage, `nginx:stable-alpine` for serving.
+  - Deliberately excluded: databases, Redis, message queues, authentication libraries, CSS-in-JS, UI component kits, Babylon GUI, Three.js, moment/dayjs (use Intl and our own Julian Date utilities), analytics or error-reporting SaaS.
+</tech_stack>
+
+<architecture>
+  <principles>
+    - Skyfield (backend) is the single astronomical authority. The frontend never computes an astronomical position from first principles. It only: (a) rotates catalog unit vectors by a backend-supplied horizon rotation, (b) applies linear proper motion with backend-supplied vectors, (c) interpolates backend-supplied samples, (d) applies annual aberration to catalog directions with the backend-supplied observer velocity (first-order formula, so stars and bodies share one apparent frame), (e) applies an atmospheric-refraction correction as a function of altitude, on Earth only, with a formula validated against Skyfield. Everything else about positions, time scales and reference frames comes from the backend.
+    - "Backend as oracle, client as propagator": the server answers deterministic, stateless, cacheable GET requests; the client owns the simulation clock and decides when it needs new data.
+    - No accounts, no server-side sessions, no database, no persistence. All per-user state lives in the browser and in the URL. Users never share state with each other.
+    - Vocabulary: "the reference frontend" is the client built in this repository; the API is designed so that other clients could use it.
+    - Determinism: identical (observer, time, options) produce byte-identical responses, so responses are cacheable at every layer.
+  </principles>
+
+  <time_model>
+    - Simulation time is a Julian Date on the TT scale (`tt`, float64), continuous, no leap seconds. The frontend propagates it: tt += speed * elapsed_real_seconds / 86400.
+    - Modes: live (default; tt tracks the wall clock using `tt_minus_utc_seconds` supplied by the backend), paused, playing at a signed speed chosen from a configurable list (1, 10, 60, 600, 3600, 86400, 604800, 2629800, 31557600 and their negatives), plus a "now" button that returns to live mode.
+    - Display: TT -> UTC using `tt_minus_utc_seconds` (taken from the current frame and held constant within its window; before 1972 the backend supplies TT − UT1 and the display is labelled UT), then UTC -> the user's local zone (zone offset from Intl, year and date formatted by our own formatter, see pitfalls). Calendar is proleptic Gregorian with astronomical year numbering (year 0 exists); the UI says so for dates before 1582-10-15. The ephemeris range (-13200..+17191) fits inside the JavaScript Date range.
+    - Coverage: every data source has a validity range reported by `/meta` (ephemeris, Moon orientation kernel, MPC elements, ΔT confidence). The UI clamps the time control to the ephemeris range and shows per-feature warnings; the backend never silently extrapolates.
+  </time_model>
+
+  <coordinate_frames>
+    - Exchange frame: ICRF (J2000 equatorial axes), unit vectors [x, y, z].
+    - Horizon frame: local ENU at the observer, components ordered [East, North, Up].
+    - The backend supplies the rotation ICRF -> ENU as a unit quaternion per time sample (Hamilton convention, v_enu = q * v_icrf * q⁻¹), computed from Skyfield `rotation_at(t)` on `GeographicPosition` (Earth, WGS84) or `PlanetTopos` (other bodies, IAU frames from the PCK kernel), after converting Skyfield's left-handed north-east-up matrix to ENU (see pitfalls). Consecutive quaternion samples are sign-continuous (positive dot product) so that slerp never takes the long way.
+    - Solar-system bodies are supplied as apparent ICRF directions (Skyfield `.apparent()`: light-time, aberration, gravitational deflection), so bodies and stars share one GPU pipeline; refraction is applied client-side (Earth only, toggle).
+    - Babylon.js scene: camera at the origin; celestial sphere radius 1000 units; mapping ENU -> Babylon (left-handed, Y-up): East -> +X, Up -> +Y, North -> +Z. Azimuth is measured from north through east. This mapping exists in exactly one module (`frontend/src/sky/math/frames.ts`) and is unit-tested: az=0° -> +Z, az=90° -> +X, alt=90° -> +Y.
+    - Observer coordinates: on Earth, WGS84 geodetic latitude and east longitude (Skyfield `wgs84.latlon`); elsewhere, planetocentric latitude, east longitude and elevation in metres above the IAU reference ellipsoid of the body (gas giants: 1-bar level), the location being built with `PlanetTopos.from_latlon_distance` and the ellipsoid radius at that latitude (see pitfalls). Responses echo `latitude_kind: "geodetic" | "planetocentric"`.
+    - Equator of date: the backend also supplies, per sample, the rotation ICRF -> true equator and equinox of date (Skyfield `framelib.true_equator_and_equinox_of_date`), used by the frontend for the equatorial grid of date, RA/Dec of date and local apparent sidereal time; precession and nutation are never computed client-side.
+  </coordinate_frames>
+
+  <data_flow>
+    1. Boot: the frontend fetches `/meta`, then the catalogs (stars binary, DSO JSON, constellations JSON, star name index). Catalogs are cached by the browser (ETag + max-age) and parsed into typed arrays once.
+    2. Scene request: for the current (observer, tt0, speed) the frontend requests one `/sky/frame` covering a time window of `n` samples spaced `step_s` simulated seconds apart, and stores it in a frame buffer.
+    3. Every animation frame: compute tt; slerp the horizon quaternion between the two surrounding samples (one uniform for all shaders); cubic-Hermite-interpolate body directions, distances, magnitudes and phases with Catmull-Rom tangents from neighbouring samples (directions renormalised after interpolation); recompute labels, lines and culling at <= 10 Hz.
+    4. Refetch triggers: the buffered window is 70 % consumed (prefetch, seamless), the observer changes, the speed changes by more than a factor of 10 or changes sign (pausing keeps the buffer), the requested body set changes, or tt jumps outside the window. Samples always increase in time (tt0 + i * step_s); for negative speeds the client places tt0 so that the current time sits near the end of the window, and "70 % consumed" is measured in the direction of travel. While a request is in flight, extrapolate from the last two samples so motion never stalls.
+    5. Speed-adaptive sampling: choose `step_s` (integer seconds, rounded up, minimum 1) so that the window covers about 60 s of real time with n = 32 (step_s = ceil(|speed| * 60 / 32)), then clamp step_s to the smallest class maximum among the requested bodies, using `/meta.limits.max_step_s` (Moon 3600 s, inner planets 21600 s, Sun and outer planets 86400 s, minor bodies 86400 s) so that the client can decide on snapshot mode before requesting. If the resulting window covers less than 5 s of real time (extreme speeds), switch to snapshot mode: n = 1, refetch at <= 4 Hz, no interpolation, and show a "coarse time-lapse" badge.
+    6. Proper motion of stars is applied in the vertex shader from the catalog's per-star velocity vector and a `years_since_epoch` uniform, so the star catalog is fetched exactly once per session regardless of the date.
+  </data_flow>
+
+  <backend>
+    - Python 3.14, FastAPI, application-factory pattern, Pydantic v2 models, settings from environment variables (pydantic-settings). No database.
+    - Lifespan startup loads: timescale; ephemeris (memory-mapped by jplephem, so a 3 GB file costs no RAM per worker); PCK text kernel and Moon frame kernels; the Hipparcos catalog turned into the compact binary star catalog (built once, cached in DATA_DIR); DSO catalog; constellation data; MPC orbit tables (parsed once, cached as Parquet in DATA_DIR).
+    - Compute endpoints are synchronous `def` path operations (FastAPI runs them in its thread pool; NumPy releases the GIL). Run with `fastapi run --workers <cpu cores>`; ephemeris pages are shared through the page cache.
+    - All Skyfield calls are vectorized: over the time samples of a frame (a single `Time` array) and over stars (one vectorized `Star` object built with `Star.from_dataframe`).
+    - Minor bodies: Kepler orbits from MPC elements (`sun + mpc.mpcorb_orbit(...)`, `mpc.comet_orbit(...)`), computed only for the objects explicitly requested, with a per-object LRU cache; the request cap is enforced by the API contract and `/minor-bodies/defaults` returns a ranked list no longer than that cap (the reference frontend pins the first 20).
+    - Data bootstrap: a `sky-data` CLI (uv-managed script) downloads every data file into DATA_DIR with SHA-256 verification and resumable downloads; the API also self-bootstraps at startup when files are missing and `SKYAPI_AUTO_FETCH` is true (the default; CI and the test suite set it to false and rely on de440s plus committed excerpts). `/health` reports `starting` with download progress until the app is ready (used by the Docker healthcheck and by the frontend splash screen).
+    - A small in-memory LRU cache of computed frames keyed by the canonicalized query string. No Redis, no external services.
+    - The `astro` package owns every Skyfield object (`loader.py`) and exposes typed functions (`horizon_quaternions`, `body_samples`, `star_catalog`, `altaz`, ...); routers only validate, canonicalize, call and serialize.
+  </backend>
+
+  <frontend>
+    - React 19 for UI chrome only, plus a framework-agnostic `SkyEngine` class (Babylon.js 9) that receives frames and options from a single simulation store (clock, observer, view options). The store is synchronized both ways with URL query parameters so any view is shareable by copying the URL.
+    - Engine selection: `WebGPUEngine` when `WebGPUEngine.IsSupportedAsync` resolves true, otherwise the WebGL2 `Engine`. Every custom shader must run on both backends.
+    - Rendering layers: (1) stars: a single mesh with four vertices per star and a custom vertex shader (direction + proper motion, quaternion rotation, optional refraction, corner expansion sized by magnitude and field of view, colour from B-V) and a soft-disc fragment shader; never point primitives; (2) deep-sky objects: instanced symbol quads by object type, scaled by angular size with a minimum pixel size; (3) constellation lines (from star positions, so they follow proper motion), IAU boundaries and names; (4) solar-system bodies: billboards with phase shading lit from `sun_dir`, sized by angular diameter with a minimum pixel size; (5) horizon line, cardinal points, altitude/azimuth grid, equatorial grid, ecliptic, meridian; (6) sky background: gradient driven by the Sun's altitude (Earth only), night-vision mode as a red palette post-process over the whole UI; (7) labels: HTML overlay positioned from projected coordinates, throttled and culled by priority; (8) augmented reality: camera video background plus a device-orientation camera, or WebXR immersive-ar when available.
+    - Camera: fixed at the origin, rotation-only controls (drag, touch, inertia), field-of-view zoom (wheel, pinch) from 1° to 120°; keyboard shortcuts for time and view.
+    - Client-side refraction (Earth only, toggle): Sæmundsson's formula (true altitude -> apparent altitude) in the star shader and for interpolated bodies, Bennett's inverse (apparent -> true) where the UI converts back; must match Skyfield's `altaz(temperature_C='standard', pressure_mbar='standard')` within 1′ for altitudes above -1°, verified with committed fixtures.
+    - Performance budget: see non_functional_requirements (60 fps on desktop, >= 30 fps on a 2022 mid-range phone with the full catalog and all layers).
+  </frontend>
+
+  <deployment>
+    - Development: `fastapi dev` for the API and `vite` for the frontend, with the Vite dev server proxying `/api` to the API. HTTPS on the dev server is required for geolocation, camera, device orientation and WebXR on a phone; document how to reach the WSL 2 dev server from a phone on the LAN.
+    - Production-like: Docker Compose with two services: `api` (uvicorn workers) and `web` (nginx serving the built SPA with long-lived cache headers and reverse-proxying `/api` to `api`; TLS terminated by nginx with mounted certificates, or by an external reverse proxy placed in front of `web`, both documented). DATA_DIR is a host directory bind-mounted into `api` (`SKY_DATA_DIR` in `.env`, default `./data`), so `uv run sky-data fetch` on the host and `docker compose run --rm api sky-data fetch` fill the same directory; data is never baked into an image.
+  </deployment>
+</architecture>
+
+<api_contract>
+  <conventions>
+    - Base path `/api/v1`. All endpoints are GET, stateless and deterministic. Query parameters are canonicalized before computing and before cache lookup: sorted, latitude/longitude rounded to 1e-6° (the reference frontend sends 0.01°, see OBS-7), elevation to 1 m, `tt` to 1e-8 day (about 1 ms), body lists sorted and de-duplicated. The reference frontend also aligns `tt0` to the sample grid (tt0 = floor(tt / step_d) * step_d with step_d = step_s / 86400) so that users watching the same sky at the same time share cache keys; the backend accepts any `tt`.
+    - JSON responses are Pydantic v2 models with complete OpenAPI metadata (descriptions, examples). The frontend's TypeScript types are generated from the OpenAPI document (openapi-typescript) and committed; CI fails if they drift.
+    - Binary responses use `application/octet-stream`, little-endian, a versioned magic header and columnar typed arrays, documented in `docs/api.md` with a byte-layout table.
+    - Caching headers: catalogs -> `Cache-Control: public, max-age=3600, stale-while-revalidate=86400` with a strong ETag (content hash) and `If-None-Match` -> 304; frames and altaz -> `Cache-Control: public, max-age=300`; `/meta` and `/health` -> `no-store`. GZip middleware for responses >= 1 KiB.
+    - Errors follow RFC 9457 (`application/problem+json`: type, title, status, detail, instance, errors[]): 400 invalid parameter, 404 unknown object, 422 outside data coverage (the response carries the valid range), 429 rate limited (`Retry-After`), 503 data not ready (`Retry-After`).
+    - Rate limiting: in-memory token bucket per client IP on compute endpoints (default 20 requests/s, burst 40), configurable through settings.
+    - Units: angles in degrees, distances in astronomical units, time as TT Julian Date unless the field is suffixed `_utc` (ISO 8601, `Z`, proleptic Gregorian, astronomical year numbering), angular sizes in degrees, magnitudes as floats.
+  </conventions>
+
+  <endpoints>
+    GET /health
+      -> { status: "starting" | "ready" | "degraded", progress?: { file, downloaded_bytes, total_bytes }, version }
+
+    GET /meta
+      -> {
+           api_version,
+           server_time: { tt, utc, tt_minus_utc_seconds },
+           ephemeris: { name, coverage_tt: [start, end] },
+           observers: [ { id: "mercury" | "venus" | "earth" | "moon" | "mars" | "jupiter" | "saturn" | "uranus" | "neptune" | "pluto",
+                          name_key, frame (SPICE/IAU frame name, e.g. "ITRS", "MOON_ME_DE440_ME421", "IAU_MARS"), radii_km: [a, b, c], latitude_kind: "geodetic" | "planetocentric", coverage_tt: [start, end], approximation_code?: "pluto_barycenter" } ],
+           coverage: { ephemeris_tt: [start, end], delta_t: { observed_tt: [start, end], predicted_until_tt }, iau_rotation_reliable_tt: [start, end], proper_motion_warning_years: 10000, mpc_elements: { warn_years: 2, error_years: 50 } },
+           bodies: [ { id, kind: "star" | "planet" | "dwarf_planet" | "moon", name_key, radius_km } ],
+           catalogs: { stars: { count, version, etag, epoch_tt, magnitude_limit, license, attribution }, dso: { count, version, etag, license, attribution },
+                       constellations: { count, culture: "modern", etag, license, attribution }, minor_bodies: { asteroids, comets, elements_epoch_range_tt, license, attribution } },
+           geocoder: { enabled, url, email?, attribution, min_interval_ms },
+           limits: { max_samples: 64, max_minor_bodies: 100, max_targets: 200, speeds: [ ... ], max_step_s: { moon: 3600, inner_planets: 21600, sun_and_outer: 86400, minor: 86400 } }   classes: inner_planets = Mercury, Venus, Mars; sun_and_outer = Sun, Jupiter to Pluto, and Earth when it is a target
+         }
+      Notes: `pluto` as an observer uses the Pluto-system barycenter (flagged by `approximation_code`, translated by the frontend). Coverage of `moon` is bounded by the Moon orientation kernel (1550-2650 with moon_pa_de440). `bodies=all` silently excludes the observer's own body; naming it in an explicit `bodies` list is a 400.
+
+    GET /catalogs/stars  (binary, format "SKYS" v1)
+      header: magic "SKYS" (4 bytes), version u32 = 1, count u32, epoch_tt f64 (2451545.0 = J2000; Hipparcos positions are propagated from their own epoch J1991.25 to J2000 by Skyfield at build time), flags u32 (reserved, 0)
+      columns, in this order and packed without padding:
+        dir  f32[count * 3]   ICRF unit vector at the catalog epoch
+        pm   f32[count * 3]   tangential proper-motion velocity in ICRF, radians per Julian year (parallax and radial velocity ignored; documented)
+        mag  i16[count]       millimagnitudes, Johnson V (Hipparcos `Vmag`)
+        bv   i16[count]       B-V in millimagnitudes, 32767 when unknown
+        hip  u32[count]       Hipparcos identifier
+      Sorted by magnitude ascending so any prefix is a valid brighter-than subset. Build rule, from the vectorized Skyfield `Star` at t = J2000: p0 = star.at(t).position, v = star.at(t).velocity per Julian year, dir = p0 / |p0|, pm = v / |p0|. Shader rule: dir(t) = normalize(dir + pm * years_since_epoch), then aberration dir' = normalize(dir(t) + observer_velocity / c). Parity test: within 0.1″ of Skyfield's astrometric directions and within 1″ of `.apparent()` (gravitational deflection ignored). `mag` is Johnson V (Skyfield's `magnitude` column).
+
+    GET /catalogs/stars/index
+      -> [ { hip, names: { proper?, bayer?, flamsteed? }, con } ]   named or designated stars only (about 4 000), used for search and labels; proper names are the IAU names and are not translated
+
+    GET /catalogs/dso
+      -> [ { id: "NGC7000", names: [ ... ], messier?: 45, type: "galaxy" | "open_cluster" | "globular_cluster" | "planetary_nebula" | "nebula" | "other", ra_deg, dec_deg, mag?, major_arcmin?, minor_arcmin?, pa_deg?, con } ]
+      Subset of OpenNGC: all Messier objects plus NGC/IC objects with mag <= 14 or major axis >= 5′ (limits configurable).
+
+    GET /catalogs/constellations
+      -> { culture: "modern", constellations: [ { abbr: "Ori", latin: "Orion", genitive: "Orionis", lines: [ [hip, hip], ... ], boundary: [ [ra_deg, dec_deg], ... ], label: { ra_deg, dec_deg } } ] }
+      Lines reference Hipparcos identifiers so that they follow the rendered stars; boundaries are ICRS J2000 polygons.
+
+    GET /minor-bodies/search?q=&limit=20
+      -> [ { id, designation, name?, kind: "asteroid" | "comet", h_mag?, elements_epoch_tt } ]   id syntax: `a:<number>` for numbered asteroids, `a:<MPC packed designation>` for unnumbered ones, `c:<designation>` for comets with spaces replaced by `_` (e.g. `c:1P`, `c:C/2023_A3`); ids are URL-safe and used everywhere (frame, altaz, URL `minor` and `sel`)
+    GET /minor-bodies/defaults
+      -> same shape, at most `limits.max_minor_bodies` entries, ranked by expected brightness: asteroids with H <= 9 sorted by H, then comets whose elements epoch lies within 2 years of the server date sorted by proximity of perihelion to the server date.
+
+    GET /sky/frame?body=earth&lat=48.8566&lon=2.3522&elev=35&tt=2461285.5&step_s=300&n=32&bodies=all&minor=a:1,c:1P
+      -> {
+           observer: { body, lat_deg, lon_deg, elev_m, latitude_kind, warnings: [ ... ] },
+           time: { tt0, step_s, n, tt_minus_utc_seconds, utc0, lst_hours?: [ n ], warnings: [ ... ] },   lst_hours = local apparent sidereal time in [0, 24), Earth only; tt_minus_utc_seconds = TT − UTC from 1972 on, TT − UT1 (ΔT) before 1972 when "UTC" means UT1
+           horizon: { q: [ [x, y, z, w] ... n ] },                     ICRF -> ENU, sign-continuous
+           equinox_of_date: { q: [ [x, y, z, w] ... n ] },             ICRF -> true equator and equinox of date, sign-continuous
+           observer_velocity_au_d: [ [x, y, z] ... n ],                barycentric velocity of the observer in ICRF, au/day (client-side aberration)
+           sun_dir: [ [x, y, z] ... n ],                               ICRF unit vector observer -> Sun (phase shading, sky brightness)
+           bodies: [ { id, kind, samples: { dir: [ [x, y, z] ... n ], dist_au: [ n ], mag: [ n ], phase: [ n ], diam_deg: [ n ] }, warnings: [ ... ] } ],
+           minor:  [ { id, name, kind, samples: { same }, elements_epoch_tt, extrapolation_years, warnings: [ ... ] } ]
+         }
+      Warnings are objects `{ code, params?, range_tt? }` with a closed list of codes, translated by the frontend, never free text: `observer.warnings` carries `iau_rotation_approximate` and `pluto_barycenter`; `time.warnings` carries `delta_t_approximate` and `proper_motion_extrapolated`; `minor[].warnings` carries `mpc_extrapolation` (beyond `warn_years`) and `mpc_unreliable` (beyond `error_years`, in which case `samples` is null and the object is still listed). Hard coverage limits (ephemeris range, observer frame kernel range) are 422s, not warnings.
+      Rules: 1 <= n <= 64; step_s >= 1; `bodies` is `all` (default) or a comma-separated list; `minor` is an optional list capped by `limits.max_minor_bodies`; the backend clamps `step_s` to the smallest per-class maximum among the requested bodies and reports the value actually used; `n * (bodies + minor)` <= 4096; 422 when the window leaves the coverage of the ephemeris or of the observer frame.
+
+    GET /sky/altaz?body=earth&lat=&lon=&elev=&tt=&targets=hip:32349,moon,dso:NGC224,a:1,c:1P&refraction=1
+      -> [ { id, alt_deg, az_deg, ra_icrs_deg, dec_icrs_deg, ra_date_deg, dec_date_deg, dist_au?, mag?, phase?, diam_deg? } ]   target syntax: `hip:<number>`, `dso:<canonical OpenNGC id>` (Messier aliases resolved through the catalog), body ids, `a:<number>`, `c:<designation>`;   authoritative Skyfield values (refraction only when requested and only on Earth); used by the details panel and by conformance tests. Cap: 200 targets.
+
+    GET /sky/events?body=earth&lat=&lon=&elev=&tt=&targets=sun,moon   [L]
+      -> rise, set, transit and twilight times for the local day; backlog item tied to INFO-3, not part of M2, documented here only so that the path is reserved.
+  </endpoints>
+
+  <conformance>
+    - `tests/fixtures/` holds machine-generated cases (generator script committed, sources cited): JPL Horizons reference values for a set of bodies, observers and dates, and Skyfield outputs for the same cases.
+    - pytest asserts backend accuracy against Horizons (planets and Moon within 2″, stars within 1″ of the catalog transformed by Skyfield).
+    - vitest loads the same fixtures and asserts that the TypeScript propagation, interpolation, proper-motion and refraction code reproduces Skyfield within tolerance: stars <= 1″, bodies <= 1′ for step_s <= 3600 and |speed| <= 3600.
+    - An OpenAPI snapshot test fails the build when the contract changes unless `docs/openapi.json` and the generated types are updated in the same commit (a deliberate change), and `api_version` in `/meta` follows semver of the contract.
+  </conformance>
+</api_contract>
+
+<functional_requirements>
+  Priority tags: [M] must ship in v1; [S] should ship in v1 and may be simplified if it endangers the schedule; [L] later, backlog only (record in docs/backlog.md, do not implement unless trivial).
+
+  <observer>
+    - OBS-1 [M] When the URL carries no observer, the app requests browser geolocation (secure context only) after a one-line explanation; on success the observer is Earth at the reported latitude, longitude and elevation (0 m when absent).
+    - OBS-2 [M] If geolocation is denied or unavailable, the observer defaults to Greenwich (51.48° N, 0.00° E, 0 m) and the location panel opens.
+    - OBS-3 [M] Manual entry on Earth: latitude and longitude (decimal or DMS, hemisphere letters accepted), elevation in metres, validated with an immediate preview.
+    - OBS-4 [M] Place search on Earth through OpenStreetMap Nominatim, called from the browser and never from the API: explicit submit only (no autocomplete), at most one request in flight, at least 1 s between requests, `format=jsonv2`, `limit=5`, `accept-language` set to the UI language; results show their display name and the attribution "© OpenStreetMap contributors". The geocoder base URL, enabled flag, optional `email` parameter and attribution text come from `/meta.geocoder`, so the service can be switched or disabled without redeploying the frontend; a "disable geocoding" toggle exists in the UI.
+    - OBS-5 [M] Observers on other bodies: pick a body from `/meta.observers`, enter planetocentric latitude, east longitude and elevation (Earth uses geodetic latitude, shown as such); the body's validity range and approximation note from `/meta` are displayed next to the picker.
+    - OBS-6 [S] About ten named presets on other bodies (Tranquility Base, Tycho and Shackleton on the Moon; Jezero, Gale and Olympus Mons on Mars; Caloris on Mercury; Maxwell Montes on Venus; equator and prime meridian on each giant planet), coordinates from the USGS Gazetteer of Planetary Nomenclature, cited in code.
+    - OBS-7 [M] Privacy rounding: the frontend rounds latitude and longitude to 0.01° (about 1 km) before any API call; the exact position never leaves the browser except to the geocoder the user explicitly queried.
+    - OBS-8 [M] No storage: no cookies, localStorage, sessionStorage or IndexedDB; the URL is the only persisted state and a reload restores the view from the URL alone.
+  </observer>
+
+  <time>
+    - TIME-1 [M] Live mode by default, following the wall clock; the time display shows local time, UTC and the TT Julian Date, plus local apparent sidereal time on Earth (interpolated from `time.lst_hours` on the 24 h circle, unwrapping across samples).
+    - TIME-2 [M] A custom date-time editor (native date inputs cannot express years <= 0): integer year field (negative allowed, astronomical numbering), month, day, hour, minute, second, and a local-time/UTC toggle; the editable range is the ephemeris coverage from `/meta`; a proleptic-Gregorian notice appears for dates before 1582-10-15.
+    - TIME-3 [M] Transport controls: play/pause, speed selector (the list from `/meta.limits.speeds`, forward and backward), step buttons (±1 min, ±1 h, ±1 day, ±1 sidereal day on Earth, ±1 year) and "now" (returns to live mode).
+    - TIME-4 [M] Coverage warnings: when the current time is outside the validity of a data source (Moon orientation kernel, MPC elements, ΔT confidence), the affected layer shows a warning badge with the valid range; the time control never leaves the ephemeris range.
+    - TIME-5 [S] Keyboard shortcuts: space (play/pause), `,` and `.` (slower/faster), `[` and `]` (step back/forward), `n` (now), `t` (time editor).
+  </time>
+
+  <sky_content>
+    - SKY-1 [M] Stars: the full Hipparcos catalog, colour from B-V, size and brightness from magnitude; a magnitude limit that follows the field of view (about 6.5 at 90° up to the catalog limit at 1°) with a manual override slider.
+    - SKY-2 [M] Sun, Moon, Mercury to Neptune and Pluto (the observer's own body excluded), rendered with phase (lit from `sun_dir`), true angular size when zoomed, a minimum pixel size otherwise, and a glare for the Sun; Earth appears as a body when observing from elsewhere.
+    - SKY-3 [M] Deep-sky layer (toggle): the OpenNGC subset with symbols by type (galaxy, open cluster, globular cluster, planetary nebula, diffuse nebula, other), a magnitude/size limit following the field of view, and a type filter.
+    - SKY-4 [M] Minor-bodies layer (toggle): the first 20 entries of `/minor-bodies/defaults` plus objects pinned by the user through search, with a "show more" control loading the rest of the defaults, all within the API cap; comets drawn with a tail direction pointing away from the Sun; each object shows its elements epoch and an extrapolation warning when relevant.
+    - SKY-5 [M] Constellations: independent toggles for lines, names and IAU boundaries; names in the UI language, with the Latin name and genitive in the details panel; the constellation containing the selected object is highlighted.
+    - SKY-6 [M] Reference overlays (toggles): horizon line with cardinal points, altitude/azimuth grid, equatorial grid of date (from `equinox_of_date.q`), ecliptic, meridian; ground rendered opaque, semi-transparent or hidden.
+    - SKY-7 [M] Atmosphere (Earth only, toggles, default on): daylight sky brightness and twilight tint driven by the Sun's altitude, and refraction; both unavailable on other bodies.
+    - SKY-8 [L] Milky Way texture and constellation artwork (licensed imagery required).
+    - SKY-9 Out of scope: artificial satellites.
+  </sky_content>
+
+  <view_and_interaction>
+    - VIEW-1 [M] Look around by drag/touch with inertia; zoom by wheel/pinch from 1° to 120° field of view; double-tap or double-click centres the view on that point; view direction (altitude, azimuth) and field of view are part of the URL state.
+    - VIEW-2 [S] Field-of-view presets: naked eye (60°), binoculars (7°), telescope (1°).
+    - VIEW-3 [M] Labels with priority (selected object, planets, named stars by brightness, Messier objects, constellations), collision avoidance and a density slider.
+    - VIEW-4 [S] Follow mode: keep the selected object centred while time plays.
+    - VIEW-5 [M] Responsive layout, mobile first: bottom sheet on phones, side panel on tablets and desktops; the canvas always fills the viewport, safe-area insets respected.
+    - VIEW-6 [S] Export the current view as a PNG (canvas snapshot with the label overlay composited).
+  </view_and_interaction>
+
+  <information_and_search>
+    - INFO-1 [M] Tap/click selects the nearest object within a tolerance scaled by the field of view; the selection is highlighted and a details panel shows names and designations, type, constellation, altitude/azimuth, RA/Dec (ICRS/J2000 and of date, both from `/sky/altaz`), distance, magnitude, phase, angular size and, for minor bodies, the elements epoch; authoritative values come from `/sky/altaz`, refreshed at most once per second while time plays and on every selection change, interpolated values being shown in between.
+    - INFO-2 [M] Unified search: stars (proper name, Bayer/Flamsteed, HIP), deep-sky objects (NGC/IC/Messier and common names), planets and constellations from the catalogs already in the browser; minor bodies through `/minor-bodies/search`; choosing a result centres the view on the object and selects it.
+    - INFO-3 [L] Rise, set, transit and twilight times in the details panel (`/sky/events`).
+    - INFO-4 [M] "About" screen with data credits and licenses (required by CC BY-SA and OpenStreetMap attribution), app version and repository link.
+  </information_and_search>
+
+  <augmented_reality>
+    - AR-1 [M] The AR button appears only in a secure context, on Earth, on devices exposing a rear camera and orientation sensors; time travel stays allowed in AR with a visible time-offset badge.
+    - AR-2 [M] Sensor mode: rear camera video as background (`getUserMedia`, `facingMode: environment`); orientation from `deviceorientationabsolute` on Android and `webkitCompassHeading` on iOS, with `DeviceOrientationEvent.requestPermission()` triggered by the user's tap; the same sky layers drawn on top; camera field of view matched to the device camera (approximate, adjustable).
+    - AR-3 [M] Calibration: horizontal drag applies an azimuth offset; a compass-accuracy indicator; when no absolute heading is available the user aligns north manually and the app says so.
+    - AR-4 [S] WebXR mode: when `navigator.xr.isSessionSupported('immersive-ar')` resolves true, offer an immersive-ar session through Babylon's default XR experience helper (pass-through), yaw aligned to true north from the last absolute heading sampled just before the session plus the calibration offset; a visible exit control.
+    - AR-5 [M] Graceful degradation: any missing capability or denied permission shows a clear message and returns to the normal view.
+  </augmented_reality>
+
+  <ux>
+    - UX-1 [M] Internationalisation FR/EN: language from `navigator.languages`, a manual toggle and a `lang` URL parameter; every string lives in JSON resource files (no hard-coded text); dates and numbers through Intl; adding a language requires only a new resource file.
+    - UX-2 [M] Shareable URL with named parameters: `body, lat, lon, elev` (observer), `t` (`live` or a TT Julian Date) and `speed`, `az, alt` (view direction) and `fov`, `layers` (comma list among `stars, planets, dso, minor, clines, cnames, cbounds, azgrid, eqgrid, ecliptic, meridian, horizon`), `ground` (`opaque|dim|off`), `atm` and `refr` (0/1), `maglim`, `dso` (type filter list), `minor` (pinned ids), `labels` (density 0-3), `lang`, `night`, `sel` (object id in the `/sky/altaz` target syntax); this list is the complete view state, so a reload restores everything (OBS-8); a "copy link" button; unknown or invalid parameters fall back to defaults without breaking the page.
+    - UX-3 [M] Night-vision mode: red monochrome palette over the sky and the whole UI plus a brightness slider, toggled from the UI and the URL.
+    - UX-4 [M] Accessibility: every control keyboard-operable with visible focus, ARIA names, state not conveyed by colour alone, `prefers-reduced-motion` respected; the list of visible and selected objects is available as text in the panel.
+    - UX-5 [S] First-visit hint on every load (nothing is persisted), concise and dismissible.
+    - UX-6 [M] Degraded states: API starting (splash with progress from `/health`), API unreachable (banner, retry with backoff), catalog changed on the server (ETag mismatch, reload prompt), optional data missing (layer disabled with a reason), no WebGL2 (clear message).
+  </ux>
+</functional_requirements>
+
+<non_functional_requirements>
+  <performance>
+    - API: `/sky/frame` p95 < 150 ms for n = 32 with the default body set on one vCPU, < 400 ms with 100 minor bodies; catalogs served from prebuilt files in < 50 ms; `/minor-bodies/search` < 50 ms from an in-memory index holding only designation, name, H and epoch; ready within 60 s of start when data files are present (the star catalog binary is cached on disk); RSS < 1 GB per worker excluding the OS page cache.
+    - Frontend: 60 fps on a desktop with integrated graphics and >= 30 fps on a 2022 mid-range phone (Pixel 6a / Snapdragon 7-series class) with the full catalog and all layers on; catalog parsing < 300 ms; first meaningful sky < 2 s on a warm cache and < 5 s on a cold 4G connection; main JavaScript bundle <= 1.5 MB gzipped, AR/WebXR code split into lazily loaded chunks; no allocations in the per-frame render path; labels and lines updated at <= 10 Hz.
+    - Bandwidth: a session downloads the catalogs once (<= 6 MB compressed), then a few kilobytes per frame request.
+  </performance>
+
+  <accuracy>
+    - Backend against JPL Horizons fixtures: Sun, Moon and planets within 2″; stars within 1″ of Skyfield's own transformation of the catalog; TT, UT1 and ΔT exclusively through Skyfield.
+    - Frontend against backend fixtures: stars <= 1″ (shader and CPU parity with Skyfield), interpolated bodies <= 1′ for step_s <= 3600 and |speed| <= 3600, refraction <= 1′ above -1° altitude.
+    - Live mode drift <= 100 ms relative to the device clock; time-lapse speed exact to 0.1 %.
+  </accuracy>
+
+  <compatibility>
+    - Browsers: the Vite 8 default target "baseline-widely-available"; last two major versions of Chrome, Edge, Firefox and Safari; iOS Safari 17+ and Android Chrome 120+ on mobile; WebGL2 required, WebGPU used when available; AR sensor mode on iOS and Android, WebXR mode on Android Chromium browsers.
+    - Input: touch, mouse and keyboard; portrait and landscape.
+    - Containers: Dockerfiles must build for linux/amd64 and linux/arm64 (multi-arch base images, no architecture-specific binaries); CI verifies amd64 only; development on WSL 2 (Debian).
+  </compatibility>
+
+  <security_and_privacy>
+    - HTTPS everywhere in production (terminated by nginx or by an external reverse proxy in front of `web`; plain HTTP is for local development only); strict Content-Security-Policy without inline scripts, `connect-src` limited to the app origin plus the configured geocoder; standard security headers set by nginx; CORS limited to the app origin in production and to the Vite dev origin in development.
+    - No accounts, cookies, trackers, analytics or third-party scripts; no server-side storage of requests; access logs never record query strings or client coordinates; rate limiting keeps IPs in memory only.
+    - Every parameter validated with explicit bounds; request caps from the API contract; dependency audits in CI (`pip-audit` for Python, `npm audit` for Node) with a documented allow-list for accepted advisories.
+  </security_and_privacy>
+
+  <reliability>
+    - The API answers 503 with `Retry-After` while `starting`; missing optional data (MPC, DSO, constellations) puts it in `degraded` state where only the affected endpoints return 503.
+    - The frontend retries failed requests with exponential backoff and keeps propagating from the last frame; a catalog ETag change triggers a reload prompt.
+    - Downloaded files are verified by SHA-256; corrupted caches are rebuilt automatically at startup.
+  </reliability>
+
+  <observability>
+    - Structured JSON logs (timestamp, level, request id, route, status, duration_ms) without personal data; `/health` for probes; a `Server-Timing` header with compute time on frame responses.
+  </observability>
+
+  <accessibility_and_i18n>
+    - WCAG 2.2 AA for the UI chrome; keyboard and screen-reader operable; `prefers-reduced-motion` and `prefers-color-scheme` respected; FR and EN complete at all times (CI fails on missing or unused keys); dates and numbers formatted by Intl.
+  </accessibility_and_i18n>
+
+  <maintainability>
+    - Strict typing end to end (pyright strict, TypeScript strict, generated API types); the sky mathematics isolated in pure, dependency-free modules with 100 % line coverage: `frontend/src/sky/math`, `frontend/src/state/url`, `backend/src/skyapi/astro/quaternions.py` (matrix to quaternion, NEU to ENU, sign continuity) and `backend/src/skyapi/catalogs/formats.py`; the rest of `astro/` and `catalogs/` >= 90 %; UI components covered by smoke tests; documentation in `docs/` updated in the same commit as the change it describes.
+  </maintainability>
+
+  <data_freshness_and_footprint>
+    - MPC elements refreshed by running `sky-data update` (a weekly cron line is suggested in the docs), which rebuilds the caches and prints a reminder to restart the API (`docker compose restart api`): a running API only reloads data at startup; it performs no network calls at runtime other than the bootstrap download.
+    - Images: `api` < 400 MB, `web` < 50 MB; the data directory holds about 3.5 GB (de441 3.1 GB, MPCORB about 250 MB, everything else < 100 MB).
+  </data_freshness_and_footprint>
+</non_functional_requirements>
+
+<data_sources_and_licensing>
+  <datasets>
+    Format: purpose · source · size · license · attribution text · refresh · loader and notes. Every file is downloaded by `sky-data fetch` into DATA_DIR with SHA-256 verification; none is committed to the repository.
+
+    1. Planetary ephemeris · JPL DE441 `de441.bsp` (coverage -13200..+17191) from https://ssd.jpl.nasa.gov/ftp/eph/planets/bsp/ · ~3.1 GB · US Government work, public domain · "Planetary and lunar ephemerides: JPL DE441 (Park et al. 2021)" · never · Skyfield `load('de441.bsp')`, requires Skyfield >= 1.51 for multi-segment targets. `de440s.bsp` (~32 MB, 1849..2150) is the value of `SKYAPI_EPHEMERIS` in `.env.example` and in CI.
+    2. Planetary constants and IAU rotation models · NAIF generic PCK `pck00011.tpc` from https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/ · < 1 MB · public domain · "SPICE generic kernels, NAIF/JPL" · rarely · `PlanetaryConstants.read_text`; verify that Skyfield parses this file, otherwise fall back to `pck00010.tpc`.
+    3. Moon orientation · binary PCK `moon_pa_de440_200625.bpc` (1550..2650) and frame kernel `moon_de440_220930.tf` from the same NAIF directory · ~70 MB · public domain · same attribution · never · `read_binary` and `read_text`, frame `MOON_ME_DE440_ME421`; confirm exact file names, frame name and coverage on the NAIF site and expose the coverage in `/meta.observers` for `moon`.
+    4. Star catalog · Hipparcos main catalogue (VizieR I/239, `hip_main.dat`) at `skyfield.data.hipparcos.URL` · ~50 MB · CDS/ESA, free with citation · "The Hipparcos and Tycho Catalogues, ESA SP-1200 (1997), via CDS/VizieR" · never · `hipparcos.load_dataframe` (needs pandas); drop rows without a position; no magnitude cut.
+    5. Star names and designations · HYG v4.2 (`data/hyg/v42/hyg_v42.csv.gz`) from https://codeberg.org/astronexus/hyg · ~14 MB · CC BY-SA 4.0 · "HYG database v4.2, David Nash, astronexus.com, CC BY-SA 4.0" · yearly · used only to build the `stars/index` crosswalk (HIP -> proper name including IAU names, Bayer, Flamsteed, constellation); the derived index is served under CC BY-SA 4.0 and declared in `/meta.catalogs.stars.license`. Alternative if share-alike is unwanted: IAU-CSN (IAU Working Group on Star Names, CC BY 4.0) for proper names only, without Bayer/Flamsteed.
+    6. Deep-sky objects · OpenNGC `NGC.csv` and `addendum/addendum.csv` (raw files) from https://github.com/mattiaverga/OpenNGC · ~3 MB · CC BY-SA 4.0 · "OpenNGC, Mattia Verga, CC BY-SA 4.0" · yearly · parsed with pandas; keep all Messier objects plus NGC/IC with mag <= 14 or major axis >= 5′; the derived catalog is served under CC BY-SA 4.0.
+    7. Constellation lines · Stellarium sky culture `modern` (`skycultures/modern/index.json`) from https://raw.githubusercontent.com/Stellarium/stellarium/master/ · < 1 MB · CC BY-SA 4.0 as declared in that culture's description.md (verify at fetch time and record the declared license) · "Constellation figures: Stellarium 'modern' sky culture, CC BY-SA 4.0" · yearly · `skyfield.data.stellarium.parse_constellations_json` (Skyfield >= 1.55) returns (abbreviation, [(hip, hip), ...]).
+    8. Constellation boundaries · d3-celestial `data/constellations.bounds.json` from https://github.com/ofrohn/d3-celestial · < 1 MB · BSD-3-Clause · "Constellation boundaries: d3-celestial (Olaf Frohn), after Davenhall & Leggett 1990" · never · GeoJSON polygons in J2000. Alternative: VizieR VI/49 `bound_20.dat` (CDS) parsed directly.
+    9. Constellation names · Latin names and genitives from a CSV committed at `backend/data/constellation_names.csv` (factual data, no license constraint) checked against the IAU list; English and French names in the frontend resource files (`constellations.<abbr>` keys), so a new language only needs a new resource file.
+    10. Minor bodies · MPC `MPCORB.DAT` (~250 MB, ~1.4 M asteroids) and `CometEls.txt` (~1 000 comets) at `skyfield.data.mpc.MPCORB_URL` and `COMET_URL` · free, attribution requested · "Orbital elements: IAU Minor Planet Center" · weekly · `mpc.load_mpcorb_dataframe`, `mpc.load_comets_dataframe`, orbits with `mpcorb_orbit` and `comet_orbit` and `GM_SUN`; cached as Parquet; only the search index (designation, name, H, epoch) stays in memory.
+    11. Earth orientation · Skyfield built-in ΔT and leap-second tables (updated with each Skyfield release); IERS `finals2000A.all` optional [L].
+    12. Geocoding, browser only, at runtime · OpenStreetMap Nominatim https://nominatim.openstreetmap.org · data under ODbL; usage policy: at most 1 request/s, identify the application (the browser `Referer` suffices; send `email=` when configured in `/meta.geocoder`), display "© OpenStreetMap contributors", be able to switch or disable the service without an app update (hence the `/meta.geocoder` configuration); never cached or proxied by the API.
+    13. Planetary site presets · USGS Gazetteer of Planetary Nomenclature (public domain), coordinates copied into a committed CSV with source citations.
+    14. UI assets · system font stack; icons from Lucide (ISC); no third-party images or textures in v1.
+  </datasets>
+
+  <licensing_policy>
+    - First action of the project: read `LICENSE` and `README.md` at the repository root; record the license identifier in `CLAUDE.md`; keep all application code under that license. If `LICENSE` is missing or unrecognisable, stop and ask.
+    - Third-party data is never committed; the only files allowed in git are (1) test excerpts under 1 MB in `backend/tests/fixtures/excerpts/` with a header stating source and license and an entry in THIRD_PARTY_NOTICES.md, (2) the small factual CSVs authored for this project (`constellation_names.csv`, `planetary_sites.csv` with its citations), (3) machine-generated test fixtures containing JPL Horizons values (US Government data). Everything else is downloaded at bootstrap, transformed into caches under DATA_DIR, and served by the API with its license declared in `/meta.catalogs.<name>.license` and `.attribution`.
+    - `THIRD_PARTY_NOTICES.md` at the repository root lists every dataset above with source URL, version or fetch date, license and attribution text; the frontend "About" screen renders the same credits (mandatory for CC BY-SA and OpenStreetMap).
+    - Catalogs derived from share-alike sources (HYG, OpenNGC, Stellarium) are published under the same license; the build scripts are public in the repository, which satisfies the share-alike condition; nothing else in the application is affected.
+    - Never add datasets, images, fonts or textures whose license is unknown or restricted to non-commercial use; prefer public domain, CC0, CC BY, BSD, MIT, ISC or Apache sources.
+  </licensing_policy>
+
+  <coverage_summary>
+    Reported by `/meta` and enforced by the UI: ephemeris -13200..+17191; Moon-surface observers 1550..2650 (Moon kernel); other bodies use IAU rotation models, exact by definition but with growing physical uncertainty away from J2000 (label "approximate" outside 1800..2200); MPC elements reliable within about 2 years of their epoch (warning beyond 2 years, error beyond 50 years); Hipparcos proper motion is linear and adequate for visualisation over the whole range (warning beyond ±10 000 years); ΔT from historical and IERS tables for -720..present with predictions about one year ahead and a long-term parabola beyond (label "approximate").
+  </coverage_summary>
+</data_sources_and_licensing>
+
+<repository_layout>
+  The repository root already contains README.md and LICENSE: keep LICENSE untouched and extend README.md (never replace it). Target layout; create only what the current milestone needs, keep it flat and predictable:
+
+  .
+  ├── .github/workflows/ci.yml          GitHub Actions (see engineering_standards/ci)
+  ├── .editorconfig  .gitattributes (* text=auto eol=lf)  .gitignore
+  ├── .node-version                     "24" (fnm; docs tell developers to use FNM_VERSION_FILE_STRATEGY=recursive so subfolders inherit it)
+  ├── .python-version                   "3.14" (uv)
+  ├── CLAUDE.md                          working agreement for Claude Code (see workflow)
+  ├── THIRD_PARTY_NOTICES.md             generated from the data registry
+  ├── Makefile                           targets: setup, data, dev, dev-api, dev-web, check, test, e2e, types, build, up, down
+  ├── compose.yaml  .env.example
+  ├── data/                              DATA_DIR default for development (gitignored)
+  ├── docs/
+  │   ├── plan.md  architecture.md  api.md  openapi.json  data.md  dev-wsl2.md  testing.md  backlog.md
+  │   └── decisions/ADR-0001-*.md        one ADR per notable decision
+  ├── backend/
+  │   ├── pyproject.toml  uv.lock  README.md  Dockerfile  .dockerignore
+  │   ├── data/                          committed CSV/TOML only: constellation_names.csv, planetary_sites.csv, data_files.toml (registry: url, size, sha256, license, attribution)
+  │   ├── src/skyapi/
+  │   │   ├── __init__.py  main.py (app factory)  settings.py  lifespan.py  state.py
+  │   │   ├── api/v1/      health.py  meta.py  catalogs.py  minor_bodies.py  sky.py   (routers: validate, canonicalize, call, serialize; no Skyfield imports)
+  │   │   ├── astro/       loader.py  time.py  observers.py  horizon.py  quaternions.py  bodies.py  stars.py  dso.py  constellations.py  minor_bodies.py  refraction.py  sampling.py
+  │   │   ├── catalogs/    formats.py (SKYS binary)  builders.py (Hipparcos + HYG index, OpenNGC subset, constellations)
+  │   │   ├── data/        registry.py  download.py (sha256, resume, progress)
+  │   │   ├── models/      Pydantic models per endpoint
+  │   │   ├── middleware/  ratelimit.py  logging.py  caching.py  problem.py
+  │   │   ├── tools/       dump_openapi.py
+  │   │   └── cli/sky_data.py            entry point `sky-data`: fetch, update, verify, build-caches, status
+  │   └── tests/
+  │       ├── unit/  api/  conformance/
+  │       ├── fixtures/                  committed JSON: Horizons cases, sky frames, altaz references (produced by scripts/generate_fixtures.py)
+  │       └── conftest.py                session-scoped de440s ephemeris and a temporary DATA_DIR
+  ├── frontend/
+  │   ├── package.json  package-lock.json  vite.config.ts  tsconfig.json  eslint.config.js  .prettierrc  playwright.config.ts  index.html  Dockerfile  nginx.conf
+  │   ├── public/                        manifest.webmanifest, icons
+  │   ├── src/
+  │   │   ├── main.tsx  App.tsx
+  │   │   ├── api/      schema.d.ts (generated, committed)  client.ts  catalogs.ts (SKYS parser, fetch, ETag handling)
+  │   │   ├── sky/
+  │   │   │   ├── math/    quaternion.ts  vec3.ts  frames.ts  interpolation.ts  properMotion.ts  refraction.ts  time.ts  orientation.ts   (pure TypeScript, no Babylon imports, 100 % tested)
+  │   │   │   ├── engine/  SkyEngine.ts  createEngine.ts  camera.ts  layers/ (stars, dso, bodies, constellations, grids, horizon, atmosphere, labels)
+  │   │   │   ├── shaders/ stars.vertex.glsl  stars.fragment.glsl  stars.vertex.wgsl  stars.fragment.wgsl  ...
+  │   │   │   └── ar/      sensors.ts  cameraVideo.ts  webxr.ts
+  │   │   ├── state/    store.ts (simulation store)  url.ts (serialize/parse)  clock.ts (live/play/speed)  frames.ts (frame buffer and fetch policy)
+  │   │   ├── ui/       panels/  controls/  components/   (React only; no astronomy math)
+  │   │   ├── i18n/     index.ts  en.json  fr.json
+  │   │   ├── styles/   app.css (@import "tailwindcss", @theme, @custom-variant night)
+  │   │   └── test/     setup.ts, fixtures loader reading ../../backend/tests/fixtures
+  │   └── e2e/                           Playwright specs: smoke, url-state, selection, search, time, night-mode, mobile
+  └── scripts/
+      ├── generate_fixtures.py           JPL Horizons API client, run manually, results committed
+      ├── check_i18n.mjs                 fails on missing or unused translation keys
+      └── bench_api.py                   measures /sky/frame latency against the budget
+</repository_layout>
+
+<engineering_standards>
+  <backend_python>
+    - Tooling: uv-managed packaged application (`uv init --package`, src layout, `uv_build` backend); `.python-version` = 3.14; `uv.lock` committed; `uv sync --locked` in CI and Docker; every command through `uv run` (`uv run pytest`, `uv run sky-data fetch`); `[project.scripts] sky-data = "skyapi.cli.sky_data:main"`; development tools in `[dependency-groups] dev`.
+    - Runtime dependencies (latest stable at project start, verified on PyPI): fastapi[standard], skyfield (>= 1.55), numpy, pandas, pyarrow, pydantic-settings. Dev: pytest, pytest-cov, hypothesis, ruff, pyright (httpx comes with fastapi[standard]). Nothing else without an ADR.
+    - Ruff for linting and formatting: line length 100; rule sets E, F, W, I, UP, B, SIM, N, RUF, PT, ANN, with per-file ignores limited to tests. Pyright strict on `src/`, basic on `tests/`. Complete type annotations; no untyped `Any` leaving a public function; NumPy arrays typed with `numpy.typing.NDArray`.
+    - Structure: routers never import Skyfield; `astro/` exposes pure functions that receive `SkyState` explicitly (the frozen dataclass created in lifespan that holds the timescale, ephemeris, planetary constants, frames, catalogs and MPC index); no module-level mutable state apart from the app state created in lifespan; settings read once from the environment with the `SKYAPI_` prefix (DATA_DIR, EPHEMERIS, AUTO_FETCH, WORKERS, RATE_LIMIT_RPS, RATE_LIMIT_BURST, GEOCODER_URL, GEOCODER_ENABLED, GEOCODER_EMAIL, CORS_ORIGINS, LOG_LEVEL).
+    - Errors: typed exception classes mapped to RFC 9457 responses by a single handler; never a bare `except`; explicit bounds on every parameter.
+    - Logging: stdlib `logging` with a JSON formatter (no third-party logging library), request-id middleware, no query strings or coordinates in logs.
+    - Tests: pytest markers `unit`, `api`, `conformance`, `slow`; `de440s.bsp` downloaded once into a cached test DATA_DIR; hypothesis property tests for canonicalization, time conversions and the SKYS round-trip; coverage >= 90 % on `skyapi/astro` and `skyapi/catalogs`; API tests through `TestClient`; an OpenAPI snapshot test.
+  </backend_python>
+
+  <frontend_typescript>
+    - Tooling: Node 24 through fnm (`.node-version`), npm with a committed `package-lock.json` and `npm ci` in CI, Vite 8 (`@vitejs/plugin-react` 6, Oxc transforms, `build.rolldownOptions`), `@tailwindcss/vite`, TypeScript strict with `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes` and `verbatimModuleSyntax`, ESM only.
+    - Dependencies (latest stable, verified on npm): react, react-dom, @babylonjs/core, zustand (store), i18next + react-i18next (translations and plural rules), lucide-react (icons). Dev: typescript, vite, @vitejs/plugin-react, @vitejs/plugin-basic-ssl (dev HTTPS), tailwindcss, @tailwindcss/vite, vitest, jsdom, @testing-library/react, @testing-library/jest-dom, @playwright/test, eslint (flat config), typescript-eslint (type-aware), eslint-plugin-react-hooks, eslint-plugin-jsx-a11y, prettier, prettier-plugin-tailwindcss, openapi-typescript. Nothing else without an ADR: no UI kit, no Babylon GUI package, no math library (the pure `sky/math` module is ours and fully tested).
+    - Babylon.js: import from `@babylonjs/core/<module>` paths only (tree-shaking), required side-effect imports documented at the top of `sky/engine/`; never `@babylonjs/core/Legacy/legacy`; shaders in separate files imported with `?raw`; one engine instance created on mount and disposed on unmount; custom shaders provided as GLSL for WebGL2 and WGSL for WebGPU, tested on both engines in Playwright.
+    - React 19: function components and hooks only; `ref` as a prop (no `forwardRef`); no `useEffect` for derived state; UI components contain no astronomy math; the React Compiler is not enabled initially (opt-in later through `reactCompilerPreset` and `@rolldown/plugin-babel` if measurements justify it).
+    - Tailwind CSS 4: CSS-first configuration in `src/styles/app.css` (`@import "tailwindcss"`, `@theme` tokens, `@custom-variant night (&:where([data-mode=night], [data-mode=night] *))`); no `tailwind.config.js`; minimal custom CSS; class order enforced by the Prettier plugin.
+    - Rendering discipline: typed arrays and preallocated buffers; no allocation in the render loop; the `requestAnimationFrame` loop belongs to `SkyEngine`; React re-renders never drive the canvas; the store notifies the engine through subscriptions.
+    - Tests: vitest for `sky/math`, `state/url` and `api/catalogs` with the shared fixtures (100 % coverage on `sky/math` and `state/url`); Testing Library smoke tests for components; Playwright e2e on Chromium desktop, Chromium mobile emulation and WebKit when available, covering load, URL round-trip, selection, search, time controls, night mode and a rendering sanity check through a `window.__sky` debug hook exposed only in dev and test builds.
+    - i18n: `scripts/check_i18n.mjs` fails on keys missing in either language or unused in code.
+  </frontend_typescript>
+
+  <git>
+    - Work on the current branch; never push, never rewrite history, never create branches unless asked.
+    - Conventional Commits (`feat`, `fix`, `chore`, `docs`, `test`, `build`, `ci`, `refactor`, with a scope); at least one commit per milestone, intermediate atomic commits welcome; every commit passes `make check`.
+    - `.gitattributes` forces LF line endings; `.gitignore` covers `data/`, `.venv/`, `node_modules/`, `dist/`, caches and `*.local`; no data files, secrets or generated caches in git (exceptions: `frontend/src/api/schema.d.ts`, `docs/openapi.json`, test fixtures).
+  </git>
+
+  <quality_gates>
+    - `make check` (before every commit, and in CI) = `uv lock --check` + `ruff format --check` + `ruff check` + `pyright` + `pytest -m "not slow"` + `npm run typecheck` + `npm run lint` + `npm run test` + `node scripts/check_i18n.mjs` + `make types` followed by `git diff --exit-code frontend/src/api/schema.d.ts docs/openapi.json`.
+    - `make types` = `uv run python -m skyapi.tools.dump_openapi > docs/openapi.json` then `npx openapi-typescript docs/openapi.json -o frontend/src/api/schema.d.ts`.
+    - `make test` = full pytest including `slow` and `conformance` plus vitest; `make e2e` = Playwright against a locally started stack.
+  </quality_gates>
+
+  <ci>
+    - One workflow `ci.yml` on push and pull_request with jobs: `backend` (astral-sh/setup-uv with cache, `uv sync --locked`, ruff, pyright, pytest with `de440s.bsp` restored from `actions/cache`), `frontend` (actions/setup-node 24 with npm cache, `npm ci`, typecheck, lint, vitest, build), `e2e` (starts the API on de440s and serves the built frontend, runs Playwright Chromium, uploads traces on failure), `docker` (builds both images with docker/build-push-action, no push, linux/amd64 only).
+    - CI never downloads de441 or MPCORB and never contacts Nominatim or Horizons: tests rely on committed fixtures, de440s, and committed excerpts of Hipparcos and OpenNGC for unit tests (full catalogs only in the cached e2e job).
+  </ci>
+
+  <documentation>
+    - `docs/plan.md` written before M1 and updated at every milestone; `docs/architecture.md`; `docs/api.md` (from OpenAPI plus the binary layout table); `docs/data.md`; `docs/dev-wsl2.md` (HTTPS dev server, reaching it from a phone through `.wslconfig` mirrored networking or `netsh interface portproxy`, trusting the dev certificate on the phone); `docs/testing.md` (including the manual AR checklist); `docs/backlog.md`; ADRs in `docs/decisions/`; README quickstart kept accurate.
+  </documentation>
+</engineering_standards>
+
+<milestones>
+  Rules: milestones run in order; each ends with `make check` green, documentation updated, and a local commit (never a push). Do not start a milestone before the previous definition of done is met. If a requirement proves infeasible, record it in `docs/backlog.md` with the reason and continue.
+
+  <m0 name="Bootstrap">
+    - Read LICENSE and README.md; check tool availability and versions (uv, fnm, node, python); pin `.python-version` (3.14) and `.node-version` (24); write `CLAUDE.md` and `docs/plan.md`.
+    - Create the monorepo skeleton: backend packaged app with uv exposing `/api/v1/health` only; frontend from `npm create vite@latest` (react-ts) plus Tailwind 4, ESLint, Prettier, Vitest and Playwright configured; Makefile; `.editorconfig`, `.gitattributes`, `.gitignore`, `.env.example`; CI workflow with the `backend` and `frontend` jobs; docs skeleton.
+    - Definition of done: `make check` passes on the skeleton; `fastapi dev` answers `/api/v1/health`; the Vite dev server shows a placeholder page and proxies `/api`; the workflow file is reviewed line by line.
+    - Commit: `chore: bootstrap monorepo (backend, frontend, tooling, ci)`.
+  </m0>
+
+  <m1 name="Data pipeline and astronomy core">
+    - `sky-data` CLI: registry with URLs, sizes, SHA-256, licenses and attributions; resumable downloads with progress; `fetch`, `update`, `verify`, `build-caches`, `status`; `THIRD_PARTY_NOTICES.md` generated from the registry.
+    - `astro/`: timescale and ephemeris loading (env-selected file), Earth and planetary observers (PCK and Moon frames), horizon quaternions with sign continuity, body samples (direction, distance, magnitude, phase, angular diameter), Sun direction, refraction reference helper, minor-body orbits and search index.
+    - `catalogs/`: SKYS binary builder from Hipparcos plus the HYG name index, OpenNGC subset builder, constellations (Skyfield 1.55 parser, boundaries, Latin names and genitives; translated names live in the frontend resource files keyed by IAU abbreviation).
+    - Tests: unit tests on de440s; `scripts/generate_fixtures.py` calling the JPL Horizons API with the fixtures committed; conformance tests within tolerance; hypothesis tests for the SKYS round-trip.
+    - Definition of done: coverage >= 90 % on `astro/` and `catalogs/`; `sky-data status` lists every file with its license; `docs/data.md` written.
+    - Commit: `feat(backend): data pipeline and astronomy core`.
+  </m1>
+
+  <m2 name="API v1">
+    - Every endpoint of the API contract except `/sky/events` ([L]) with canonicalization, caching headers and ETags, GZip, RFC 9457 errors, rate limiting, lifespan bootstrap with health states, complete OpenAPI metadata, `docs/openapi.json` and `make types`.
+    - Tests: API tests for every endpoint including error paths and caching headers; OpenAPI snapshot; `scripts/bench_api.py` measuring `/sky/frame` latency against the budget.
+    - Definition of done: latency budgets met on the development machine and recorded; `docs/api.md` complete including the binary layout table.
+    - Commit: `feat(api): v1 endpoints, caching, rate limiting and health`.
+  </m2>
+
+  <m3 name="Sky engine">
+    - Generated API types and client; catalog loaders (SKYS parser, DSO, constellations, star index) with ETag handling.
+    - `sky/math` pure modules (quaternion, frames, interpolation, proper motion, refraction, time) with fixture parity tests.
+    - `SkyEngine`: engine selection (WebGPU or WebGL2), star layer with custom shaders on both backends, bodies layer with phase shading, horizon, grids, ecliptic, meridian, camera controls and field of view, simulation clock, frame buffer and fetch policy, URL state store.
+    - Definition of done: parity tests pass; Playwright sanity checks through the debug hook (from Greenwich at a fixed time, Polaris altitude equals the latitude within 1°; a planet's rendered direction matches `/sky/altaz` within 1′); 60 fps on the development machine with the full catalog.
+    - Commit: `feat(frontend): sky engine, catalogs and core rendering`.
+  </m3>
+
+  <m4 name="User interface and features">
+    - Observer panel (geolocation, manual entry, Nominatim, other bodies, presets), time editor and transport controls, layer toggles and magnitude override, deep-sky and minor-bodies layers, constellations (lines, names, boundaries), labels, selection and details panel, unified search, atmosphere and refraction toggles, night mode, i18n FR/EN, share link, About and credits, degraded states, responsive layout, accessibility.
+    - Definition of done: every [M] requirement outside augmented reality implemented; e2e suite green on desktop and mobile emulation; `check_i18n` green; jsx-a11y clean.
+    - Commit: `feat(frontend): user interface, search, constellations and i18n`.
+  </m4>
+
+  <m5 name="Augmented reality">
+    - Sensor mode (camera video, orientation, permissions, calibration, compass accuracy), WebXR mode [S], field-of-view matching, graceful degradation; orientation-to-camera math in `sky/math/orientation.ts` with fixture tests; `docs/dev-wsl2.md` phone-testing procedure; manual AR checklist in `docs/testing.md`.
+    - Definition of done: unit tests on the orientation math pass; the e2e suite still passes with AR code split into lazy chunks; the manual checklist is written and flagged for the human to run on a real device.
+    - Commit: `feat(frontend): augmented reality (sensor and WebXR modes)`.
+  </m5>
+
+  <m6 name="Hardening">
+    - Performance passes (bundle analysis, frame-time profiling, backend benchmark), accessibility audit, CSP and security headers, error paths, i18n completeness, ADRs for every notable decision, README quickstart, documentation review, backlog.
+    - Definition of done: every budget in non_functional_requirements measured and recorded in `docs/testing.md`, with deviations explained.
+    - Commit: `chore: hardening, performance and documentation`.
+  </m6>
+
+  <m7 name="Delivery">
+    - Backend Dockerfile (multi-stage with uv, `UV_COMPILE_BYTECODE=1`, `uv sync --locked --no-dev`, non-root user, healthcheck on `/api/v1/health`), frontend Dockerfile (build stage, then nginx with `nginx.conf`: SPA fallback, immutable cache headers for hashed assets, `/api` proxy, security headers, optional TLS), `compose.yaml` (services `api` and `web`, `SKY_DATA_DIR` bind mount for DATA_DIR, healthchecks, `.env`), CI `docker` job, release checklist.
+    - Definition of done: from a clean clone, `docker compose run --rm api sky-data fetch` then `docker compose up` reaches `ready` and the app works end to end; the acceptance checklist passes.
+    - Commit: `build: docker compose, images and release checklist`.
+  </m7>
+</milestones>
+
+<workflow>
+  <start>
+    1. Read this whole brief, then LICENSE and README.md, then inventory the environment (versions, network, docker). Write no code yet.
+    2. Save this brief verbatim as `docs/brief.xml` (if the file already exists, keep it; it is the authoritative specification).
+    3. Write `CLAUDE.md` (under 150 lines): five-line project summary; pointer to `docs/brief.xml` and `docs/plan.md`; the commands (`make setup|data|dev|check|test|e2e|types|build|up`); the conventions that matter most (API contract binding; astronomy math only in `backend/src/skyapi/astro` and `frontend/src/sky/math`; the ENU mapping module; commit rules; no push; no data or secrets in git; privacy rounding; no browser storage); a short "do not" list. Put file-specific rules in `.claude/rules/*.md` with `paths:` frontmatter rather than bloating CLAUDE.md.
+    4. Write `docs/plan.md`: milestones with task lists, risks, assumptions and open questions, each question paired with a decision ("proceed with X, revisit at M6"). Then start M0.
+  </start>
+
+  <per_milestone>
+    - Plan first (plan mode), then implement in small steps; run the relevant tests after every step and `make check` before every commit; update the documentation in the same commit as the change.
+    - When an API or a version behaviour is uncertain, consult the official documentation before writing code: the Context7 and DeepWiki MCP servers if configured in `.mcp.json`, otherwise fetch the official docs (Skyfield: rhodesmill.org/skyfield; FastAPI: fastapi.tiangolo.com; Babylon.js: doc.babylonjs.com; Vite: vite.dev; Tailwind: tailwindcss.com; uv: docs.astral.sh/uv). Never guess signatures; prefer official docs over blog posts.
+    - Use subagents for independent, precisely described work (for example "implement the SKYS parser and its tests against backend/tests/fixtures", "generate the Horizons fixtures", "review this milestone against the acceptance list and report gaps") and for an adversarial review at the end of each milestone; give each a narrow scope and an explicit list of files it may touch.
+    - Keep the context small: never print catalogs or data files; use `head`, `wc`, targeted greps and Python one-liners; compact the conversation after each milestone; `docs/plan.md` is the durable memory across sessions.
+    - Record every notable decision as an ADR (context, options, decision, consequences) and every deviation from the brief in `docs/backlog.md` with its reason.
+    - Commit at least once per milestone with the prescribed message; never `--no-verify`; never skip, weaken or mark as expected-failure a test to make a gate pass; if a gate cannot pass, fix the cause or document the exception in the commit body and in docs/plan.md.
+  </per_milestone>
+
+  <asking_questions>
+    Ask the human only when blocked by: a missing or unrecognisable LICENSE; no network access for a required download; a contradiction in this brief that the precedence rule in `role` cannot resolve; a destructive action outside this repository. Otherwise decide, document, continue. Collect non-blocking questions under "Questions for the maintainer" in docs/plan.md.
+  </asking_questions>
+
+  <finish>
+    After M7: run the acceptance list; write the final report in docs/plan.md (delivered scope, deviations, measured budgets, and the manual steps left to the human: `sky-data fetch --full`, TLS certificates, the AR checklist on a real device, `git push`); make the last commit; print a concise summary.
+  </finish>
+</workflow>
+
+<pitfalls>
+  <skyfield_and_backend>
+    - Skyfield's altaz rotation matrix (`GeographicPosition.rotation_at`, `PlanetTopos.rotation_at`) maps ICRF to a LEFT-handed frame: x = north, y = east, z = zenith (determinant -1). Swap rows x and y to obtain the right-handed ENU matrix before converting to a quaternion, and validate in tests that `atan2(E, N)` reproduces Skyfield's `altaz()` azimuth and `asin(U)` its altitude.
+    - Both `rotation_at` methods accept `Time` arrays (extra trailing dimension); build one `Time` array per frame with `ts.tt_jd(array)` and vectorize everything; never loop over samples in Python unless a specific call proves scalar-only (then loop over at most 64 samples and note it).
+    - `altaz(temperature_C=..., pressure_mbar=...)` uses Earth's refraction model and raises for observers on other bodies: request refraction only when the observer is Earth. Skyfield refraction is what the client-side formula must match.
+    - Calendar: Skyfield's default `julian_calendar_cutoff = None` is the proleptic Gregorian calendar; set it explicitly and test 1582-10-04/1582-10-15. `utc_datetime()` and `utc_iso()` raise on negative years; produce ISO strings yourself from `t.utc` calendar tuples with astronomical year numbering (year 0 exists, `-0044-03-15` style with a signed 4+ digit year).
+    - DE441 has two segments per target: requires Skyfield >= 1.51 (1.55 is fine). The file is memory-mapped; never read it into memory or into your context. `de440s` covers 1849-2150 only: tests must not request dates outside it.
+    - Observer on another body: `PlanetaryConstants.build_latlon_degrees` raises `ValueError("only spherical bodies are supported")` for every body whose PCK radii differ (Mars, the giant planets, ...). Build the location yourself: `PlanetTopos.from_latlon_distance(frame, Angle, Angle, Distance)` with distance = radius of the IAU ellipsoid at the planetocentric latitude plus elevation, then `body + topos`; keep `build_latlon_degrees` only where radii are equal (Moon). Build frames from `pck00011.tpc` (`IAU_MARS`, `IAU_JUPITER`, ...) and, for the Moon, from the frame kernel plus the binary PCK (`MOON_ME_DE440_ME421`); check the kernel coverage and return 422 outside it. `bodies=all` excludes the observer's own body; naming it explicitly (the Moon from the Moon) is a 400.
+    - Vectorized stars: one `Star.from_dataframe(df)` for the whole catalog; drop rows with NaN coordinates; Hipparcos positions carry the catalog epoch J1991.25 (`epoch_year` in the dataframe); the SKYS builder must evaluate the vectorized Star at J2000 (position and velocity) and derive `dir` and `pm` from those vectors, otherwise every star is offset by 8.75 years of proper motion (up to 90″ for Barnard's star). Skyfield's loader keeps the positional columns and `magnitude` (Johnson V); check whether `B-V` is present and otherwise read that field from the pipe-separated `hip_main.dat` yourself.
+    - MPC: `load_mpcorb_dataframe` on the full file takes minutes and lots of memory; do it once in `sky-data build-caches`, store Parquet, keep only the search index in RAM. Comets have several orbit solutions per designation: sort by `reference` and keep the last, as in the Skyfield documentation. Use `skyfield.constants.GM_SUN_Pitjeva_2005_km3_s2` consistently for every Kepler orbit.
+    - FastAPI: CPU-bound path operations must be plain `def` (thread pool), not `async def`; return binary catalogs with `FileResponse` from the cache directory (zero-copy) plus ETag; do not use the deprecated `ORJSONResponse`; `GZipMiddleware(minimum_size=1024)`; in-memory rate limiting is per worker process (document it); `fastapi run --workers N` for production.
+    - Equator of date: `skyfield.framelib.true_equator_and_equinox_of_date.rotation_at(t)` is a proper rotation (determinant +1) that converts directly to the `equinox_of_date` quaternion; RA/Dec of date for `/sky/altaz` come from `.radec(epoch=t)`, ICRS values from `.radec()`; local apparent sidereal time is the RA of date of the zenith direction (validate against Skyfield's `t.gast` plus the east longitude).
+    - Observers: the Sun is not an observer (no meaningful `sun_dir`, phases or lighting); observing from a body that is also requested as a target is a 400.
+    - Canonicalization must happen before cache lookup and before computation, and the response must echo the canonical values so that the client and the server agree on the cache key.
+    - The star catalog and the DSO catalog are built at `build-caches` time and versioned by a content hash that becomes the ETag; never rebuild them per request.
+  </skyfield_and_backend>
+
+  <babylon_and_frontend>
+    - WebGPU has no variable point size: never rely on `PointsCloudSystem` or `pointSize`; draw stars as camera-facing quads (four vertices per star in one mesh, corners expanded in the vertex shader).
+    - Provide WGSL shaders for WebGPU (`shaderLanguage: ShaderLanguage.WGSL`) and GLSL for WebGL2; under WebGPU, GLSL shaders trigger a runtime download of glslang/twgsl wasm from a CDN, which the strict CSP forbids. Create the engine with `EngineFactory.CreateAsync` or `WebGPUEngine.IsSupportedAsync` plus `initAsync`, and test both paths in Playwright.
+    - ES6 tree-shaking requires side-effect imports for the features used (e.g. `@babylonjs/core/Materials/shaderMaterial`, raw-texture and WebXR feature modules); missing imports surface as "... is not a function" at runtime. Keep the list in one file with a comment per import. Never import `@babylonjs/core/Legacy/legacy` or the UMD `babylonjs` package.
+    - Babylon is left-handed and Y-up by default; keep it and implement the ENU mapping (East +X, Up +Y, North +Z) in `sky/math/frames.ts` only, with unit tests for the three cardinal cases; azimuth increases clockwise seen from above.
+    - Camera at the origin: use a rotation-only camera (custom inputs with inertia); the field of view in Babylon is vertical and in radians; `maxZ` must exceed the sky-sphere radius; in WebXR the experience helper resets the camera to the origin on session start, so the sky sphere must follow the XR camera position every frame (or be parented to it) while ignoring its translation.
+    - Aberration in the star shader: dir' = normalize(dir + v / c) with v the backend `observer_velocity_au_d` and c = 173.1446 au/day (first order; error below 0.01″); never apply it to solar-system bodies, whose directions are already apparent.
+    - Compute the horizon quaternion on the CPU in float64 and upload it as a uniform; do not accumulate rotations on the GPU. Float32 is fine for unit vectors (about 0.02″) and for `pm * years` over the whole ephemeris range (about ±15 200 years around J2000).
+    - `DeviceOrientationEvent.requestPermission()` on iOS must be called from a user gesture in a secure context; use `deviceorientationabsolute` on Android and `webkitCompassHeading` on iOS; apply `screen.orientation.angle`; convert (alpha, beta, gamma) with the W3C intrinsic Z-X'-Y'' order; verify with fixtures.
+    - `getUserMedia({ video: { facingMode: { ideal: "environment" } } })`; the `<video>` needs `playsinline` and `muted`; stop all tracks on exit.
+    - Geolocation, camera, sensors and WebXR require a secure context: the Vite dev server runs HTTPS via `@vitejs/plugin-basic-ssl`; the phone must trust the certificate or use the browser's insecure-origin exception (documented in docs/dev-wsl2.md), and WSL 2 needs mirrored networking or a port proxy to be reachable on the LAN.
+    - Vite 8: use `build.rolldownOptions.output.codeSplitting` (no `manualChunks` object form); `@vitejs/plugin-react` 6 transforms with Oxc (no Babel plugins unless `@rolldown/plugin-babel`); import shaders with `?raw`; only `import.meta.env.VITE_*` variables reach the client.
+    - Tailwind 4: no `tailwind.config.js`; class names must appear as complete literal strings (no runtime concatenation) or they are not generated; the night variant is `@custom-variant night (&:where([data-mode=night], [data-mode=night] *))`.
+    - React 19 StrictMode double-invokes effects in development: engine creation must live in an effect with a cleanup that disposes it, and must be idempotent.
+    - URL state: update with `history.replaceState` at <= 2 Hz while the user drags or time flows; round floats (coordinates 0.01°, alt/az 0.01°, fov 0.1°, tt 1e-6 day) to keep URLs short; parse defensively.
+    - Dates: JavaScript `Date` parses negative years badly; build dates with `Date.UTC` and `setUTCFullYear`, keep TT Julian Date as the canonical value, and format years with an explicit sign; `Intl` formats negative years only with an era option, so provide a custom formatter for the time display.
+    - Nominatim: browsers cannot set `User-Agent`; identification relies on `Referer` — add `<meta name="referrer" content="strict-origin-when-cross-origin">` — plus the optional `email` parameter; handle HTTP 403/429 with a clear message; never call it on every keystroke.
+    - Labels: an HTML overlay updated with `transform: translate3d` and a fixed pool of elements avoids layout thrash; cap the number of visible labels.
+    - Docker: never bake data into images; give the `api` healthcheck a long `start_period` (first-start caches) and let `web` depend on `api` being healthy; in nginx serve `index.html` with `no-cache` and hashed assets with `immutable`; enable gzip for JSON and the binary catalog.
+  </babylon_and_frontend>
+</pitfalls>
+
+<acceptance>
+  Run this list after M7 and record the results in docs/plan.md; every item must pass or carry a documented exception.
+  <repository>
+    - LICENSE unchanged; README.md extended with a working quickstart; CLAUDE.md, THIRD_PARTY_NOTICES.md, docs/brief.xml, docs/plan.md and the ADRs present; at least one Conventional Commit per milestone (M0-M7) in `git log`; no push performed; `git status` clean; no data files, caches or secrets tracked.
+    - `make check`, `make test` and `make e2e` pass from a clean clone with de440s; `uv lock --check` and `npm ci` succeed; generated API types match `docs/openapi.json`.
+  </repository>
+  <backend>
+    - `sky-data status` lists every dataset with license and attribution; `sky-data verify` passes; `/api/v1/health` reports `ready`; `/api/v1/meta` exposes coverage ranges, geocoder configuration and per-catalog licenses.
+    - Conformance tests pass within tolerance against the Horizons fixtures; measured `/sky/frame` latency recorded and within budget.
+    - Invariants (through `/sky/altaz` and `/sky/frame`): from Greenwich at any time, Polaris altitude equals 51.48° within 1° (Polaris is about 0.6° from the pole); at latitude 0° on the March equinox the Sun's transit altitude is within 0.5° of 90°; from Tranquility Base the Earth stays within 20° of a fixed direction over a lunar month (libration only) while the Sun completes a full circuit; on Mars the horizon quaternion returns to the same orientation within 0.1° after one sidereal rotation (24 h 37 min 23 s).
+    - Requests outside the ephemeris or observer coverage return 422 with the valid range; invalid parameters return 400 problem+json; rate limiting returns 429 with Retry-After.
+  </backend>
+  <frontend>
+    - The sky renders on WebGL2 and, when available, WebGPU with no console errors; the full Hipparcos catalog is loaded once and cached (second load served with 304).
+    - URL round-trip: copying the link and opening it in a new private window reproduces the same observer, time, view, layers, language and night mode.
+    - Time controls: live mode drift < 100 ms; time-lapse at 3600× stays smooth (no visible jumps of the Moon); the year field accepts negative values and the ephemeris bounds are enforced.
+    - Observer: geolocation flow, manual entry, Nominatim search with attribution and the disable toggle, other bodies with validity notes (presets if OBS-6 was implemented); coordinates sent to the API are rounded to 0.01°.
+    - Layers: stars with magnitude limit, planets with phases, deep-sky, minor bodies with warnings, constellation lines/names/boundaries toggles, grids, horizon, atmosphere and refraction toggles (Earth only).
+    - Selection, details panel with authoritative values, unified search, follow mode ([S], if implemented), labels with density control, FR/EN switch with no missing keys, night mode, About screen with credits.
+    - AR: button hidden on desktop and on bodies other than Earth; sensor mode implemented, WebXR mode implemented or its absence documented ([S]); graceful messages when permissions are denied; the manual device checklist exists in docs/testing.md.
+    - Budgets: main bundle <= 1.5 MB gzipped; catalog parse < 300 ms; 60 fps on the development machine; Lighthouse accessibility score >= 90 on the main view; no requests to origins other than the app and the configured geocoder.
+    - No cookies, localStorage, sessionStorage or IndexedDB usage (verified by an e2e assertion).
+  </frontend>
+  <delivery>
+    - `docker compose config` valid; images build; `docker compose up` reaches `ready` after `docker compose run --rm api sky-data fetch`; nginx serves the SPA with correct cache and security headers and proxies `/api`; the CI workflow is exercised locally by running the same commands it contains (nothing is pushed, so the human triggers the first remote run after `git push`).
+  </delivery>
+</acceptance>

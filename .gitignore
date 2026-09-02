@@ -1,0 +1,30 @@
+# Data directory (DATA_DIR default for development). Root-anchored: backend/data/ holds committed CSV/TOML.
+/data/
+
+# Environment and local overrides
+.env
+*.local
+.claude/settings.local.json
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+
+# Node / frontend
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+.vite/
+
+# OS
+.DS_Store
