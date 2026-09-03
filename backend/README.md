@@ -10,9 +10,11 @@ uv (`src` layout, `uv_build`), Python 3.14 (`.python-version`). The specificatio
 From the repository root, through `make` (preferred; `make setup` once):
 
 ```sh
+make data         # sky-data fetch then sky-data build-caches into DATA_DIR (reads ./.env)
 make dev-api      # fastapi dev on http://127.0.0.1:8000, reads ./.env when present
-make check        # lockfile, ruff, pyright, pytest, frontend gates, contract drift
+make check        # lockfile, ruff, pyright, pytest with coverage gates, frontend gates, contract and notices drift
 make types        # regenerate docs/openapi.json and the frontend types
+make notices      # regenerate THIRD_PARTY_NOTICES.md from the data registry
 make test         # full pytest including slow/conformance tests, plus vitest
 ```
 
@@ -51,11 +53,21 @@ src/skyapi/
   main.py        app factory `create_app()` + the `app` instance for `fastapi dev`
   settings.py    pydantic-settings `Settings`
   lifespan.py    lifespan yielding `SkyState` and `Settings` into the request scope
-  state.py       frozen `SkyState`
+  state.py       frozen `SkyState` (optional astro, catalog and minor-body sub-states, filled at M2)
   api/           deps.py, v1/ routers (no Skyfield imports)
-  models/        Pydantic response models with OpenAPI metadata
-  tools/         dump_openapi.py
-tests/           unit/, api/ (markers: unit, api, conformance, slow)
+  astro/         every Skyfield object: loader, state, time, quaternions, frames (IAU rotation
+                 models), observers, horizon, bodies, sampling, refraction, stars, dso,
+                 constellations, minor_bodies, samples, warnings
+  catalogs/      formats.py (SKYS v1, pure), readers.py, builders.py, mpc_build.py, state.py,
+                 artifacts.py
+  data/          registry.py, download.py, caches.py, data_files.toml (the registry),
+                 licenses/*.txt, constellation_names.csv
+  cli/           sky_data.py (`sky-data fetch|update|verify|build-caches|status`)
+  models/        Pydantic response models with OpenAPI metadata (health, catalogs)
+  tools/         dump_openapi.py, render_notices.py
+typings/         hand-written type stubs for Skyfield and jplephem (pyright strict, ADR-0006)
+tests/           unit/, api/, conformance/, slow/ (markers: unit, api, conformance, slow);
+                 support/ (fixture modules), fixtures/ (Horizons and Skyfield fixtures, excerpts/)
 ```
 
-`astro/`, `catalogs/`, `data/`, `middleware/` and the `sky-data` CLI arrive with M1 and M2.
+`middleware/` and the remaining routers arrive with M2.

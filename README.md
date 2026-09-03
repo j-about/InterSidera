@@ -8,6 +8,7 @@ Prerequisites: [uv](https://docs.astral.sh/uv/), [fnm](https://github.com/Schniz
 
 ```bash
 make setup   # Python 3.14 via uv, Node 24 via fnm, uv sync, npm ci, Playwright browsers, .env from .env.example
+make data    # sky-data fetch (de440s 32 MB, kernels, catalogs, MPCORB 94 MB compressed / 317 MB inflated) then build-caches; needs the .env from make setup
 make dev     # API with reload on http://127.0.0.1:8000 and Vite on https://localhost:5173 (proxies /api)
 ```
 
@@ -17,16 +18,17 @@ make dev     # API with reload on http://127.0.0.1:8000 and Vite on https://loca
 - Playwright browsers are downloaded by `make setup`, but launching them on a fresh WSL needs system libraries installed once with sudo, from the repository root: `sudo env "PATH=$PATH" fnm exec --using=24 npm --prefix frontend exec -- playwright install-deps`. Until then `make e2e` is blocked locally (CI is unaffected).
 - Run `make check` before every commit: it is the same set of gates CI runs.
 
-Other targets: `make test` (full pytest and vitest), `make e2e` (Playwright against a locally started stack), `make types` (regenerate `docs/openapi.json` and `frontend/src/api/schema.d.ts`), `make build`, `make format`. `make data` (`sky-data fetch`) arrives with M1 and `make up` / `make down` (docker compose) with M7; until then they print a message and exit.
+Other targets: `make test` (full pytest and vitest), `make e2e` (Playwright against a locally started stack), `make types` (regenerate `docs/openapi.json` and `frontend/src/api/schema.d.ts`), `make notices` (regenerate `THIRD_PARTY_NOTICES.md` from the data registry), `make build`, `make format`. The `sky-data` CLI (`uv run --directory backend sky-data fetch|update|verify|build-caches|status`) manages the data directory; `sky-data fetch --full` adds the 3.3 GB DE441 ephemeris (the code default without a `.env`; `make setup` copies `.env.example`, which selects de440s). `make up` / `make down` (docker compose) arrive with M7; until then they print a message and exit.
 
 ## Repository map
 
 - `/`: `Makefile`, `.node-version` (24), `.python-version` (3.14), `.env.example` (every `SKYAPI_` variable), `CLAUDE.md` (working agreement for Claude Code), `.claude/rules/` (file-specific rules), `.github/workflows/ci.yml`.
-- `backend/`: the `skyapi` FastAPI + Skyfield service (uv-managed packaged app, src layout, `pyproject.toml`, `uv.lock`, tests). At M0 it exposes `GET /api/v1/health` only.
+- `backend/`: the `skyapi` FastAPI + Skyfield service (uv-managed packaged app, src layout, `pyproject.toml`, `uv.lock`, tests). It exposes `GET /api/v1/health` (M0) and carries the data pipeline (`sky-data`, `skyapi.data`), the astronomy core (`skyapi.astro`) and the catalog builders (`skyapi.catalogs`) from M1; the other endpoints arrive at M2. `backend/typings/` holds the local type stubs for Skyfield and jplephem.
 - `frontend/`: the React 19 + Vite 8 + Tailwind 4 client (TypeScript 6 strict, ESLint 10, Prettier, Vitest, Playwright). At M0 it renders a placeholder page and proxies `/api`.
 - `docs/`: the specification (`brief.xml`), the plan and durable memory (`plan.md`), architecture, API, data, WSL 2 development, testing, backlog, and `decisions/` (ADRs); `openapi.json` is generated.
-- `scripts/`: repository-level scripts (`check_i18n.mjs`, the translation completeness gate; fixture generation and benchmarks arrive at M1/M2).
-- `data/` (gitignored): the development `DATA_DIR` filled by `sky-data fetch` from M1.
+- `scripts/`: repository-level scripts (`check_i18n.mjs`, the translation completeness gate; `generate_fixtures.py`, the JPL Horizons and Skyfield fixture generator, run manually; benchmarks arrive at M2).
+- `data/` (gitignored): the development `DATA_DIR` filled by `make data` (downloads plus `data/cache/`).
+- `THIRD_PARTY_NOTICES.md`: every dataset with its license and attribution, generated from `backend/src/skyapi/data/data_files.toml`.
 
 ## Documentation
 

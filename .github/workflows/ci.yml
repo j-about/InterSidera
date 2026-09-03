@@ -43,12 +43,40 @@ jobs:
       - run: uv sync --locked
       - run: uv run ruff format --check .
       - run: uv run ruff check .
+      - run: uv run ruff format --check --config pyproject.toml ../scripts
+      - run: uv run ruff check --config pyproject.toml ../scripts
       - run: uv run pyright
-      - run: uv run pytest -m "not slow"
+      # Test kernels (de440s + PCK/Moon kernels, ~46 MB, public domain): restored from the cache, downloaded by
+      # the session fixture through the data registry on a miss, saved even when the tests fail.
+      - uses: actions/cache/restore@v6
+        id: kernels
+        with:
+          path: |
+            data/*.bsp
+            data/*.tpc
+            data/*.tf
+            data/*.bpc
+          key: kernels-${{ hashFiles('backend/src/skyapi/data/data_files.toml') }}
+      - run: uv run pytest -m "not slow" --cov=skyapi.astro --cov=skyapi.catalogs --cov-report=term-missing:skip-covered
+      - uses: actions/cache/save@v6
+        if: always() && steps.kernels.outputs.cache-hit != 'true'
+        with:
+          path: |
+            data/*.bsp
+            data/*.tpc
+            data/*.tf
+            data/*.bpc
+          key: kernels-${{ hashFiles('backend/src/skyapi/data/data_files.toml') }}
+      # Coverage gates per package (brief l.294): astro and catalogs >= 90 %, the two pure modules 100 %.
+      - run: uv run coverage report --include='src/skyapi/astro/*' --fail-under=90
+      - run: uv run coverage report --include='src/skyapi/catalogs/*' --fail-under=90
+      - run: uv run coverage report --include='src/skyapi/astro/quaternions.py,src/skyapi/catalogs/formats.py' --fail-under=100
       # Contract drift gate, backend half: the committed OpenAPI document must match the code.
       - run: uv run python -m skyapi.tools.dump_openapi --out ../docs/openapi.json
       - run: git ls-files --error-unmatch -- ../docs/openapi.json && git diff --exit-code -- ../docs/openapi.json
-      # M1: actions/cache@v6 for data/de440s.bsp keyed on backend/data/data_files.toml
+      # Notices drift gate: THIRD_PARTY_NOTICES.md is rendered from the data registry, never hand-edited.
+      - run: uv run python -m skyapi.tools.render_notices --out ../THIRD_PARTY_NOTICES.md
+      - run: git ls-files --error-unmatch -- ../THIRD_PARTY_NOTICES.md && git diff --exit-code -- ../THIRD_PARTY_NOTICES.md
 
   frontend:
     runs-on: ubuntu-latest

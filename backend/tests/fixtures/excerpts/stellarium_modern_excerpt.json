@@ -1,0 +1,204 @@
+{
+ "_provenance": {
+  "source": "https://raw.githubusercontent.com/Stellarium/stellarium/master/skycultures/modern/index.json (Stellarium 'modern' sky culture)",
+  "license": "CC BY-SA 4.0 (Text and data, as declared in skycultures/modern/description.md)",
+  "fetched": "2026-09-03",
+  "excerpt": "top-level `id` and the `constellations` entries for Ori, UMa, Ser, Cru, Cas, UMi, each reduced to its original `id`, `lines` and `common_name`"
+ },
+ "id": "modern",
+ "constellations": [
+  {
+   "id": "CON modern Cas",
+   "lines": [
+    [
+     8886,
+     6686,
+     4427,
+     3179,
+     746
+    ]
+   ],
+   "common_name": {
+    "native": "Cassiopeia",
+    "english": "Cassiopeia",
+    "byname": "Seated Queen",
+    "context": "IAU constellation name"
+   }
+  },
+  {
+   "id": "CON modern Cru",
+   "lines": [
+    [
+     61084,
+     60718
+    ],
+    [
+     62434,
+     59747
+    ]
+   ],
+   "common_name": {
+    "english": "Southern Cross",
+    "native": "Crux",
+    "context": "IAU constellation name"
+   }
+  },
+  {
+   "id": "CON modern UMa",
+   "lines": [
+    [
+     67301,
+     65378,
+     62956,
+     59774,
+     54061,
+     53910,
+     58001,
+     59774
+    ],
+    [
+     58001,
+     57399,
+     54539,
+     50372
+    ],
+    [
+     54539,
+     50801
+    ],
+    [
+     53910,
+     48402,
+     46853,
+     44471
+    ],
+    [
+     46853,
+     44127
+    ],
+    [
+     48402,
+     48319,
+     41704,
+     46733,
+     54061
+    ]
+   ],
+   "common_name": {
+    "english": "Great Bear",
+    "native": "Ursa Major",
+    "context": "IAU constellation name"
+   }
+  },
+  {
+   "id": "CON modern Ori",
+   "lines": [
+    [
+     26727,
+     26311,
+     25930
+    ],
+    [
+     29434,
+     29426
+    ],
+    [
+     29434,
+     28716,
+     27913
+    ],
+    [
+     29426,
+     29038,
+     27913
+    ],
+    [
+     29426,
+     28614,
+     27989,
+     26727,
+     27366,
+     24436,
+     25930,
+     25336,
+     26207,
+     27989
+    ],
+    [
+     25336,
+     22449,
+     22549,
+     22730,
+     22797,
+     23123
+    ],
+    [
+     22449,
+     22509,
+     22845
+    ],
+    [
+     29038,
+     28614
+    ]
+   ],
+   "common_name": {
+    "english": "Orion",
+    "byname": "Hunter",
+    "native": "Orion",
+    "context": "IAU constellation name"
+   }
+  },
+  {
+   "id": "CON modern UMi",
+   "lines": [
+    [
+     11767,
+     85822,
+     82080,
+     77055,
+     79822,
+     75097,
+     72607,
+     77055
+    ]
+   ],
+   "common_name": {
+    "english": "Lesser Bear",
+    "native": "Ursa Minor",
+    "context": "IAU constellation name"
+   }
+  },
+  {
+   "id": "CON modern Ser",
+   "lines": [
+    [
+     79593,
+     77516,
+     77622,
+     77070,
+     76276,
+     77233,
+     78072,
+     77450,
+     77233
+    ],
+    [
+     92946,
+     90441,
+     89962,
+     88670,
+     88048,
+     86565,
+     86263,
+     84880
+    ]
+   ],
+   "common_name": {
+    "english": "Serpent",
+    "native": "Serpens",
+    "context": "IAU constellation name"
+   }
+  }
+ ]
+}

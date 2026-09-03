@@ -14,10 +14,16 @@ dependencies = [
     # D5 / ADR-0003: same `fastapi dev|run`, uvicorn[standard] and httpx as `fastapi[standard]`,
     # without the hosted-SaaS `fastapi-cloud-cli` (brief restraint rule).
     "fastapi[standard-no-fastapi-cloud-cli]>=0.141,<1",
+    "numpy>=2.5,<3",
+    "pandas>=3.0,<4",
+    "pyarrow>=25.0,<26",
     "pydantic-settings>=2.15,<3",
+    "skyfield>=1.55,<2",
 ]
-# M1 adds: "skyfield>=1.55,<2" "numpy>=2.5,<3" "pandas>=3.0,<4" "pyarrow>=25.0,<26"
-# [project.scripts] sky-data = "skyapi.cli.sky_data:main" is added at M1 when the module exists.
+
+[project.scripts]
+# Brief l.394: the `sky-data` CLI (fetch, update, verify, build-caches, status).
+sky-data = "skyapi.cli.sky_data:main"
 
 [dependency-groups]
 dev = [
@@ -30,6 +36,7 @@ dev = [
     # ADR-0004: Starlette 1.6 TestClient prefers httpx2 and warns on httpx 0.x;
     # with filterwarnings = ["error"] that warning would fail every API test.
     "httpx2>=2.12,<3",
+    "pandas-stubs>=3.0.5,<3.1",
 ]
 
 [build-system]
@@ -45,11 +52,20 @@ entrypoint = "skyapi.main:app"
 line-length = 100
 target-version = "py314"
 src = ["src", "tests"]
+# B-37: the local type stubs for Skyfield/jplephem mirror upstream names (`temperature_C`,
+# `Any` parameters) and are checked by pyright, not linted by ruff.
+extend-exclude = ["typings"]
 
 [tool.ruff.lint]
 # Brief engineering_standards/backend_python: exactly these rule sets, per-file ignores
 # limited to tests. E501 stays enabled (D25); unbreakable URLs get `# noqa: E501`.
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "N", "RUF", "PT", "ANN"]
+# The star index and its tests deliberately contain Greek letters and superscript digits
+# (Bayer designations such as "α Ori", "κ¹ Scl"), so RUF001-003 must not flag them.
+allowed-confusables = [
+    "α", "β", "γ", "δ", "ε", "ζ", "η", "θ", "ι", "κ", "λ", "μ", "ν", "ξ", "ο", "π",
+    "ρ", "σ", "τ", "υ", "φ", "χ", "ψ", "ω", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹", "⁰",
+]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["ANN"]
@@ -70,6 +86,8 @@ venv = ".venv"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --strict-config --import-mode=importlib"
+# `--import-mode=importlib` keeps tests/ off sys.path; shared helpers live in tests/support/.
+pythonpath = ["tests"]
 markers = [
     "unit: pure functions, no app, no network",
     "api: through TestClient against the app factory",
@@ -78,4 +96,18 @@ markers = [
 ]
 # Every warning is an error so third-party deprecations surface immediately; add only
 # narrowly targeted `ignore:<message>:<Category>:<module>` entries, each with a comment.
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+    # Skyfield 1.55 keplerlib.py l.613 assigns `.shape` on an ndarray, deprecated in NumPy 2.5; every
+    # Kepler propagation (minor bodies) would fail under "error". Upstream issue; backlog B-38.
+    "ignore:Setting the shape on a NumPy array has been deprecated:DeprecationWarning:skyfield.keplerlib",
+]
+
+[tool.coverage.run]
+# D39: `make check` measures skyapi.astro and skyapi.catalogs (`--cov=` on the pytest line) and
+# gates them per package with `coverage report --include=... --fail-under=...` (brief l.294).
+source = ["skyapi"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = ["if TYPE_CHECKING:"]

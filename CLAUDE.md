@@ -11,18 +11,18 @@
 ## Authoritative documents
 
 - `docs/brief.xml` is the specification. When sections conflict (brief l.11): legal and licensing > security and privacy > api_contract > architecture > [M] functional > non-functional budgets > [S] > style.
-- `docs/plan.md` is the durable memory across sessions: status, decisions D1-D27, milestones, risks, open questions, progress log. Read it first in every session; update it in every milestone commit.
+- `docs/plan.md` is the durable memory across sessions: status, decisions D1-D50, milestones, risks, open questions, progress log. Read it first in every session; update it in every milestone commit.
 - `docs/decisions/` holds one ADR per notable decision; `docs/backlog.md` records every deviation from the brief with its reason and the deferred [L] items.
 
 ## Commands (root `Makefile`)
 
 - `make setup`: Python 3.14 via uv, Node 24 via fnm, `uv sync`, `npm ci`, Playwright browsers, `.env` from `.env.example`.
-- `make data`: `sky-data fetch` into `DATA_DIR` (arrives in M1).
+- `make data`: `sky-data fetch` then `sky-data build-caches` into `DATA_DIR` (loads `.env`; `sky-data fetch --full` adds de441).
 - `make dev`: API (`fastapi dev`, port 8000) and Vite (port 5173, HTTPS, proxies `/api`) together; `make dev-api` / `make dev-web` separately.
-- `make check`: every gate, before each commit and in CI: `uv lock --check`, ruff format/check, pyright, `pytest -m "not slow"`, `tsc -b`, eslint + prettier, vitest, `node --check`, prettier and a run of `scripts/check_i18n.mjs`, `make types` + drift gate on the generated files.
+- `make check`: every gate, before each commit and in CI: `uv lock --check`, ruff format/check (backend and `scripts/*.py`), pyright, `pytest -m "not slow"` with coverage (astro and catalogs >= 90 %, `quaternions.py` and `formats.py` 100 %), `tsc -b`, eslint + prettier, vitest, `node --check`, prettier and a run of `scripts/check_i18n.mjs`, `make types` + `make notices` + drift gate on the generated files.
 - `make test`: full pytest (slow and conformance included) + vitest.
 - `make e2e`: `make build` then Playwright against a locally started stack.
-- `make types`: regenerate `docs/openapi.json` and `frontend/src/api/schema.d.ts`.
+- `make types`: regenerate `docs/openapi.json` and `frontend/src/api/schema.d.ts`. `make notices`: regenerate `THIRD_PARTY_NOTICES.md` from the data registry.
 - `make build`: production frontend build.
 - `make up` / `make down`: docker compose (arrive in M7).
 - `make format`: ruff format + fix, prettier + eslint --fix.
@@ -36,6 +36,7 @@
 - ESLint 10 plus npm `overrides` for `eslint-plugin-jsx-a11y` and `openapi-typescript` (ADR-0002); never `--legacy-peer-deps`.
 - `fastapi[standard-no-fastapi-cloud-cli]` and a lazily built module attribute `app` (PEP 562) under the factory (ADR-0003): fastapi-cli has no `--factory`; importing `skyapi.main` reads no environment.
 - Implied tooling dependencies (`@testing-library/dom`, `@eslint/js`, `globals`, `@types/*`, `httpx2`) are recorded in ADR-0004; nothing else without an ADR.
+- Committed factual data lives inside the package (`backend/src/skyapi/data/`, ADR-0005); pyright strict is kept over Skyfield/jplephem through hand-written stubs in `backend/typings/` plus `pandas-stubs` (ADR-0006); planetary observer frames are our own IAU rotation model from the text PCK because Skyfield 1.55 only builds frames from binary PCKs (ADR-0007).
 - Do not bump TypeScript to 7, npm to 12 or Python to 3.15, and do not remove the overrides, until the ADR revisit trigger fires. Never pre-releases.
 
 ## Conventions that matter most
@@ -45,7 +46,7 @@
 - Routers never import Skyfield: they validate, canonicalize, call `astro/` and serialize. Lifespan state is reached through `get_sky_state(request)` (`api/deps.py`), never `app.state` or `on_event`.
 - Compute path operations are plain `def` (thread pool), never `async def`.
 - Conventional Commits with a scope (`feat`, `fix`, `chore`, `docs`, `test`, `build`, `ci`, `refactor`); `make check` green before every commit; never push, never rewrite history, never create branches unless asked.
-- No data files, secrets or generated caches in git (exceptions: the two generated contract files and test fixtures). `data/` is gitignored; `.env` is never committed.
+- No data files, secrets or generated caches in git (exceptions: the generated `docs/openapi.json`, `frontend/src/api/schema.d.ts` and `THIRD_PARTY_NOTICES.md`, and test fixtures). `data/` is gitignored; `.env` is never committed.
 - Privacy: latitude and longitude are rounded to 0.01 degrees before any API call (OBS-7); logs carry no query strings or coordinates.
 - No browser storage: no cookies, localStorage, sessionStorage or IndexedDB (OBS-8). The URL is the state.
 - Every UI string goes through `t()` with a key present in both `en.json` and `fr.json`; `scripts/check_i18n.mjs` fails on missing or unused keys.
@@ -58,6 +59,7 @@
 - Add a dependency without an ADR; use `--legacy-peer-deps`; install pre-releases.
 - Skip, weaken, delete or mark xfail a test to make a gate pass; fix the cause.
 - Write `async def` compute routes; import Skyfield in a router; keep module-level mutable state.
+- Let Skyfield download anything (`load(...)`, `Loader.open`): every data file comes from `sky-data`; touch a Skyfield private name outside `astro/loader.py`; hand-edit `THIRD_PARTY_NOTICES.md` or an excerpt's provenance header.
 - Import `@babylonjs/core` root or `@babylonjs/core/Legacy/legacy`; add `tailwind.config.js`; build Tailwind classes by concatenation.
 - Use `useEffect` for derived state or `forwardRef`; use `!` non-null assertions or leave floating promises anywhere in `frontend/src`.
 - Copy a `SKYAPI_*` value into a `VITE_*` variable.

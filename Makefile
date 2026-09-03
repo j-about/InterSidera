@@ -22,14 +22,14 @@ PY := $(UV) run --directory backend
 PYRUN := $(UV) run --directory backend $(UV_ENV)
 # pyright (PyPI) is a Node wrapper and needs node on PATH.
 PYNODE := $(NODE_EXEC) $(UV) run --directory backend
-GENERATED := docs/openapi.json frontend/src/api/schema.d.ts
+GENERATED := docs/openapi.json frontend/src/api/schema.d.ts THIRD_PARTY_NOTICES.md
 # scripts/ lies outside the frontend ESLint base path (ESLint 10 refuses such files), so it is
 # gated by `node --check` and prettier. Config-free flags: the frontend .prettierrc names the
 # Tailwind plugin, which prettier resolves from the working directory (the repo root here).
 SCRIPTS_PRETTIER := --no-config --print-width 100 --single-quote
 
 .PHONY: help setup data dev dev-api dev-web check check-backend check-frontend check-i18n \
-        check-contract types test e2e build up down format
+        check-contract types notices test e2e build up down format
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
@@ -45,8 +45,9 @@ setup: ## Install toolchains (Python 3.14, Node 24), dependencies and Playwright
 	@echo '  sudo env "PATH=$$PATH" fnm exec --using=24 npm --prefix frontend exec -- playwright install-deps'
 	@test -f $(ENV_FILE) || cp .env.example .env
 
-data: ## Download data files into DATA_DIR (sky-data fetch, arrives in M1)
-	@echo "make data: 'sky-data fetch' arrives in M1"; exit 2
+data: ## Download the data files into DATA_DIR and build the caches (sky-data fetch + build-caches)
+	$(PYRUN) sky-data fetch
+	$(PYRUN) sky-data build-caches
 
 dev: ## Run the API and the Vite dev server together
 	$(MAKE) -j2 dev-api dev-web
@@ -63,8 +64,13 @@ check-backend:
 	$(UV) lock --check --directory backend
 	$(PY) ruff format --check .
 	$(PY) ruff check .
+	$(PY) ruff format --check --config pyproject.toml ../scripts
+	$(PY) ruff check --config pyproject.toml ../scripts
 	$(PYNODE) pyright
-	$(PY) pytest -m "not slow"
+	$(PY) pytest -m "not slow" --cov=skyapi.astro --cov=skyapi.catalogs --cov-report=term-missing:skip-covered
+	$(PY) coverage report --include='src/skyapi/astro/*' --fail-under=90
+	$(PY) coverage report --include='src/skyapi/catalogs/*' --fail-under=90
+	$(PY) coverage report --include='src/skyapi/astro/quaternions.py,src/skyapi/catalogs/formats.py' --fail-under=100
 
 check-frontend:
 	$(NPM) run typecheck
@@ -76,13 +82,16 @@ check-i18n:
 	$(NPM) exec -- prettier $(SCRIPTS_PRETTIER) --check $(CURDIR)/scripts
 	$(NODE) scripts/check_i18n.mjs
 
-check-contract: types
+check-contract: types notices
 	git ls-files --error-unmatch -- $(GENERATED) >/dev/null
 	git diff --exit-code -- $(GENERATED)
 
 types: ## Regenerate docs/openapi.json and frontend/src/api/schema.d.ts
 	$(PY) python -m skyapi.tools.dump_openapi --out $(CURDIR)/docs/openapi.json
 	$(NPM) run gen:types
+
+notices: ## Regenerate THIRD_PARTY_NOTICES.md from the data registry
+	$(PY) python -m skyapi.tools.render_notices --out $(CURDIR)/THIRD_PARTY_NOTICES.md
 
 test: ## Full test suites (pytest including slow and conformance, vitest)
 	$(PY) pytest

@@ -1,0 +1,16 @@
+Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)
+
+License text: https://creativecommons.org/licenses/by-sa/4.0/
+Legal code:   https://creativecommons.org/licenses/by-sa/4.0/legalcode
+
+The InterSidera catalogs derived from CC BY-SA 4.0 sources (the stars name index built
+from the HYG database, the deep-sky catalog built from OpenNGC, and the constellation
+figures built from the Stellarium "modern" sky culture) are adapted from, and therefore
+modified with respect to, the sources named in the notices above: rows are selected,
+columns are renamed and re-encoded, identifiers are normalised and the data is repacked
+into the cache formats served by the API. These derived catalogs are made available under
+the same CC BY-SA 4.0 license, with the attribution text of each source declared by the
+API (`/meta.catalogs.<name>.license` and `.attribution`) and rendered on the About screen.
+The build scripts that produce them are public in this repository
+(`backend/src/skyapi/catalogs/`), which satisfies the share-alike condition for the
+transformation itself. No endorsement by the original authors is implied.

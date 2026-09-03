@@ -1,0 +1,73 @@
+# Source: https://data.minorplanetcenter.net/iau/MPCORB/MPCORB.DAT.gz
+# License: free, attribution requested — "Orbital elements: IAU Minor Planet Center"
+# Fetched: 2026-09-03
+# Excerpt: the MPC header through the dashed separator line, then 9 numbered rows (Ceres, Pallas, Vesta, Eros, Apophis, the letter-packed (100001) and (134340), the tilde-packed (620000) and the last numbered object), a blank separator, 10 unnumbered multi-opposition rows, a blank separator and 5 one-opposition rows.
+MINOR PLANET CENTER ORBIT DATABASE (MPCORB)
+
+This file contains published orbital elements for all numbered and unnumbered
+multi-opposition minor planets for which it is possible to make reasonable
+predictions.  It also includes published elements for recent one-opposition
+minor planets and is intended to be complete through the last issued Daily
+Orbit Update MPEC.  As such it is intended to be of interest primarily
+to astrometric observers.
+
+   Software programs may include this datafile amongst their datasets, as
+   long as this header is included (it is acceptable if it is contained
+   in a file separate from the actual data) and that proper attribution
+   to the Minor Planet Center is given.  Credit to the individual orbit
+   computers is implicit by the inclusion of a reference and the name of
+   the orbit computer on each orbit record.  Information on how to obtain
+   updated copies of the datafile must also be included.
+
+   The work of the individual astrometric observers, without whom none of
+   the work of the Minor Planet Center would be possible, is gratefully
+   acknowledged.  Credit to the individual observers is implicit by the
+   inclusion of the reference to the publication of their observations in
+   all data sets distributed by the Minor Planet Center.
+
+New versions of this file, updated on a daily basis, will be available at:
+
+          https://www.minorplanetcenter.org/iau/MPCORB/MPCORB.DAT
+
+The elements contained within MPCORB are divided into three sections,
+separated by blank lines.  The first section contains the numbered objects,
+the second section contains the unnumbered objects with perturbed orbit
+solutions and the third contains the recent 1-opposition objects with
+unperturbed orbit solutions.  Each object's elements are stored on a single
+line, the format of which is described at:
+
+          http://www.minorplanetcenter.org/iau/info/MPOrbitFormat.html
+
+If you find a problem with any data herein, please contact mpc@cfa.harvard.edu.
+
+A brief header is given below:
+
+Des'n     H     G   Epoch     M        Peri.      Node       Incl.       e            n           a        Reference #Obs #Opp    Arc    rms  Perts   Computer
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+00001    3.34  0.15 K2669 274.41935   73.29420   80.24863   10.58803  0.0796923  0.21430445   2.7655526  0 MPO980521  7297 126 1801-2026 0.83 M-v 30k Veres      4000      (1) Ceres              20260103
+00002    4.12  0.15 K2669 254.24963  310.96993  172.88661   34.93279  0.2307001  0.21383960   2.7695590  0 E2026-Q64  9069 124 1804-2026 0.77 M-c 28k MPCORBFIT  4000      (2) Pallas             20260820
+00004    3.25  0.15 K2669  81.19017  151.46861  103.70132    7.14393  0.0902037  0.27161836   2.3613660  0 MPO964264  7603 112 1821-2025 0.69 M-p 18k MPCORBFIT  4000      (4) Vesta              20250624
+00433   10.39  0.15 K2669  62.51145  178.91814  304.26797   10.82855  0.2228780  0.55970463   1.4582437  0 E2026-R13 18046  59 1893-2026 0.61 M-v 3Ek MPCORBFIT  1804    (433) Eros               20260902
+99942   19.00  0.15 K2669 175.33040  126.67957  203.89365    3.34100  0.1911492  1.11263810   0.9223592  0 E2024-JQ5  9399  13 2004-2021 0.35 M-v 3Ek MPCLINUX   8802  (99942) Apophis            20210520
+A0001   15.71  0.15 K2669   2.61134  288.74738  148.93399   10.73586  0.3709793  0.18297841   3.0728131  0 E2026-P16  1000  15 1982-2025 0.82 M-v 3Ek MPCORBFIT  0000 (100001) 1982 UC3           20251214
+D4340   -0.58  0.15 K2669  53.93389  113.07069  110.33632   17.17591  0.2476521  0.00399461  39.3386646  0 E2026-R13 11352 103 1914-2026 0.50 M-v 3Ek MPCORBFIT  000A (134340) Pluto              20260902
+~0000   19.95  0.15 K2669  64.21331  160.37405  102.53589   21.41934  0.5522901  0.68266586   1.2774108  0 E2023-X62   123   8 2010-2023 0.85 M-v 3Ek MPCLINUX   0803 (620000) 2019 YS4           20231204
+~19mA   18.55  0.15 K2669 307.25072    2.65862  269.30899    1.95008  0.1744640  0.28165426   2.3049340  0 E2026-R06    83  10 2006-2026 0.45 M-v 3Ek MPCORBFIT  0000 (895910) 2026 DM18          20260406
+
+J60S01B 17.91  0.15 K2669 334.49864  224.49081  196.26908    9.57945  0.4976887  0.19169927   2.9788987  1 MPO732386    56   4 1960-2022 0.45 M-v 3Ek MPCLINUX   0005          1960 SB1           20220322
+J79X00B 18.6   0.15 K2669   9.92267   77.08212   84.35353   24.55266  0.7097631  0.29879986   2.2158947  9 MPO 70208    16   1    4 days 1.39 M-v 3Eh MPCW       A803          1979 XB            19791215
+J82Y00A 18.06  0.15 K2669  93.41328  144.44529  268.94230   35.17536  0.6917499  0.14160985   3.6453599  0 MPO892948    77   4 1982-2025 0.53 M-v 3Ek MPCLINUX   1804          1982 YA            20250104
+J83Q00C 18.57  0.15 K2669  79.80279  191.23606  162.32592    7.25134  0.4340224  0.23582822   2.5946107  0 MPO972133   112   5 1983-2025 0.77 M-v 3Ek MPCORBFIT  0005          1983 QC            20251226
+J86N00A 19.85  0.15 K2669 309.87191   37.85687  243.05055    9.44420  0.4022180  0.36688094   1.9324990  0 E2021-V05    88   4 1986-2021 0.83 M-v 3Ek MPCLINUX   0804          1986 NA            20211031
+K24A00A 27.41  0.15 K2669 270.05088   93.08963   95.95116    2.13132  0.7219658  0.32022827   2.1159055  7 MPO907379    29   1    1 days 0.91 M-v 3Ek Bell       2803          2024 AA            20240102
+K24A00B 27.51  0.15 K2669  54.19669  341.15146   98.88483    9.15701  0.4175751  0.45708895   1.6690483  7 MPO793554    43   1    1 days 0.41 M-v 3Ek Veres      2803          2024 AB            20240102
+K24A00C 25.50  0.15 K2669 258.73158  242.05735  279.01383    3.82457  0.2542934  0.73772601   1.2130331  6 MPO793554    32   1   31 days 0.76 M-v 3Ek MPCLINUX   2803          2024 AC            20240105
+K24A00D 28.76  0.15 K2669 305.13800   32.70719  106.39405    1.93321  0.5348143  0.35520680   1.9746124  6 MPO793555    29   1    3 days 0.55 M-v 3Ek MPCLINUX   2803          2024 AD            20240103
+K24A00E 25.10  0.15 K2669 290.83300  102.01476  273.40090    7.18709  0.3918269  0.68567699   1.2736683  7 MPO793555    25   1    9 days 0.54 M-v 3Ek MPCLINUX   2803          2024 AE            20240110
+
+J42R00H 13.8   0.15 J4299   4.75163  134.01758  204.90148    4.39399  0.1412450  0.28463408   2.2888190    MPC  7586     3   1   10 days              Oterma     2000          1942 RH            19420915
+J88R09H 11.1   0.15 J888R  97.11322   39.50876  153.70557   19.16897  0.3020064  0.23082212   2.6319912    MPO121290    15   1   11 days 0.18         MPCW       2000          1988 RH9           19880912
+J89F00R 13.5   0.15 J893F 359.18555  170.72124   13.85003   16.75621  0.2509424  0.17213946   3.2004847  E MPC 14596     6   1    2 days              Green      2000          1989 FR            19890328
+J91V00D 19.5   0.15 J91AV 346.42072   13.16438   47.08128   20.57240  0.1748047  0.37990502   1.8880755  E MPC 19470     9   1    2 days              Marsden    2006          1991 VD            19911106
+J92S17Z 13.8   0.15 J929F   9.87790   48.76789  309.00844    5.42541  0.2167493  0.22635505   2.6665061  E MPO264917     6   1    4 days 0.37         MPCS       2000          1992 SZ17          19921003

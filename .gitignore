@@ -1,4 +1,5 @@
-# Data directory (DATA_DIR default for development). Root-anchored: backend/data/ holds committed CSV/TOML.
+# Data directory (DATA_DIR default for development): downloads and caches, never committed.
+# Root-anchored: the committed registry and CSV files live in backend/src/skyapi/data/ (ADR-0005).
 /data/
 
 # Environment and local overrides

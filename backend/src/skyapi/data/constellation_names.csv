@@ -1,0 +1,97 @@
+# IAU constellation names: abbreviation, Latin nominative, Latin genitive, English name.
+# Source: the IAU "The Constellations" page as archived by ESO,
+#   https://iauarchive.eso.org/public/themes/constellations/ (the live iau.org page returns 404),
+#   checked 2026-09-03; cross-checked against d3-celestial data/constellations.json (desig, name, gen).
+# Differences resolved in favour of the IAU page: CrA "Corona Australis / Coronae Australis"
+#   (d3: Austrina/Austrini), Cru genitive "Crucis" (d3: Crux). The IAU page's "Bernice's Hair"
+#   is corrected to "Berenice's Hair" (d3 `en` agrees). Serpens is one row (Caput and Cauda are
+#   one IAU constellation). Factual data, no license constraint (brief l.315).
+abbr,latin,genitive,english
+And,Andromeda,Andromedae,Chained Maiden
+Ant,Antlia,Antliae,Air Pump
+Aps,Apus,Apodis,Bird of Paradise
+Aql,Aquila,Aquilae,Eagle
+Aqr,Aquarius,Aquarii,Water Bearer
+Ara,Ara,Arae,Altar
+Ari,Aries,Arietis,Ram
+Aur,Auriga,Aurigae,Charioteer
+Boo,Boötes,Boötis,Herdsman
+Cae,Caelum,Caeli,Engraving Tool
+Cam,Camelopardalis,Camelopardalis,Giraffe
+Cap,Capricornus,Capricorni,Sea Goat
+Car,Carina,Carinae,Keel
+Cas,Cassiopeia,Cassiopeiae,Seated Queen
+Cen,Centaurus,Centauri,Centaur
+Cep,Cepheus,Cephei,King
+Cet,Cetus,Ceti,Sea Monster
+Cha,Chamaeleon,Chamaeleontis,Chameleon
+Cir,Circinus,Circini,Drawing Compass
+CMa,Canis Major,Canis Majoris,Great Dog
+CMi,Canis Minor,Canis Minoris,Lesser Dog
+Cnc,Cancer,Cancri,Crab
+Col,Columba,Columbae,Dove
+Com,Coma Berenices,Comae Berenices,Berenice's Hair
+CrA,Corona Australis,Coronae Australis,Southern Crown
+CrB,Corona Borealis,Coronae Borealis,Northern Crown
+Crt,Crater,Crateris,Cup
+Cru,Crux,Crucis,Southern Cross
+Crv,Corvus,Corvi,Crow
+CVn,Canes Venatici,Canum Venaticorum,Hunting Dogs
+Cyg,Cygnus,Cygni,Swan
+Del,Delphinus,Delphini,Dolphin
+Dor,Dorado,Doradus,Swordfish
+Dra,Draco,Draconis,Dragon
+Equ,Equuleus,Equulei,Little Horse
+Eri,Eridanus,Eridani,River
+For,Fornax,Fornacis,Furnace
+Gem,Gemini,Geminorum,Twins
+Gru,Grus,Gruis,Crane
+Her,Hercules,Herculis,Hercules
+Hor,Horologium,Horologii,Clock
+Hya,Hydra,Hydrae,Female Water Snake
+Hyi,Hydrus,Hydri,Male Water Snake
+Ind,Indus,Indi,Indian
+Lac,Lacerta,Lacertae,Lizard
+Leo,Leo,Leonis,Lion
+Lep,Lepus,Leporis,Hare
+Lib,Libra,Librae,Scales
+LMi,Leo Minor,Leonis Minoris,Lesser Lion
+Lup,Lupus,Lupi,Wolf
+Lyn,Lynx,Lyncis,Lynx
+Lyr,Lyra,Lyrae,Lyre
+Men,Mensa,Mensae,Table Mountain
+Mic,Microscopium,Microscopii,Microscope
+Mon,Monoceros,Monocerotis,Unicorn
+Mus,Musca,Muscae,Fly
+Nor,Norma,Normae,Carpenter's Square
+Oct,Octans,Octantis,Octant
+Oph,Ophiuchus,Ophiuchi,Serpent Bearer
+Ori,Orion,Orionis,Hunter
+Pav,Pavo,Pavonis,Peacock
+Peg,Pegasus,Pegasi,Winged Horse
+Per,Perseus,Persei,Hero
+Phe,Phoenix,Phoenicis,Phoenix
+Pic,Pictor,Pictoris,Painter's Easel
+PsA,Piscis Austrinus,Piscis Austrini,Southern Fish
+Psc,Pisces,Piscium,Fishes
+Pup,Puppis,Puppis,Stern
+Pyx,Pyxis,Pyxidis,Mariner Compass
+Ret,Reticulum,Reticuli,Reticle
+Scl,Sculptor,Sculptoris,Sculptor
+Sco,Scorpius,Scorpii,Scorpion
+Sct,Scutum,Scuti,Shield
+Ser,Serpens,Serpentis,Serpent
+Sex,Sextans,Sextantis,Sextant
+Sge,Sagitta,Sagittae,Arrow
+Sgr,Sagittarius,Sagittarii,Archer
+Tau,Taurus,Tauri,Bull
+Tel,Telescopium,Telescopii,Telescope
+TrA,Triangulum Australe,Trianguli Australis,Southern Triangle
+Tri,Triangulum,Trianguli,Triangle
+Tuc,Tucana,Tucanae,Toucan
+UMa,Ursa Major,Ursae Majoris,Great Bear
+UMi,Ursa Minor,Ursae Minoris,Little Bear
+Vel,Vela,Velorum,Sails
+Vir,Virgo,Virginis,Maiden
+Vol,Volans,Volantis,Flying Fish
+Vul,Vulpecula,Vulpeculae,Fox
