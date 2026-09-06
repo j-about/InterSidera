@@ -11,7 +11,7 @@ never an observer.
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from skyfield.planetarylib import PlanetTopos
@@ -23,11 +23,10 @@ from skyfield.vectorlib import VectorFunction
 from skyapi.astro.frames import CoverageError, IauRotationFrame, SegmentedFrame
 from skyapi.astro.time import IAU_ROTATION_RELIABLE_TT
 from skyapi.astro.warnings import SkyWarning, WarningCode
+from skyapi.models.meta import LatitudeKind
 
 if TYPE_CHECKING:
     from skyapi.astro.state import AstroState
-
-LatitudeKind = Literal["geodetic", "planetocentric"]
 
 EARTH_FRAME_NAME = "ITRS"
 MOON_FRAME_NAME = "MOON_ME_DE440_ME421"

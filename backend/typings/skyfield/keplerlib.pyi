@@ -62,11 +62,14 @@ class _KeplerOrbit(VectorFunction):  # skyfield 1.55 keplerlib.py l.20
         target_name: str | None = None,
     ) -> Self: ...
 
-# Two-body propagation; t1 may be an array, the result has shape (3,) + t1.shape.
+# Two-body propagation; t1 may be an array, the result has shape (3,) + t1.shape (l.454).
+# Vectorised over orbits when `position`/`velocity` are (3, N), `t0` is (N,) and `t1` is (N, n)
+# (l.522-528: `dt = t1 - t0[:, newaxis]`); `gm` goes through `atleast_1d` (l.456) and an (N,)
+# array broadcasts over the orbit axis.
 def propagate(  # skyfield 1.55 keplerlib.py l.435
     position: NDArray[np.float64],
     velocity: NDArray[np.float64],
     t0: FloatOrArray,
     t1: FloatOrArray,
-    gm: float,
+    gm: FloatOrArray,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]: ...

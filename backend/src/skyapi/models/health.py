@@ -1,4 +1,4 @@
-"""Models for `GET /health` (brief api_contract l.112-113)."""
+"""Models for `GET /health` (brief api_contract l.112-113, D52)."""
 
 from typing import Literal
 
@@ -35,8 +35,9 @@ class HealthResponse(BaseModel):
 
     status: HealthStatus = Field(
         description=(
-            "`starting` while data is being fetched or loaded, `ready` when every endpoint "
-            "answers, `degraded` when the API runs with reduced coverage."
+            "`starting` while data is being fetched or loaded (answered with 503 and "
+            "`Retry-After`), `ready` when every endpoint answers, `degraded` when optional data "
+            "is missing and only the affected endpoints answer 503."
         ),
         examples=["ready"],
     )
@@ -44,6 +45,19 @@ class HealthResponse(BaseModel):
         default=None,
         description="Download progress; present only while `status` is `starting`.",
         examples=[{"file": "de440s.bsp", "downloaded_bytes": 16777216, "total_bytes": 32726016}],
+    )
+    missing: list[str] | None = Field(
+        default=None,
+        description=(
+            "Data groups that are absent while `degraded`: `dso`, `constellations`, `mpc` "
+            "(the endpoints that need them answer 503)."
+        ),
+        examples=[["mpc"]],
+    )
+    detail: str | None = Field(
+        default=None,
+        description="Why the bootstrap failed, when it did (`status` then stays `starting`).",
+        examples=["de441.bsp is missing from DATA_DIR and SKYAPI_AUTO_FETCH is false"],
     )
     version: str = Field(
         description="Version of the `skyapi` package serving the request.",

@@ -24,7 +24,7 @@ default rely on):
 
 ```sh
 uv sync --directory backend                      # create .venv from uv.lock
-uv run --directory backend fastapi dev           # http://127.0.0.1:8000/api/v1/health
+uv run --directory backend fastapi dev           # http://127.0.0.1:8000/api/v1/health (503 while starting, then 200 ready)
 uv run --directory backend pytest -m "not slow"
 uv run --directory backend ruff format . && uv run --directory backend ruff check .
 fnm exec --using=24 uv run --directory backend pyright   # pyright needs `node` on PATH
@@ -48,26 +48,30 @@ at the repository root. `SKYAPI_EPHEMERIS` defaults to the production `de441.bsp
 
 ## Layout
 
-```
+```text
 src/skyapi/
-  main.py        app factory `create_app()` + the `app` instance for `fastapi dev`
+  main.py        app factory `create_app()` (middleware, error handlers) + the `app` instance for `fastapi dev`
   settings.py    pydantic-settings `Settings`
-  lifespan.py    lifespan yielding `SkyState` and `Settings` into the request scope
-  state.py       frozen `SkyState` (optional astro, catalog and minor-body sub-states, filled at M2)
-  api/           deps.py, v1/ routers (no Skyfield imports)
+  lifespan.py    lifespan starting the bootstrap thread and yielding bootstrap, settings, limiter, frame cache
+  bootstrap.py   startup stages (files, caches, states, meta) with starting/ready/degraded snapshots (ADR-0008)
+  state.py       frozen `SkyState` (astro, catalogs, meta, optional minor bodies, missing groups)
+  meta.py        the static part of `/meta`, built once at bootstrap
+  api/           deps.py, canonical.py, v1/ routers health, meta, catalogs, minor_bodies, sky (no Skyfield imports)
+  middleware/    problem.py (RFC 9457), ratelimit.py, logging.py (JSON + request id), caching.py
   astro/         every Skyfield object: loader, state, time, quaternions, frames (IAU rotation
                  models), observers, horizon, bodies, sampling, refraction, stars, dso,
-                 constellations, minor_bodies, samples, warnings
+                 constellations, minor_bodies, samples, warnings, queries (canonical query
+                 dataclasses), frame and altaz (the /sky composites)
   catalogs/      formats.py (SKYS v1, pure), readers.py, builders.py, mpc_build.py, state.py,
                  artifacts.py
   data/          registry.py, download.py, caches.py, data_files.toml (the registry),
                  licenses/*.txt, constellation_names.csv
   cli/           sky_data.py (`sky-data fetch|update|verify|build-caches|status`)
-  models/        Pydantic response models with OpenAPI metadata (health, catalogs)
+  models/        Pydantic response models with OpenAPI metadata (health, meta, catalogs, frame, altaz, problem)
   tools/         dump_openapi.py, render_notices.py
 typings/         hand-written type stubs for Skyfield and jplephem (pyright strict, ADR-0006)
 tests/           unit/, api/, conformance/, slow/ (markers: unit, api, conformance, slow);
                  support/ (fixture modules), fixtures/ (Horizons and Skyfield fixtures, excerpts/)
 ```
 
-`middleware/` and the remaining routers arrive with M2.
+The endpoints, their parameters and headers are documented in [`docs/api.md`](../docs/api.md); `scripts/bench_api.py` measures them against the brief's budgets.

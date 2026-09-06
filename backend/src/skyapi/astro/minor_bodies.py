@@ -9,6 +9,11 @@ LRU; nothing is module-level.
 
 Ids (brief l.152): `a:<number>` for numbered asteroids, `a:<packed>` for unnumbered ones,
 `c:<designation>` with spaces replaced by `_` for comets (`c:1P`, `c:C/1995_O1`).
+
+`/sky/frame` samples are computed for every requested body at once (D69): `orbit_for` caches
+the ICRF state of each orbit at its epoch next to the observable `sun + orbit` vector, and
+`StackedOrbits` propagates all of them in one `keplerlib.propagate` call so that a single
+`observe().apparent()` pass covers the whole request.
 """
 
 import re
@@ -23,6 +28,7 @@ import pandas as pd
 from numpy.typing import NDArray
 from skyfield.constants import GM_SUN_DE440_km3_s2
 from skyfield.data import mpc
+from skyfield.keplerlib import propagate
 from skyfield.timelib import Time, Timescale
 from skyfield.vectorlib import VectorFunction
 
@@ -41,6 +47,10 @@ DEFAULTS_MAX_H = 9.0  # brief l.155: asteroids with H <= 9 rank first in /minor-
 # among the default minor bodies would show two Plutos. It stays searchable.
 DEFAULTS_EXCLUDED_IDS: frozenset[bytes] = frozenset({b"a:134340"})
 ORBIT_CACHE_SIZE = 256
+
+# Syntax of a minor-body id in a request (D55): the contract's `c:C/2023_A3`, the builder's
+# `c:73P-BT`, packed designations such as `a:K24A00B`. Shared by the API layer and `/sky/altaz`.
+MINOR_BODY_ID_PATTERN = re.compile(r"^[ac]:[A-Za-z0-9/_.-]+$")
 
 _ID_RE = re.compile(rb"^[ac]:\S+$")
 _NUMBER_RE = re.compile(rb"^\d+$")
@@ -263,6 +273,30 @@ def defaults(index: MinorBodyIndex, now_tt: float, limit: int = 100) -> list[Min
     return [index.summary(int(row)) for row in rows]
 
 
+@dataclass(frozen=True, slots=True)
+class OrbitEpochState:
+    """Heliocentric ICRF state of one Kepler orbit at its epoch: the input of `StackedOrbits`.
+
+    Two-body propagation is rotation-invariant (`keplerlib.propagate` only combines the state
+    vectors through dot and cross products), so propagating the ICRF state gives the same
+    result as propagating the ecliptic state and rotating afterwards, as Skyfield's orbit does.
+    """
+
+    position_au: NDArray[np.float64]  # (3,)
+    velocity_au_d: NDArray[np.float64]  # (3,)
+    epoch_tt: float
+    mu_au3_d2: float
+
+
+@dataclass(frozen=True, slots=True)
+class CachedOrbit:
+    """One `OrbitCache` entry: the observable `sun + orbit` vector, its row and epoch state."""
+
+    vector: VectorFunction
+    row: MinorBodyRow
+    epoch: OrbitEpochState
+
+
 class OrbitCache:
     """Thread-safe LRU of built orbits, owned by a `MinorBodyState` (never module-level)."""
 
@@ -271,25 +305,64 @@ class OrbitCache:
             raise ValueError("capacity must be at least 1")
         self._capacity = capacity
         self._lock = threading.Lock()
-        self._entries: OrderedDict[str, tuple[VectorFunction, MinorBodyRow]] = OrderedDict()
+        self._entries: OrderedDict[str, CachedOrbit] = OrderedDict()
 
     def __len__(self) -> int:
         with self._lock:
             return len(self._entries)
 
-    def get(self, body_id: str) -> tuple[VectorFunction, MinorBodyRow] | None:
+    def get(self, body_id: str) -> CachedOrbit | None:
         with self._lock:
             entry = self._entries.get(body_id)
             if entry is not None:
                 self._entries.move_to_end(body_id)
             return entry
 
-    def put(self, body_id: str, entry: tuple[VectorFunction, MinorBodyRow]) -> None:
+    def put(self, body_id: str, entry: CachedOrbit) -> None:
         with self._lock:
             self._entries[body_id] = entry
             self._entries.move_to_end(body_id)
             while len(self._entries) > self._capacity:
                 self._entries.popitem(last=False)
+
+
+class StackedOrbits(VectorFunction):
+    """N heliocentric Kepler orbits propagated together, as one barycentric vector function.
+
+    `_at(t)` is the extension point every Skyfield body implements (vectorlib.py l.73-88 calls
+    it from `at()` and from the light-time iteration). It expects the `Time` array of `N * n`
+    dates laid out orbit-major (`np.tile(tt, N)`: the `n` samples of orbit 0, then orbit 1,
+    ...), reshapes them to one row per orbit, runs `keplerlib.propagate` once for the whole
+    stack (`t1` with one row per orbit gives `(3, N, n)`), adds the Sun's barycentric state and
+    returns `(3, N * n)` positions and velocities. `Barycentric.observe(stacked).apparent()`
+    then applies light time, deflection and aberration to every body in one pass (D69).
+    """
+
+    def __init__(self, sun: VectorFunction, states: Sequence[OrbitEpochState]) -> None:
+        if not states:
+            raise ValueError("StackedOrbits needs at least one orbit")
+        self.center = 0
+        self.target = self
+        self.count = len(states)
+        self._sun = sun
+        self._position = np.stack([state.position_au for state in states], axis=1)
+        self._velocity = np.stack([state.velocity_au_d for state in states], axis=1)
+        self._epochs = np.array([state.epoch_tt for state in states], dtype=np.float64)
+        self._mu = np.array([state.mu_au3_d2 for state in states], dtype=np.float64)
+
+    def _at(self, t: Time) -> tuple[NDArray[np.float64], NDArray[np.float64], None, None]:
+        tt = np.asarray(t.tt, dtype=np.float64)
+        if tt.ndim != 1 or tt.shape[0] % self.count:
+            raise ValueError(
+                f"StackedOrbits expects a 1-D Time array of a multiple of {self.count} dates, "
+                f"got shape {tt.shape}"
+            )
+        rows = tt.reshape(self.count, -1)
+        position, velocity = propagate(self._position, self._velocity, self._epochs, rows, self._mu)
+        sun = self._sun.at(t)
+        p = position.reshape(3, -1) + _as_columns(sun.xyz.au)
+        v = velocity.reshape(3, -1) + _as_columns(sun.velocity.au_per_d)
+        return p, v, None, None
 
 
 @dataclass(frozen=True, slots=True)
@@ -337,8 +410,8 @@ def _read_row(state: MinorBodyState, body_id: str, row: int) -> pd.Series[Any]:
     return table.iloc[0]
 
 
-def orbit_for(state: MinorBodyState, body_id: str) -> tuple[VectorFunction, MinorBodyRow]:
-    """`sun + Kepler orbit` for `body_id` (memoised) and the row metadata."""
+def orbit_for(state: MinorBodyState, body_id: str) -> CachedOrbit:
+    """`sun + Kepler orbit` for `body_id` (memoised), its row metadata and its epoch state."""
     cached = state.orbits.get(body_id)
     if cached is not None:
         return cached
@@ -373,7 +446,16 @@ def orbit_for(state: MinorBodyState, body_id: str) -> tuple[VectorFunction, Mino
         magnitude_g=magnitude_g,
         magnitude_k=magnitude_k,
     )
-    entry = (state.sun + orbit, meta)
+    # The orbit evaluated at its own epoch: `propagate` over dt = 0 is the identity, so this is
+    # the epoch state vector rotated from the ecliptic into the ICRF exactly as Skyfield does.
+    at_epoch = orbit.at(orbit.epoch)
+    epoch_state = OrbitEpochState(
+        position_au=np.asarray(at_epoch.xyz.au, dtype=np.float64).reshape(3),
+        velocity_au_d=np.asarray(at_epoch.velocity.au_per_d, dtype=np.float64).reshape(3),
+        epoch_tt=float(np.asarray(orbit.epoch.tt, dtype=np.float64)),
+        mu_au3_d2=float(orbit.mu_au3_d2),
+    )
+    entry = CachedOrbit(vector=state.sun + orbit, row=meta, epoch=epoch_state)
     state.orbits.put(body_id, entry)
     return entry
 
@@ -490,6 +572,10 @@ def minor_body_samples(
     (`AstroState.ephemeris_coverage_tt`): a sample outside it raises `CoverageError` before any
     Skyfield call, because DE441 `Stack` targets return NaN silently outside their segments
     (R35) instead of raising.
+
+    Every body whose elements are within `MPC_ERROR_YEARS` of the window joins one
+    `StackedOrbits`, observed in a single `observe().apparent()` call over the `N * n` tiled
+    times (D69); the others keep `samples=None` and only carry their warnings.
     """
     tt = np.atleast_1d(np.asarray(t.tt, dtype=np.float64))
     if coverage_tt is not None:
@@ -499,37 +585,55 @@ def minor_body_samples(
                 f"minor bodies are served for TT JD {start:.3f} to {end:.3f} only", coverage_tt
             )
     n = int(tt.shape[0])
-    observer = observer_vector.at(t)
-    observer_xyz = _as_columns(observer.xyz.au)
-    sun_xyz = _as_columns(state.sun.at(t).xyz.au)
-    out: dict[str, MinorBodySamples] = {}
-    for body_id in ids:
-        orbit, row = orbit_for(state, body_id)
-        years = float(np.max(np.abs(tt - row.elements_epoch_tt))) / DAYS_PER_JULIAN_YEAR
-        warnings = extrapolation_warnings(row.elements_epoch_tt, years)
-        samples: Samples | None = None
+    entries: list[tuple[CachedOrbit, float, list[SkyWarning]]] = []
+    stacked: list[CachedOrbit] = []
+    for body_id in dict.fromkeys(ids):
+        entry = orbit_for(state, body_id)
+        years = float(np.max(np.abs(tt - entry.row.elements_epoch_tt))) / DAYS_PER_JULIAN_YEAR
+        entries.append((entry, years, extrapolation_warnings(entry.row.elements_epoch_tt, years)))
         if years <= MPC_ERROR_YEARS:
-            apparent = observer.observe(orbit).apparent()
-            xyz = _as_columns(apparent.xyz.au)
-            delta_au = np.linalg.norm(xyz, axis=0)
-            direction = np.ascontiguousarray((xyz / delta_au).T)
-            phase_angle = np.atleast_1d(
-                np.asarray(apparent.phase_angle(state.sun).radians, dtype=np.float64)
-            )
-            r_au = np.linalg.norm(observer_xyz + xyz - sun_xyz, axis=0)
-            samples = Samples(
-                dir=direction,
-                dist_au=delta_au,
-                mag=_magnitude(row, r_au, delta_au, phase_angle),
-                phase=0.5 * (1.0 + np.cos(phase_angle)),
+            stacked.append(entry)
+
+    computed: dict[str, Samples] = {}
+    if stacked:
+        count = len(stacked)
+        whole = np.tile(np.atleast_1d(np.asarray(t.whole, dtype=np.float64)), count)
+        fraction = np.tile(np.atleast_1d(np.asarray(t.tt_fraction, dtype=np.float64)), count)
+        t_tiled = t.ts.tt_jd(whole, fraction)
+        observer = observer_vector.at(t_tiled)
+        apparent = observer.observe(
+            StackedOrbits(state.sun, [entry.epoch for entry in stacked])
+        ).apparent()
+        xyz = _as_columns(apparent.xyz.au)  # (3, N * n)
+        delta_au = np.linalg.norm(xyz, axis=0)
+        phase_angle = np.atleast_1d(
+            np.asarray(apparent.phase_angle(state.sun).radians, dtype=np.float64)
+        )
+        # Same vector Skyfield's `phase_angle` uses: no light-time on the Sun.
+        r_au = np.linalg.norm(
+            _as_columns(observer.xyz.au) + xyz - _as_columns(state.sun.at(t_tiled).xyz.au), axis=0
+        )
+        directions = np.ascontiguousarray((xyz / delta_au).reshape(3, count, n).transpose(1, 2, 0))
+        delta_rows = delta_au.reshape(count, n)
+        phase_rows = phase_angle.reshape(count, n)
+        r_rows = r_au.reshape(count, n)
+        for i, entry in enumerate(stacked):
+            computed[entry.row.id] = Samples(
+                dir=directions[i],
+                dist_au=delta_rows[i],
+                mag=_magnitude(entry.row, r_rows[i], delta_rows[i], phase_rows[i]),
+                phase=0.5 * (1.0 + np.cos(phase_rows[i])),
                 diam_deg=np.zeros(n, dtype=np.float64),
             )
-        out[body_id] = MinorBodySamples(
-            samples=samples,
-            elements_epoch_tt=row.elements_epoch_tt,
+
+    return {
+        entry.row.id: MinorBodySamples(
+            samples=computed.get(entry.row.id),
+            elements_epoch_tt=entry.row.elements_epoch_tt,
             extrapolation_years=years,
             warnings=warnings,
-            name=row.name,
-            kind=row.kind,
+            name=entry.row.name,
+            kind=entry.row.kind,
         )
-    return out
+        for entry, years, warnings in entries
+    }

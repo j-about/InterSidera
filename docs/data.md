@@ -54,7 +54,7 @@ Observed on 2026-09-03 for the refreshable files (informational, not pinned): `N
 
 ## `DATA_DIR` layout
 
-```
+```text
 data/
   de440s.bsp  pck00011.tpc  moon_de440_250416.tf  moon_pa_de440_200625.bpc   (kernels; optional: de440.bsp, de441.bsp, pck00010.tpc)
   hip_main.dat  hyg_v44.csv.gz  NGC.csv  addendum.csv                           (catalog sources)
@@ -98,3 +98,19 @@ Ephemeris coverage from the loaded kernel (de440s 1849-2150, de440 1550-2650, de
 ## Test excerpts
 
 `backend/tests/fixtures/excerpts/` holds excerpts under 1 MB of Hipparcos, HYG, OpenNGC (NGC and addendum), Stellarium `modern`, d3-celestial boundaries, MPCORB and CometEls. Each starts with an in-file provenance header (source URL, license, fetch date, what was kept), has a `[[excerpts]]` entry in the registry (hence a section in `THIRD_PARTY_NOTICES.md`) and is described in `excerpts/README.md`.
+
+## What happens at API startup
+
+The API bootstraps itself in a background thread started by the lifespan (ADR-0008, decision D51): uvicorn serves `/health` from the first millisecond and answers `503 starting` with `Retry-After: 5` until the data is loaded. The stages, in order:
+
+1. **Presence check.** Every default download of the registry for the selected `SKYAPI_EPHEMERIS` (the same list as `sky-data fetch` without `--full`) must exist in `DATA_DIR` and be non-empty. The bootstrap does not hash the files: `de441.bsp` alone would take longer than the readiness budget, and the downloader only renames a file into place after its size, content type and SHA-256 checks passed, so a partial transfer never bears the final name. Integrity is checked by `sky-data verify` (pins and manifest records) and by the cache builder, which hashes every source it reads.
+2. **Download, or degrade.** A missing file is downloaded when `SKYAPI_AUTO_FETCH=true` (the code default; `.env.example` keeps it true, CI and the test suite set false), resumable and verified like `sky-data fetch`, with the progress visible in `/health` (`progress.file`, `downloaded_bytes`, `total_bytes`) and recorded in `DATA_DIR/manifest.json`. With `SKYAPI_AUTO_FETCH=false`, or when every source of a download failed, the registry entry's `required` flag decides: a required file (ephemeris, `pck00011.tpc`, the two Moon kernels, `hip_main.dat`, `hyg_v44.csv.gz`) is fatal, an optional one (OpenNGC, Stellarium, d3-celestial, the MPC files) adds its `group` to the `missing` list and the API starts degraded.
+3. **Caches.** `cache/manifest.json` is read; the caches are rebuilt with the same code as `sky-data build-caches` when the manifest is missing or unreadable (it is deleted first), when a recorded source hash no longer matches the file in `DATA_DIR` (a fresh `sky-data update` without a rebuild, a hand-replaced file), when the cache format version changed or when an artifact fails its size and SHA-256 check. Groups whose optional sources are absent are skipped, as the CLI does. A warm cache is loaded without rebuilding anything.
+4. **Loading.** Kernels (`load_astro_state`), catalogs (`load_catalog_state`; DSO and constellations optional) and the minor-body index (`load_minor_body_state`, only when the three `cache/mpc/*.parquet` files exist), then the static part of `/meta`.
+5. **Publication.** `/health` turns `200 ready`, or `200 degraded` with `missing` listing the group codes (`dso`, `constellations`, `mpc`).
+
+**The lock and parallel workers.** Stages 1 to 3 run under an exclusive advisory lock (`fcntl.flock`) on `DATA_DIR/.bootstrap.lock`, so `fastapi run --workers N` never downloads or builds twice into the same directory: the first worker does the work, the others wait on the lock, then find the files present and the caches current. Each worker then loads its own state (the kernels are memory-mapped and share the page cache) and reports its own readiness. The lock file is empty and can be deleted when no API process runs.
+
+**Degraded groups and their endpoints.** `dso` missing: `GET /catalogs/dso` and `dso:` targets of `/sky/altaz` answer `503` with a problem document (`Retry-After: 60`), `/meta.catalogs.dso` is absent. `constellations` missing: `GET /catalogs/constellations` answers 503, `/meta.catalogs.constellations` is absent. `mpc` missing: `/minor-bodies/search`, `/minor-bodies/defaults`, the `minor` parameter of `/sky/frame` and `a:`/`c:` targets of `/sky/altaz` answer 503, `/meta.catalogs.minor_bodies` is absent. Stars, planets, the Moon and every observer keep working. Fix by fetching the files (`sky-data fetch`, or `sky-data update` for the refreshable ones) and restarting the API.
+
+**A failed bootstrap.** When a stage fails, `/health` stays `503 starting` and carries `detail`: the reason and, for the operational cases, the remedy (`de441.bsp is missing from /data and SKYAPI_AUTO_FETCH is false: run \`sky-data fetch\``, `cannot build the stars cache: missing hipparcos in DATA_DIR (run \`sky-data fetch\`)`, `missing cache artifact .../stars.skys: run \`sky-data build-caches\``, `every source failed` for a download). Unexpected errors carry the exception class name in `detail` and their traceback in the JSON log. The process stays up so the reason can be read; the Docker healthcheck (M7) restarts the container on its own policy. Shutdown cancels a running bootstrap (the download stops at the next chunk, a partial `.part` file is kept for resumption), joins the thread and closes the kernel files.

@@ -2,8 +2,8 @@
 
 ## 1. Status
 
-- Milestone: **M1 Data pipeline and astronomy core done 2026-09-03** (M0 Bootstrap done 2026-09-02); next: M2 (plan mode first, per brief l.504).
-- Next: M2 "API v1": routers for every endpoint but `/sky/events`, lifespan bootstrap composing `SkyState` from `load_astro_state`, `load_catalog_state` and `load_minor_body_state` (and calling `AstroState.close()` on shutdown), health states, caching headers, GZip, RFC 9457 errors, rate limiting; planned in plan mode from section 6.
+- Milestone: **M2 API v1 done 2026-09-06** (M1 done 2026-09-03, M0 done 2026-09-02); next: M3 (plan mode first, per brief l.504).
+- Next: M3 "Sky engine": generated API client, catalog loaders with ETag handling, `sky/math` pure modules with fixture parity tests, `SkyEngine` (WebGPU or WebGL2), star and body layers, grids, camera, simulation clock, frame buffer, URL state store; planned in plan mode from section 6. The frontend must read `/meta.bodies[].step_class`, treat the degraded `/meta.catalogs` entries as optional and expect `503 starting` from `/health` (B-41..B-43).
 - Specification: `docs/brief.xml` v1.2 (587 lines). Precedence when sections conflict (brief l.11): legal and licensing > security and privacy > api_contract > architecture > [M] functional > non-functional budgets > [S] > style.
 
 How to use this file (brief l.507: it is the durable memory across sessions):
@@ -84,6 +84,25 @@ How to use this file (brief l.507: it is the durable memory across sessions):
 | D48 | SKYS: `hipparcos.load_dataframe` on a `#`-stripped stream, NaN positions dropped, B-V read positionally (field 37) with numeric coercion, one vectorised `Star.from_dataframe`, `dir`/`pm` from `SSB.at(t).observe(star)` at J2000 and J2000 + 1 Julian year (Skyfield's `Star` has no `at()`), `formats.py` pure and 100 % covered, `hipparcos.parquet` for `hip:` targets | brief l.131-139 (corrected), l.529 | `docs/api.md` |
 | D49 | `astro/quaternions.py` pure (Shepperd matrix-to-quaternion, NEU -> ENU row swap, sign continuity, rotate, slerp), `astro/horizon.py` (horizon and equinox-of-date quaternions, LST via `lst_hours_at`, observer velocity, authoritative altaz) | brief l.58, l.62, l.160-162, l.523, l.532 | `.claude/rules/sky-math.md` |
 | D50 | `astro/refraction.py` = Skyfield `earthlib.refract` (Bennett inverted iteratively, true altitude in, standard 10 C / 1010 hPa at sea level) as the reference table for M3; `astro/sampling.py` class table and clamping shared with `/meta.limits` | brief l.70, l.90, l.169, l.525 | `docs/testing.md` |
+| D51 | Bootstrap in a background thread (`skyapi/bootstrap.py`): the lifespan starts `run_bootstrap` and yields at once; one immutable `Snapshot(status, sky, progress, detail, missing)` is swapped under a lock; stages: files present (presence check only; `auto_fetch` downloads with the progress callback and an interruptible sleep; a missing required file without auto-fetch is fatal, an optional one degrades), caches current and intact else `build_all`, both under an exclusive `flock` on `DATA_DIR/.bootstrap.lock`, then `load_astro_state`, `load_catalog_state`, `load_minor_body_state`, `build_meta_static`, publication; a fatal error keeps `starting` with `detail`; shutdown cancels, joins and calls `AstroState.close()`; lifespan state `{bootstrap, settings, limiter, frame_cache}`; `get_sky_state` raises 503 `Retry-After: 5` until published | brief l.80 (`/health` reports `starting` with progress; uvicorn serves nothing before the lifespan yields), l.76, l.77, l.280, l.282; hashing de441 at each start would eat the 60 s budget | ADR-0008, backlog B-41 |
+| D52 | `/health`: 503 + `Retry-After: 5` with the `HealthResponse` body while `starting`, 200 for `ready`/`degraded`; additive optional `missing` (group codes) and `detail` (fatal reason); `no-store` | Docker healthcheck and splash need the status distinction; l.168 forbids free text for machine-read states | backlog B-41 |
+| D53 | `SkyState(version, astro, catalogs, meta, minor_bodies | None, missing)`; `CatalogState.dso`/`.constellations` optional; `ArtifactIdentity` carries `count` and `meta` read through `CacheManifest.load`; `CatalogUnavailableError` and a missing MPC state map to 503 on the affected routes only; a missing Moon frame is fatal (required kernels), never degraded | brief l.280; D33 | `docs/architecture.md` |
+| D54 | RFC 9457 in `middleware/problem.py`: `Problem` model with the extension `range_tt`, `ApiError` subclasses (400 invalid-parameter, 404 unknown-object, 422 outside-coverage, 429 rate-limited, 503 data-not-ready), handlers for `ApiError`, `RequestValidationError` (400), `StarletteHTTPException`, `Exception` (500); `type` = `https://github.com/j-about/InterSidera/blob/master/docs/api.md#problem-<slug>`, `instance` = the path; per-route `responses` with the `content` recipe plus `default`, and the `Problem` schema injected into `components.schemas` by `create_app` (FastAPI places a `model` under the success media type) | brief l.106, l.398, l.534 | `docs/api.md` |
+| D55 | Canonicalization in `api/canonical.py` (pure, hypothesis-tested; query dataclasses in `astro/queries.py`): lat/lon 1e-6 with `lon` wrapped to `[-180, 180)` and no `-0.0`, elevation 1 m, `tt` 1e-8 day, `step_s` bounded and clamped (echoed), `,`-separated sorted de-duplicated lists (anything else 400), `bodies=all` minus the observer, minor ids `^[ac]:[A-Za-z0-9/_.-]+$` capped at 100, targets capped at 200, `n * (bodies + minor) <= 4096`; `cache_key()` = sorted `key=value` pairs | brief l.102, l.153, l.169, l.172, l.398, l.534 | `docs/api.md` |
+| D56 | `/sky/frame` composite `astro/frame.py::compute_frame`; the router rounds (D68), serialises with `exclude_unset=True` (`samples: null` explicit for unreliable minor bodies, `lst_hours`/`params`/`range_tt`/`name` absent when they do not apply), `mag` null for NaN; `bodies[].warnings` empty at v1; 422 only for `CoverageError` | brief l.157-169, l.524 | `docs/api.md` |
+| D57 | Frame cache: `FrameCache` LRU of 256 serialised responses keyed on `cache_key()` in the lifespan state; frames return the cached bytes with `Cache-Control: public, max-age=300` and `Server-Timing: compute;dur=..., cache;desc=hit|miss`; altaz sets the same cache header and `Server-Timing` | brief l.81, l.105, l.286 | `docs/architecture.md` |
+| D58 | `/sky/altaz` composite `astro/altaz.py`: targets `hip:` (Hipparcos row -> `Star`), `dso:` (`dso_star`, J2000 position), body ids, `a:`/`c:` (orbit + batched samples); RA in degrees; refraction off Earth 400; unknown 404; > 200 targets 400; elements beyond 50 years 422 with `range_tt` (an altaz row has no warnings channel, l.52); NaN magnitude absent | brief l.52, l.171-172, l.525, l.532 | `docs/api.md` |
+| D59 | Catalog routes serve the cache files with `FileResponse`, `ETag` = the artifact SHA-256 (quoted in the header, bare in `/meta`), `Cache-Control: public, max-age=3600, stale-while-revalidate=86400`, our own `If-None-Match` -> 304 (Starlette's `FileResponse` handles `Range` only); GZip configuration decided by the bench (B-46 if the SKYS leaves GZip) | brief l.105, l.531, l.535, l.256 | `docs/api.md` |
+| D60 | `/meta`: `MetaStatic` built once at bootstrap (`skyapi/meta.py`) from the states, the cache manifest identities and the registry (licenses, attributions; stars declare the HYG share-alike license per l.311), `server_time` per request; `api_version = "1.0.0"` (`skyapi/api/__init__.py`); additive `step_class` on bodies (B-43); catalog entries absent when degraded (B-42); `geocoder.min_interval_ms = 1000`; `limits.speeds` positive list | brief l.115-129, l.182, l.193, l.311, l.325 | `docs/api.md`, backlog B-42, B-43 |
+| D61 | `/minor-bodies/search` (`q` 1-64, `limit` 1-100) and `/defaults` (request-time `now`, cap 100): `Cache-Control: public, max-age=300`, 503 when the MPC caches are absent | brief l.152-155 | backlog B-44 |
+| D62 | Token bucket per client IP (`middleware/ratelimit.py`) as a dependency of `/sky/frame`, `/sky/altaz`, `/minor-bodies/search`; key = `request.client.host` (never a client header); `Retry-After = ceil(wait)`; per worker; tests use rps 0.01 / burst 2, the session test app and the bench server rps 1e6 | brief l.107, l.275, l.531 | `docs/api.md` |
+| D63 | Middleware: GZip (min 1 KiB) innermost, CORS (`allow_methods GET`, `allow_headers If-None-Match`, `expose_headers ETag, Server-Timing, Retry-After, X-Request-Id`), `RequestContextMiddleware` (pure ASGI) outermost: UUID-shaped `X-Request-Id` accepted else generated, one access record with the path only | brief l.105, l.274, l.286, l.399 | `docs/architecture.md` |
+| D64 | JSON logging (`middleware/logging.py`): `JsonFormatter`, `configure_logging` idempotent on its own marker handler (foreign handlers survive), `uvicorn.access` disabled (its line carries the query string) | brief l.275, l.286, l.399 | backlog B-45 |
+| D65 | OpenAPI: tags with descriptions, app description, every field and parameter described with examples, per-route problem responses; `info.version` = package version, `/meta.api_version` = contract version | brief l.103, l.182, l.456 | `docs/api.md` |
+| D66 | Tests: session `api_data_dir` (kernels symlinked, excerpts under the registry names, generated Stellarium description, `build_all` -> real manifest), `api_settings` via `default_settings().model_copy(...)` with the rate limit effectively off, `api_client` waits on `/health` and fails fast on `detail`; function-scoped apps for starting/progress/degraded/429; API tests per endpoint incl. error paths and headers; conformance invariants through the API | brief l.400, l.457, l.569 | `docs/testing.md` |
+| D67 | `scripts/bench_api.py` (stdlib): scenarios frame, frame-cached, frame-minor (100 ids), catalogs, search; non-200 counted as failures; exit 1 on a missed budget; server started with the rate limit raised; pyright on `scripts/*.py` as explicit file arguments in `make check` and CI (B-47) | brief l.256, l.457-458; Q23 | `docs/testing.md` |
+| D68 | JSON rounding before serialisation, wrap after rounding: vectors, quaternions, velocities, `dist_au`, `tt` 9 decimals; `mag` 3; `phase`, `diam_deg`, altitudes and declinations 7; azimuths and right ascensions 7 then `% 360`; `lst_hours` 7 then `% 24`; canonical `lon` 6 then wrapped; `tt_minus_utc_seconds` 6 | brief l.45, l.160, l.258 | `docs/api.md` |
+| D69 | Batched minor-body propagation: `StackedOrbits` runs `keplerlib.propagate` once for N orbits over n samples and one `observe().apparent()` call covers every requested body (the per-body path measured about 7.8 ms per body, 780 ms for 100); parity test against the per-body computation | brief l.78, l.256 (< 400 ms with 100 minor bodies) | `docs/architecture.md`, R43 |
 
 ## 4. Deviations from the brief's wording
 
@@ -131,6 +150,14 @@ Each row also exists in `docs/backlog.md` with the same identifier.
 | B-38 | `filterwarnings = ["error"]` (D8)                                | one targeted ignore for `skyfield.keplerlib`'s NumPy 2.5 `.shape` deprecation                            | Skyfield 1.55 `keplerlib.py` l.613; drop when fixed upstream                                      |
 | B-39 | `mpc.load_mpcorb_dataframe` (l.316)                              | own chunked `pd.read_fwf` with the MPC column table; Skyfield's orbit functions kept                    | 3.6 GB RSS for the single call vs 1.2 GB chunked, measured on the full file (R30)                  |
 | B-40 | `filterwarnings = ["error"]` (D8)                                | `warnings.catch_warnings` around the one `build_frame` call in `astro/loader.py`                        | Skyfield 1.55 `planetarylib.py` l.113 assigns `.shape` (NumPy 2.5 deprecation)                    |
+| B-41 | `/health` answers 503 with `Retry-After` while `starting` and carries additive `missing`/`detail` (l.112-113) | 503 lets the Docker healthcheck and the splash tell `starting` apart; `missing` codes instead of free text; `detail` names the fatal cause | ADR-0008 |
+| B-42 | `/meta.catalogs.{dso,constellations,minor_bodies}` absent when the data is missing (l.115-129) | degraded mode (l.280) has no shape in the contract; absent beats fabricated counts | D60 |
+| B-43 | additive `step_class` on `/meta.bodies[]` (l.123) | the frontend clamps `step_s` per class (l.70) without hard-coding the membership | D60 |
+| B-44 | `Cache-Control: public, max-age=300` on `/minor-bodies/*` (l.105 lists no policy) | treated like the compute endpoints | D61 |
+| B-45 | uvicorn's access logger disabled, replaced by our JSON access record (l.275) | uvicorn logs the full query string with coordinates | D64 |
+| B-46 | `application/octet-stream` excluded from GZip; JSON compressed at level 6 (l.105) | measured: the 3.8 MB SKYS saves 17 % for 100-155 ms of compression per request at any gzip level, breaking the 50 ms budget (l.256) | D59 |
+| B-48 | `minor[].name` optional in `/sky/frame` (l.166) | unnamed asteroids; consistent with `name?` of `/minor-bodies/search` | D56 |
+| B-47 | pyright over `scripts/*.py` as explicit file arguments in `make check` and CI (l.396 names `src/` and `tests/` only) | no unchecked Python; `include` cannot reach outside the project root | D67 |
 
 ## 5. Corrections to the brief's data sources
 
@@ -223,28 +250,29 @@ Definition of done:
 - [x] `docs/data.md` written
 - [x] Commit `feat(backend): data pipeline and astronomy core`; never push
 
-### M2 API v1 (brief l.455-460)
+### M2 API v1 (brief l.455-460), done 2026-09-06
 
 Tasks:
 
-- [ ] Every endpoint of the API contract except `/sky/events` ([L]) with canonicalization, caching headers and ETags, GZip, RFC 9457 errors, rate limiting, lifespan bootstrap with health states, complete OpenAPI metadata, `docs/openapi.json` and `make types`
-- [ ] Tests: API tests for every endpoint including error paths and caching headers; OpenAPI snapshot; `scripts/bench_api.py` measuring `/sky/frame` latency against the budget
+- [x] Every endpoint of the API contract except `/sky/events` ([L]) with canonicalization, caching headers and ETags, GZip, RFC 9457 errors, rate limiting, lifespan bootstrap with health states, complete OpenAPI metadata, `docs/openapi.json` and `make types` (ten routes; `api/canonical.py`; content-hash ETags with 304; GZip level 6 with the SKYS excluded, B-46; `middleware/problem.py`; token bucket per client IP; bootstrap thread with `starting`/`ready`/`degraded`, ADR-0008; `api_version` 1.0.0)
+- [x] Tests: API tests for every endpoint including error paths and caching headers; OpenAPI snapshot; `scripts/bench_api.py` measuring `/sky/frame` latency against the budget (672 tests in `make check`: 636 unit/API plus 36 conformance tests incl. the acceptance invariants through the API; bench scenarios frame, frame-cached, frame-minor, catalogs, search)
 
 Amended items:
 
-- [ ] `GZipMiddleware(minimum_size=1024)` (Starlette 1.6: `application/octet-stream` is compressed, 206 responses are not, large bodies compress on a worker thread)
-- [ ] `CORSMiddleware` from `settings.cors_origins` (dev origin `https://localhost:5173`)
-- [ ] `/health` `starting` with download progress and `503` + `Retry-After` while not ready; `degraded` when optional data is missing
-- [ ] Pin `starlette>=1.6,<1.7` only if the FastAPI 0.141.1 + Starlette 1.6.0 resolution breaks (R6)
-- [ ] `Server-Timing` header on frame responses; request-id middleware; JSON logging without coordinates
-- [ ] Lifespan composes `SkyState(astro, catalogs, minor_bodies)` from `load_astro_state`, `load_catalog_state`, `load_minor_body_state` and calls `AstroState.close()` on shutdown (open kernel handles); `KernelPaths` from the registry filenames
-- [ ] `api_version` in `/meta` follows semver of the contract
+- [x] `GZipMiddleware(minimum_size=1024)` (Starlette 1.6: `application/octet-stream` is compressed, 206 responses are not, large bodies compress on a worker thread) (level 6, `application/octet-stream` excluded after measurement, B-46)
+- [x] `CORSMiddleware` from `settings.cors_origins` (dev origin `https://localhost:5173`) (`GET` only, `If-None-Match` allowed, `ETag`/`Server-Timing`/`Retry-After`/`X-Request-Id` exposed)
+- [x] `/health` `starting` with download progress and `503` + `Retry-After` while not ready; `degraded` when optional data is missing (additive `missing` and `detail`, B-41)
+- [x] Pin `starlette>=1.6,<1.7` only if the FastAPI 0.141.1 + Starlette 1.6.0 resolution breaks (R6) (not needed: 1.6.0 exercised by the whole suite)
+- [x] `Server-Timing` header on frame responses; request-id middleware; JSON logging without coordinates (pure-ASGI `RequestContextMiddleware`, `JsonFormatter`, uvicorn's access log disabled, B-45)
+- [x] Lifespan composes `SkyState(astro, catalogs, minor_bodies)` from `load_astro_state`, `load_catalog_state`, `load_minor_body_state` and calls `AstroState.close()` on shutdown (open kernel handles); `KernelPaths` from the registry filenames (done by the bootstrap thread, D51; `kernel_paths(data_dir, settings.ephemeris)`)
+- [x] `api_version` in `/meta` follows semver of the contract (`skyapi/api/__init__.py::API_VERSION = "1.0.0"`, guarded by the OpenAPI snapshot)
+- [x] Batched minor-body propagation (D69): 100 bodies x 32 samples 1130 ms -> 236 ms in-process, parity 7e-15
 
 Definition of done:
 
-- [ ] latency budgets met on the development machine and recorded in `docs/testing.md`
-- [ ] `docs/api.md` complete including the SKYS byte-layout table
-- [ ] Commit `feat(api): v1 endpoints, caching, rate limiting and health`
+- [x] latency budgets met on the development machine and recorded in `docs/testing.md` (2026-09-06, concurrency 1: frame p95 31.9 ms, frame with 100 minor bodies 285 ms warm, catalogs 5.6-39.7 ms, search 6.0 ms, ready 4.3 s; concurrency 4 on one worker recorded too)
+- [x] `docs/api.md` complete including the SKYS byte-layout table
+- [x] Commit `feat(api): v1 endpoints, caching, rate limiting and health`
 
 ### M3 Sky engine (brief l.462-468)
 
@@ -310,6 +338,7 @@ Tasks:
 
 - [ ] Performance passes (bundle analysis, frame-time profiling, backend benchmark), accessibility audit, CSP and security headers, error paths, i18n completeness, ADRs for every notable decision, README quickstart, documentation review, backlog
 - [ ] Dependency audits in CI (`pip-audit`, `npm audit`) with a documented allow-list (brief l.276)
+- [ ] Swagger UI at `/api/v1/docs` loads jsdelivr scripts with inline scripts: decide `docs_url` outside development or block it in nginx (brief l.274, strict CSP); a 500 problem document carries no CORS headers (Starlette's server-error layer is outermost), nginx may add them
 - [ ] Revisit ADR-0001 and ADR-0002 triggers (TypeScript 7.1 API, jsx-a11y ESLint 10 peer)
 
 Definition of done:
@@ -401,6 +430,16 @@ Current pins (backend `>=x.y,<next-major`, frontend caret): skyfield 1.55, numpy
 | R36 | Horizons longitude conventions (west-positive for Mars) and planetodetic latitudes                                             | non-Earth sites sent as CYLINDRICAL from our planetocentric vector; the echoed centre line is asserted                             |
 | R37 | Horizons and Skyfield delta T models diverge outside the IERS table                                                             | decided in D37 and measured: only 2000 and 2024 are inside Skyfield's IERS table (1973-2027); 1900, 1969, 2050 and 2140 use Horizons' quantity 30 (TDB - UTC after 1962, UT1 - UTC <= 0.03 s there); az/el within 0.56 arcsec everywhere; the builtin timescale alone would be off by 3.8 arcsec (1969), 35 arcsec (2050) and 991 arcsec (2140) |
 | R38 | `Star.at(t)` does not exist (brief l.139)                                                                                       | `SSB.at(t).observe(star)` at two epochs (D48); recorded in section 5                                                              |
+| R39 | Background bootstrap thread under `TestClient`: readiness timing; kernels left open on a failure path (fatal `ResourceWarning`) | `wait_ready` polls `/health` and fails fast on `detail`; the thread body catches every exception and closes an opened `AstroState`; the lifespan cancels, joins (70 s) and closes |
+| R40 | GZip of the 3.8 MB SKYS on the fly cannot meet the 50 ms catalog budget | Confirmed 2026-09-06 (level 9: 316 ms p95, level 1 still 104 ms of compression): `application/octet-stream` excluded from GZip (B-46), JSON at level 6; every catalog p95 within budget (stars 23.8 ms, dso 39.7 ms) |
+| R41 | `tuple[...]` fields emit `prefixItems` | verified: openapi-typescript 7.13 emits TypeScript tuples |
+| R42 | `/sky/frame` p95 >= 150 ms with 10 bodies x 32 samples | Retired 2026-09-06: p95 31.9 ms at concurrency 1 (105 ms at concurrency 4 on one worker) |
+| R43 | 100 minor bodies: the per-body path measured about 780 ms warm | D69 batched propagation (100 bodies x 32 samples: 1130 ms -> 236 ms in-process); through the API p95 285 ms warm at concurrency 1, 1.8 s for the first request with a cold orbit cache (100 Parquet row reads); parity within 7e-15 |
+| R44 | Rate-limit tests flaky on a slow CI; the shared client or the bench trips the limiter | rps 0.01 / burst 2 for the 429 test; the session app and the bench server run with rps 1e6 |
+| R45 | A permanently failing bootstrap keeps the process alive with `503 starting` | intended: operators read `detail`; Docker's healthcheck (M7) restarts on its own policy (ADR-0008) |
+| R46 | `SkyState`/`Bootstrap` shared across request threads | every published object is frozen; one immutable `Snapshot` swapped under a lock; `FrameCache` and the limiter hold their own locks |
+| R47 | Multi-worker bootstrap races on downloads and cache builds | exclusive `flock` on `DATA_DIR/.bootstrap.lock` around the download and build stages; losers re-check before loading |
+| R48 | Batched propagation diverges from the per-body path | parity test at 1e-9; `observe()` iterates light time per element, so the stacked call is the same computation |
 
 ## 9. Assumptions
 
@@ -441,6 +480,9 @@ Current pins (backend `>=x.y,<next-major`, frontend caret): skyfield 1.55, numpy
 | Q21 | Should Sun, Moon and Pluto magnitudes match Horizons tightly?                                       | Display-only: 0.5 mag tolerance, formulas cited in code; maintainer question 9.                                                                                                                                                 |
 | Q22 | Should `make data` also build the caches?                                                           | Yes (D32, B-30): a ready `DATA_DIR` in one command; maintainer question 10.                                                                                                                                                     |
 | Q23 | Pyright on `scripts/*.py`?                                                                          | Ruff (backend config) at M1; pyright coverage of `../scripts` evaluated at M2 when `bench_api.py` lands.                                                                                                                       |
+| Q24 | Separators of `bodies`, `minor`, `targets`                                                        | `,` only; `+`, whitespace or empty items are a 400 (D55).                                                                                                                                                     |
+| Q25 | Bound `tt` at the query layer?                                                                      | No (any finite float); the coverage check decides the 422 and carries the valid range (D56).                                                                                                                  |
+| Q26 | Freshness of `/minor-bodies/defaults`                                                               | Computed from the request time (`now(ts)`), `Cache-Control: public, max-age=300` (D61).                                                                                                                       |
 
 ## 11. Questions for the maintainer
 
@@ -456,9 +498,13 @@ Current pins (backend `>=x.y,<next-major`, frontend caret): skyfield 1.55, numpy
 10. **`make data` scope.** It runs `sky-data fetch` and then `sky-data build-caches` (B-30) so a fresh clone is ready in one command; the brief's wording is fetch only. Keep?
 11. **Rotation model for planetary observers.** Skyfield cannot build planet frames from the text PCK, so `astro/frames.py` implements the IAU model of `pck00011.tpc` (IAU 2015, ADR-0007). The Horizons manual says planets use the IAU 2009 models, but the fixtures show Horizons' Mars pole equals the pck00011 pole within 0.017 arcsec at every epoch, and Jezero alt/az agree within 0.0006 arcsec. No decision needed unless another body disagrees when M2 adds observers beyond the fixtures; `pck00010.tpc` (IAU 2009) stays an optional registry entry.
 12. **Minor-body defaults never contain a comet.** Brief l.155 ranks `/minor-bodies/defaults` as asteroids with H <= 9 sorted by H, then comets; 6,795 asteroids have H <= 9, so with `max_minor_bodies = 100` the list is always the 100 lowest-H asteroids and comets never appear (they remain searchable, and Pluto (134340) is excluded from the defaults because it is a major body). Default: keep the brief's ranking. Alternative: reserve a share of the cap for comets whose epoch lies within 2 years.
+13. **`/health` while starting.** The contract (l.112-113) lists `status`, `progress?`, `version`; M2 answers 503 with `Retry-After` while `starting` (so the Docker healthcheck fails until the data is loaded) and adds the optional `missing` (group codes when degraded) and `detail` (fatal reason) fields (B-41). Confirm, or prefer 200 with the status in the body only.
+14. **`/meta.catalogs` when degraded.** The `dso`, `constellations` and `minor_bodies` entries are absent while their data is missing (B-42), and the frontend must treat them as optional. Alternative: always present with zero counts and empty ETags.
+15. **`step_class` on `/meta.bodies[]`.** Added (B-43) so the frontend clamps `step_s` from data instead of hard-coding which body belongs to which `max_step_s` class (l.70, l.127). Keep?
 
 ## 12. Progress log
 
 - 2026-09-02 M0 started: brief read in full; environment inventoried; CLAUDE.md, .claude/rules, docs/plan.md, doc stubs and ADR-0001..0004 written.
 - 2026-09-02 M0 done: `make check` green (17 pytest, 1 vitest, i18n 2 keys); `fastapi dev` health and the Vite `/api` proxy verified with curl; ci.yml reviewed line by line and both job bodies reproduced from a scratch copy of the index; three adversarial reviewers (CI reproduction, code, brief/DoD), every finding fixed; committed as `chore: bootstrap monorepo (backend, frontend, tooling, ci)`.
 - 2026-09-03 M1 done: skyfield 1.55 / numpy 2.5.2 / pandas 3.0.5 / pyarrow 25.0.1 on CPython 3.14.7; `sky-data` CLI, registry with pins, resumable downloads, caches, notices; `astro/` core incl. our IAU rotation frames (ADR-0007) and the #952 Moon workaround; SKYS, DSO, constellation and MPC builders on the full data (117,955 stars, 5,229 DSO, 88 constellations, 1,562,091 asteroids, 957 comets in 25 s); 414 unit/API tests, 30 conformance tests on 360 Horizons cases (every comparison within 2 arcsec), one slow full-data test; coverage astro 98 %, catalogs 99 %, pure modules 100 %; stubs for Skyfield/jplephem (ADR-0006), data files inside the package (ADR-0005); two adversarial reviews (code, docs) and one CI reproduction, every finding fixed; deviations B-28..B-40; committed as `feat(backend): data pipeline and astronomy core`.
+- 2026-09-06 M2 done: bootstrap thread with health states (ADR-0008), RFC 9457 problems, canonicalization, ten routes with cache headers and ETags, GZip level 6 (SKYS excluded, B-46), CORS, token-bucket rate limiting, JSON logging with request ids, batched minor-body propagation (D69); 672 tests in `make check` (636 unit/API plus 36 conformance tests, the acceptance invariants through the API included), coverage astro 98 %, catalogs 99 %, pure modules 100 %; budgets measured with `scripts/bench_api.py` (frame p95 31.9 ms, 100 minor bodies 285 ms, catalogs <= 39.7 ms, search 6.0 ms, ready 4.3 s); deviations B-41..B-47; three adversarial reviews (CI reproduction, code, docs/DoD) and every finding fixed; committed as `feat(api): v1 endpoints, caching, rate limiting and health`.

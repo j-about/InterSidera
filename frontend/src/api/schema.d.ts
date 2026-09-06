@@ -4,6 +4,86 @@
  */
 
 export interface paths {
+    "/api/v1/catalogs/constellations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Constellation lines, boundaries and labels (modern culture)
+         * @description The 88 IAU constellations: Stellarium `modern` line segments as pairs of Hipparcos identifiers (so lines follow the rendered stars), IAU boundary polygons as closed rings of ICRS J2000 `[ra_deg, dec_deg]` vertices (`boundary_parts` lists every ring when a constellation has more than one, Serpens), Latin and genitive names and a label position. Answers 503 while the Stellarium or d3-celestial data is missing (`/health` lists `constellations` in `missing`). Served with `Cache-Control: public, max-age=3600, stale-while-revalidate=86400` and a strong `ETag` (the artifact SHA-256, bare in `/meta.catalogs`); `If-None-Match` -> 304.
+         */
+        get: operations["get_constellations_api_v1_catalogs_constellations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalogs/dso": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Deep-sky objects (OpenNGC subset)
+         * @description Every Messier object plus the NGC/IC objects with `mag <= 14` or a major axis of at least 5 arcminutes, J2000 ICRS. `id` is the OpenNGC name without zero padding and with spaces replaced by `_` (`NGC224`, `IC434`, `Mel22`); `messier` carries the Messier number when the object has one; `type` is the OpenNGC class mapped to six values. Answers 503 while the OpenNGC data is missing (`/health` lists `dso` in `missing`). Served with `Cache-Control: public, max-age=3600, stale-while-revalidate=86400` and a strong `ETag` (the artifact SHA-256, bare in `/meta.catalogs`); `If-None-Match` -> 304.
+         */
+        get: operations["get_dso_api_v1_catalogs_dso_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalogs/stars": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Star catalog, binary SKYS v1
+         * @description Every Hipparcos star with a position, as the little-endian binary format `SKYS` v1 (`application/octet-stream`). Header, 24 bytes: magic `SKYS` (4 bytes), `u32` version = 1, `u32` count `n`, `f64` epoch_tt (2451545.0 = J2000; Hipparcos positions are propagated from J1991.25 by Skyfield at build time), `u32` flags (reserved, 0). Then the columns, packed without padding: `dir` f32[3n] ICRF unit vector at the epoch, `pm` f32[3n] tangential proper-motion velocity in ICRF in radians per Julian year (parallax and radial velocity ignored), `mag` i16[n] Johnson V in millimagnitudes, `bv` i16[n] B-V in millimagnitudes (32767 when unknown), `hip` u32[n] Hipparcos identifier; total 24 + 32 n bytes. Stars are sorted by magnitude ascending, so any prefix is a valid brighter-than subset. Shader rule: `dir(t) = normalize(dir + pm * years_since_epoch)`, then aberration `normalize(dir(t) + observer_velocity / c)`. Served with `Cache-Control: public, max-age=3600, stale-while-revalidate=86400` and a strong `ETag` (the artifact SHA-256, bare in `/meta.catalogs`); `If-None-Match` -> 304.
+         */
+        get: operations["get_stars_api_v1_catalogs_stars_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalogs/stars/index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Named or designated stars for search and labels
+         * @description The stars that carry an IAU proper name, a Bayer or a Flamsteed designation (about 3 400 of the Hipparcos catalog), with their constellation. Proper names are the IAU names and are not translated; `bayer` is the Greek letter with an optional superscript and the IAU abbreviation (`α Ori`), `flamsteed` the number and abbreviation (`58 Ori`). Served with `Cache-Control: public, max-age=3600, stale-while-revalidate=86400` and a strong `ETag` (the artifact SHA-256, bare in `/meta.catalogs`); `If-None-Match` -> 304.
+         */
+        get: operations["get_stars_index_api_v1_catalogs_stars_index_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -13,9 +93,109 @@ export interface paths {
         };
         /**
          * Readiness of the API and its data
-         * @description Reports whether the sky data is loaded. `starting` carries the download progress of the file currently being fetched; `degraded` means the API answers with reduced coverage. Never cached (`Cache-Control: no-store`).
+         * @description Reports whether the sky data is loaded. `starting` (HTTP 503 with `Retry-After`) carries the download progress of the file currently being fetched, or `detail` when the bootstrap failed; `degraded` (200) lists the `missing` data groups whose endpoints answer 503; `ready` (200) means every endpoint answers. Never cached (`Cache-Control: no-store`).
          */
         get: operations["get_health_api_v1_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Contract version, server time, coverage, observers, bodies, catalogs and limits
+         * @description Everything a client needs before its first sky request, computed once at startup except `server_time` (`tt`, `utc`, `tt_minus_utc_seconds`, read from the server clock on every call). `ephemeris` names the JPL kernel and its TT range; `coverage` gives the ranges the warnings refer to: the ephemeris, the tabulated delta T (`observed_tt` and the end of the IERS predictions), the span the IAU rotation models are fitted to, the proper-motion extrapolation limit in years and the MPC element ages that raise `mpc_extrapolation` (warn) and `mpc_unreliable` (error). `observers[]` lists the ten bodies one can stand on with their body-fixed frame (`ITRS`, `MOON_ME_DE440_ME421`, `IAU_<BODY>`), IAU ellipsoid radii, latitude convention and the TT range the frame and the ephemeris serve; `pluto` is approximated by the Pluto-system barycenter (`approximation_code`). `bodies[]` lists the Sun, planets, Moon and Pluto with the `limits.max_step_s` class that bounds `step_s` when they are requested. `catalogs` describes the star, deep-sky, constellation and minor-body data: counts, cache versions, the bare SHA-256 `etag` the `/catalogs/*` routes send quoted, the star catalog epoch and magnitude limit, licenses and attributions; an entry is absent while its data is missing (`/health` says `degraded`). `geocoder` tells whether Nominatim lookups are enabled, the URL, the contact e-mail to send when configured, the attribution to display and the minimum interval between requests (1000 ms). `limits` carries the request caps (`max_samples` 64, `max_minor_bodies` 100, `max_targets` 200), the time-lapse speeds of the reference frontend and `max_step_s` per body class. Never cached (`Cache-Control: no-store`); 503 with `Retry-After` while the data loads.
+         */
+        get: operations["get_meta_api_v1_meta_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/minor-bodies/defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Default minor bodies ranked by expected brightness
+         * @description At most `limits.max_minor_bodies` (100) entries in the shape of `/minor-bodies/search`: the asteroids with H <= 9 sorted by H (Pluto excluded: it is served as a major body), then the comets whose orbital-element epoch lies within 2 years of the server date, sorted by the proximity of their perihelion to the server date. Depends on the server clock only; `Cache-Control: public, max-age=300`; 503 with `Retry-After` while the MPC data is missing.
+         */
+        get: operations["default_minor_bodies_api_v1_minor_bodies_defaults_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/minor-bodies/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search asteroids and comets by id, designation or name
+         * @description Case-insensitive search over the MPC orbit tables: an exact id (`a:433`, `c:1P`), a bare number (`433`), a short comet form (`1P`), a designation prefix (`2024 YR`, `C/2023`) or a substring of a name (`ceres`, `hale`). Results carry the URL-safe id to use in `/sky/frame` and `/sky/altaz`, the MPC designation, the name when the object has one, the kind, the absolute magnitude H (asteroids) and the epoch of the orbital elements. Name matches are ranked by brightness; at most `limit` entries. Rate-limited per client IP (429 with `Retry-After`); `Cache-Control: public, max-age=300`; 503 with `Retry-After` while the MPC data is missing.
+         */
+        get: operations["search_minor_bodies_api_v1_minor_bodies_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sky/altaz": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Authoritative alt/az and RA/Dec of targets at one instant
+         * @description Skyfield's apparent altitude and azimuth, ICRS and of-date right ascension and declination for up to 200 targets seen from the observer at `tt`: `hip:<number>`, `dso:<canonical OpenNGC id>` (Messier aliases resolved through the catalog), body ids, `a:<number>` and `c:<designation>`. Bodies and minor bodies also carry `dist_au`, `mag` and `phase` (bodies: `diam_deg` too). Refraction (standard atmosphere) is applied only when requested and only for Earth observers. Rows follow the canonical (sorted) target list and echo the ids as requested. Rate limited per client IP; `Cache-Control: public, max-age=300`.
+         */
+        get: operations["get_altaz_api_v1_sky_altaz_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sky/frame": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sky frame: rotations and body samples over a time window
+         * @description One window of `n` samples spaced `step_s` seconds apart from `tt`: the ICRF -> ENU horizon quaternions, the ICRF -> equinox-of-date quaternions, the observer's barycentric velocity, the Sun direction and, per requested body and minor body, the apparent direction, distance, magnitude, illuminated fraction and angular diameter. Parameters are canonicalized before computing and before the cache lookup (coordinates to 1e-6 degree, elevation to 1 m, `tt` to 1e-8 day, lists sorted and de-duplicated) and the canonical values are echoed. `step_s` is clamped to the smallest per-class maximum among the requested bodies (`/meta.limits.max_step_s`) and the value used is reported. `n * (bodies + minor)` may not exceed 4096. Hard coverage limits (ephemeris, observer frame) answer 422 with the valid range; soft ones are `warnings`. Rate limited per client IP; `Cache-Control: public, max-age=300`; `Server-Timing` reports the compute time and the cache outcome.
+         */
+        get: operations["get_frame_api_v1_sky_frame_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -28,6 +208,235 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AltAzEntry
+         * @description Authoritative Skyfield values for one target at one instant.
+         */
+        AltAzEntry: {
+            /**
+             * Alt Deg
+             * @description Altitude, degrees (refracted only when requested).
+             */
+            alt_deg: number;
+            /**
+             * Az Deg
+             * @description Azimuth from north through east, degrees in [0, 360).
+             */
+            az_deg: number;
+            /**
+             * Dec Date Deg
+             * @description Declination of date, degrees.
+             */
+            dec_date_deg: number;
+            /**
+             * Dec Icrs Deg
+             * @description ICRS declination, degrees.
+             */
+            dec_icrs_deg: number;
+            /**
+             * Diam Deg
+             * @description Apparent angular diameter, degrees (bodies only).
+             */
+            diam_deg?: number | null;
+            /**
+             * Dist Au
+             * @description Distance, au (bodies and minor bodies).
+             */
+            dist_au?: number | null;
+            /**
+             * Id
+             * @description Target id as requested: `hip:<n>`, `dso:<id>`, a body id, `a:<..>`, `c:<..>`.
+             * @example hip:32349
+             */
+            id: string;
+            /**
+             * Mag
+             * @description Apparent V magnitude when known.
+             */
+            mag?: number | null;
+            /**
+             * Phase
+             * @description Illuminated fraction (bodies and minor bodies).
+             */
+            phase?: number | null;
+            /**
+             * Ra Date Deg
+             * @description Right ascension on the true equator and equinox of date, degrees in [0, 360).
+             */
+            ra_date_deg: number;
+            /**
+             * Ra Icrs Deg
+             * @description ICRS right ascension, degrees in [0, 360).
+             */
+            ra_icrs_deg: number;
+        };
+        /** BodyMeta */
+        BodyMeta: {
+            /**
+             * Id
+             * @example jupiter
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "star" | "planet" | "dwarf_planet" | "moon";
+            /**
+             * Name Key
+             * @example bodies.jupiter
+             */
+            name_key: string;
+            /**
+             * Radius Km
+             * @description Equatorial radius (IAU), km.
+             * @example 71492
+             */
+            radius_km: number;
+            /**
+             * Step Class
+             * @description Key of `limits.max_step_s` that bounds `step_s` when this body is requested.
+             * @example sun_and_outer
+             */
+            step_class: string;
+        };
+        /** CatalogsMeta */
+        CatalogsMeta: {
+            /** @description Absent while the constellation data is missing (degraded). */
+            constellations?: components["schemas"]["ConstellationsCatalogMeta"] | null;
+            /** @description Absent while the DSO data is missing (degraded). */
+            dso?: components["schemas"]["DsoCatalogMeta"] | null;
+            /** @description Absent while the MPC data is missing (degraded). */
+            minor_bodies?: components["schemas"]["MinorBodiesCatalogMeta"] | null;
+            stars: components["schemas"]["StarsCatalogMeta"];
+        };
+        /**
+         * ConstellationEntry
+         * @description One constellation of `GET /catalogs/constellations` (brief l.148-150).
+         */
+        ConstellationEntry: {
+            /**
+             * Abbr
+             * @example Ori
+             */
+            abbr: string;
+            /**
+             * Boundary
+             * @description IAU boundary polygon, ICRS J2000 `[ra_deg, dec_deg]` vertices, closed ring.
+             */
+            boundary: [
+                number,
+                number
+            ][];
+            /**
+             * Boundary Parts
+             * @description Every boundary polygon when the constellation has more than one (Serpens); `boundary` then holds the first part. Absent otherwise.
+             */
+            boundary_parts?: [
+                number,
+                number
+            ][][] | null;
+            /**
+             * Genitive
+             * @example Orionis
+             */
+            genitive: string;
+            /** @description Suggested label position. */
+            label: components["schemas"]["ConstellationLabel"];
+            /**
+             * Latin
+             * @example Orion
+             */
+            latin: string;
+            /**
+             * Lines
+             * @description Line segments as pairs of Hipparcos identifiers (Stellarium `modern`).
+             */
+            lines: [
+                number,
+                number
+            ][];
+        };
+        /** ConstellationLabel */
+        ConstellationLabel: {
+            /** Dec Deg */
+            dec_deg: number;
+            /** Ra Deg */
+            ra_deg: number;
+        };
+        /** ConstellationsCatalogMeta */
+        ConstellationsCatalogMeta: {
+            /** Attribution */
+            attribution: string;
+            /**
+             * Count
+             * @example 88
+             */
+            count: number;
+            /**
+             * Culture
+             * @default modern
+             * @constant
+             */
+            culture: "modern";
+            /** Etag */
+            etag: string;
+            /** License */
+            license: string;
+        };
+        /**
+         * ConstellationsResponse
+         * @description Body of `GET /catalogs/constellations`.
+         */
+        ConstellationsResponse: {
+            /** Constellations */
+            constellations: components["schemas"]["ConstellationEntry"][];
+            /**
+             * Culture
+             * @default modern
+             * @constant
+             */
+            culture: "modern";
+        };
+        /** CoverageMeta */
+        CoverageMeta: {
+            delta_t: components["schemas"]["DeltaTCoverageMeta"];
+            /** Ephemeris Tt */
+            ephemeris_tt: [
+                number,
+                number
+            ];
+            /**
+             * Iau Rotation Reliable Tt
+             * @description Span the IAU rotation models are fitted to (1800..2200).
+             */
+            iau_rotation_reliable_tt: [
+                number,
+                number
+            ];
+            mpc_elements: components["schemas"]["MpcElementsMeta"];
+            /**
+             * Proper Motion Warning Years
+             * @example 10000
+             */
+            proper_motion_warning_years: number;
+        };
+        /** DeltaTCoverageMeta */
+        DeltaTCoverageMeta: {
+            /**
+             * Observed Tt
+             * @description TT range where delta T comes from historical tables and IERS measurements.
+             */
+            observed_tt: [
+                number,
+                number
+            ];
+            /**
+             * Predicted Until Tt
+             * @description End of the IERS Bulletin A predictions.
+             */
+            predicted_until_tt: number;
+        };
         /**
          * DownloadProgress
          * @description Progress of the data file currently being downloaded at startup.
@@ -52,11 +461,319 @@ export interface components {
              */
             total_bytes: number;
         };
+        /** DsoCatalogMeta */
+        DsoCatalogMeta: {
+            /** Attribution */
+            attribution: string;
+            /**
+             * Count
+             * @example 5229
+             */
+            count: number;
+            /** Etag */
+            etag: string;
+            /** License */
+            license: string;
+            /** Version */
+            version: string;
+        };
+        /**
+         * DsoEntry
+         * @description One row of `GET /catalogs/dso` (brief l.144-146): an OpenNGC object, J2000.
+         */
+        DsoEntry: {
+            /**
+             * Con
+             * @description IAU constellation abbreviation.
+             */
+            con: string;
+            /**
+             * Dec Deg
+             * @description ICRS declination, degrees.
+             */
+            dec_deg: number;
+            /**
+             * Id
+             * @description Canonical OpenNGC id: catalog prefix plus number without zero padding, spaces replaced by `_` (`NGC224`, `IC434`, `Mel22`).
+             * @example NGC7000
+             */
+            id: string;
+            /**
+             * Mag
+             * @description V magnitude, else B magnitude.
+             */
+            mag?: number | null;
+            /**
+             * Major Arcmin
+             * @description Major axis, arcminutes.
+             */
+            major_arcmin?: number | null;
+            /**
+             * Messier
+             * @description Messier number.
+             * @example 31
+             */
+            messier?: number | null;
+            /**
+             * Minor Arcmin
+             * @description Minor axis, arcminutes.
+             */
+            minor_arcmin?: number | null;
+            /**
+             * Names
+             * @description Common names from OpenNGC.
+             * @example [
+             *       "North America Nebula"
+             *     ]
+             */
+            names: string[];
+            /**
+             * Pa Deg
+             * @description Major-axis position angle, north through east.
+             */
+            pa_deg?: number | null;
+            /**
+             * Ra Deg
+             * @description ICRS right ascension, degrees.
+             */
+            ra_deg: number;
+            /**
+             * Type
+             * @description Object class mapped from the OpenNGC type code.
+             * @enum {string}
+             */
+            type: "galaxy" | "open_cluster" | "globular_cluster" | "planetary_nebula" | "nebula" | "other";
+        };
+        /** EphemerisMeta */
+        EphemerisMeta: {
+            /**
+             * Coverage Tt
+             * @description TT Julian Date range the ephemeris serves (light-time margin applied).
+             * @example [
+             *       -3100014.5,
+             *       8000015.5
+             *     ]
+             */
+            coverage_tt: [
+                number,
+                number
+            ];
+            /**
+             * Name
+             * @description Ephemeris file in use.
+             * @example de441.bsp
+             */
+            name: string;
+        };
+        /** FrameBody */
+        FrameBody: {
+            /**
+             * Id
+             * @example mars
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "star" | "planet" | "dwarf_planet" | "moon";
+            samples: components["schemas"]["SamplesModel"];
+            /**
+             * Warnings
+             * @description Empty at API v1.
+             */
+            warnings: components["schemas"]["WarningModel"][];
+        };
+        /** FrameMinorBody */
+        FrameMinorBody: {
+            /** Elements Epoch Tt */
+            elements_epoch_tt: number;
+            /**
+             * Extrapolation Years
+             * @description Largest distance between the window and the elements epoch, Julian years.
+             */
+            extrapolation_years: number;
+            /**
+             * Id
+             * @example a:1
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "asteroid" | "comet";
+            /**
+             * Name
+             * @example Ceres
+             */
+            name?: string | null;
+            /** @description Null when the elements are older than `error_years` (`mpc_unreliable`). */
+            samples?: components["schemas"]["SamplesModel"] | null;
+            /**
+             * Warnings
+             * @description `mpc_extrapolation`, `mpc_unreliable`.
+             */
+            warnings: components["schemas"]["WarningModel"][];
+        };
+        /** FrameObserver */
+        FrameObserver: {
+            /**
+             * Body
+             * @description Observer body id.
+             * @example earth
+             */
+            body: string;
+            /**
+             * Elev M
+             * @description Canonical elevation, metres.
+             * @example 35
+             */
+            elev_m: number;
+            /**
+             * Lat Deg
+             * @description Canonical latitude, degrees.
+             * @example 48.8566
+             */
+            lat_deg: number;
+            /**
+             * Latitude Kind
+             * @enum {string}
+             */
+            latitude_kind: "geodetic" | "planetocentric";
+            /**
+             * Lon Deg
+             * @description Canonical east longitude, degrees.
+             * @example 2.3522
+             */
+            lon_deg: number;
+            /**
+             * Warnings
+             * @description `iau_rotation_approximate`, `pluto_barycenter`.
+             */
+            warnings: components["schemas"]["WarningModel"][];
+        };
+        /**
+         * FrameResponse
+         * @description One window of `n` samples spaced `step_s` seconds apart: rotations, bodies, minor bodies.
+         */
+        FrameResponse: {
+            /** Bodies */
+            bodies: components["schemas"]["FrameBody"][];
+            /** @description ICRF -> true equator and equinox of date per sample. */
+            equinox_of_date: components["schemas"]["QuaternionSeries"];
+            /** @description ICRF -> ENU per sample. */
+            horizon: components["schemas"]["QuaternionSeries"];
+            /** Minor */
+            minor: components["schemas"]["FrameMinorBody"][];
+            observer: components["schemas"]["FrameObserver"];
+            /**
+             * Observer Velocity Au D
+             * @description Barycentric velocity of the observer in ICRF, au/day (client-side aberration).
+             */
+            observer_velocity_au_d: [
+                number,
+                number,
+                number
+            ][];
+            /**
+             * Sun Dir
+             * @description Apparent ICRF unit vector observer -> Sun.
+             */
+            sun_dir: [
+                number,
+                number,
+                number
+            ][];
+            time: components["schemas"]["FrameTime"];
+        };
+        /** FrameTime */
+        FrameTime: {
+            /**
+             * Lst Hours
+             * @description Local apparent sidereal time per sample in [0, 24); Earth only.
+             */
+            lst_hours?: number[] | null;
+            /**
+             * N
+             * @description Number of samples.
+             * @example 32
+             */
+            n: number;
+            /**
+             * Step S
+             * @description Step actually used after clamping, seconds.
+             * @example 300
+             */
+            step_s: number;
+            /**
+             * Tt Minus Utc Seconds
+             * @description TT - UTC at `tt0` (TT - UT1 before 1972, when the display is labelled UT).
+             * @example 69.184
+             */
+            tt_minus_utc_seconds: number;
+            /**
+             * Tt0
+             * @description Canonical TT Julian Date of the first sample.
+             */
+            tt0: number;
+            /**
+             * Utc0
+             * @description `tt0` in UTC, ISO 8601 with astronomical year numbering.
+             * @example 2026-09-06T12:00:00Z
+             */
+            utc0: string;
+            /**
+             * Warnings
+             * @description `delta_t_approximate`, `proper_motion_extrapolated`.
+             */
+            warnings: components["schemas"]["WarningModel"][];
+        };
+        /** GeocoderMeta */
+        GeocoderMeta: {
+            /**
+             * Attribution
+             * @example Geocoding: (c) OpenStreetMap contributors, via Nominatim
+             */
+            attribution: string;
+            /**
+             * Email
+             * @description Contact e-mail to send as the Nominatim `email` parameter.
+             */
+            email?: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Min Interval Ms
+             * @description Minimum interval between two geocoder requests.
+             * @example 1000
+             */
+            min_interval_ms: number;
+            /**
+             * Url
+             * @example https://nominatim.openstreetmap.org
+             */
+            url: string;
+        };
         /**
          * HealthResponse
          * @description Readiness report used by the Docker healthcheck and the frontend splash screen.
          */
         HealthResponse: {
+            /**
+             * Detail
+             * @description Why the bootstrap failed, when it did (`status` then stays `starting`).
+             * @example de441.bsp is missing from DATA_DIR and SKYAPI_AUTO_FETCH is false
+             */
+            detail?: string | null;
+            /**
+             * Missing
+             * @description Data groups that are absent while `degraded`: `dso`, `constellations`, `mpc` (the endpoints that need them answer 503).
+             * @example [
+             *       "mpc"
+             *     ]
+             */
+            missing?: string[] | null;
             /**
              * @description Download progress; present only while `status` is `starting`.
              * @example {
@@ -68,7 +785,7 @@ export interface components {
             progress?: components["schemas"]["DownloadProgress"] | null;
             /**
              * Status
-             * @description `starting` while data is being fetched or loaded, `ready` when every endpoint answers, `degraded` when the API runs with reduced coverage.
+             * @description `starting` while data is being fetched or loaded (answered with 503 and `Retry-After`), `ready` when every endpoint answers, `degraded` when optional data is missing and only the affected endpoints answer 503.
              * @example ready
              * @enum {string}
              */
@@ -80,6 +797,476 @@ export interface components {
              */
             version: string;
         };
+        /** LimitsMeta */
+        LimitsMeta: {
+            /**
+             * Max Minor Bodies
+             * @example 100
+             */
+            max_minor_bodies: number;
+            /**
+             * Max Samples
+             * @example 64
+             */
+            max_samples: number;
+            max_step_s: components["schemas"]["MaxStepMeta"];
+            /**
+             * Max Targets
+             * @example 200
+             */
+            max_targets: number;
+            /**
+             * Speeds
+             * @description Time-lapse speeds offered by the reference frontend (and their negatives).
+             * @example [
+             *       1,
+             *       10,
+             *       60,
+             *       600,
+             *       3600,
+             *       86400,
+             *       604800,
+             *       2629800,
+             *       31557600
+             *     ]
+             */
+            speeds: number[];
+        };
+        /** MaxStepMeta */
+        MaxStepMeta: {
+            /**
+             * Inner Planets
+             * @example 21600
+             */
+            inner_planets: number;
+            /**
+             * Minor
+             * @example 86400
+             */
+            minor: number;
+            /**
+             * Moon
+             * @example 3600
+             */
+            moon: number;
+            /**
+             * Sun And Outer
+             * @example 86400
+             */
+            sun_and_outer: number;
+        };
+        /**
+         * MetaResponse
+         * @description Body of `GET /meta`: contract version, server time, coverage, catalogs and limits.
+         */
+        MetaResponse: {
+            /**
+             * Api Version
+             * @description Semantic version of the API contract.
+             * @example 1.0.0
+             */
+            api_version: string;
+            /** Bodies */
+            bodies: components["schemas"]["BodyMeta"][];
+            catalogs: components["schemas"]["CatalogsMeta"];
+            coverage: components["schemas"]["CoverageMeta"];
+            ephemeris: components["schemas"]["EphemerisMeta"];
+            geocoder: components["schemas"]["GeocoderMeta"];
+            limits: components["schemas"]["LimitsMeta"];
+            /** Observers */
+            observers: components["schemas"]["ObserverMeta"][];
+            server_time: components["schemas"]["ServerTime"];
+        };
+        /** MinorBodiesCatalogMeta */
+        MinorBodiesCatalogMeta: {
+            /**
+             * Asteroids
+             * @example 1562091
+             */
+            asteroids: number;
+            /** Attribution */
+            attribution: string;
+            /**
+             * Comets
+             * @example 957
+             */
+            comets: number;
+            /**
+             * Elements Epoch Range Tt
+             * @description TT range of the orbital-element epochs in the MPC tables.
+             */
+            elements_epoch_range_tt: [
+                number,
+                number
+            ];
+            /** License */
+            license: string;
+        };
+        /**
+         * MinorBodySummary
+         * @description One row of `/minor-bodies/search` and `/minor-bodies/defaults` (brief l.152-155).
+         */
+        MinorBodySummary: {
+            /**
+             * Designation
+             * @example (1) Ceres
+             */
+            designation: string;
+            /**
+             * Elements Epoch Tt
+             * @description Epoch of the orbital elements, TT Julian Date.
+             */
+            elements_epoch_tt: number;
+            /**
+             * H Mag
+             * @description Absolute magnitude H (asteroids).
+             */
+            h_mag?: number | null;
+            /**
+             * Id
+             * @description `a:<number>`, `a:<packed designation>` or `c:<designation>` (URL-safe).
+             * @example a:1
+             * @example c:1P
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "asteroid" | "comet";
+            /**
+             * Name
+             * @example Ceres
+             */
+            name?: string | null;
+        };
+        /** MpcElementsMeta */
+        MpcElementsMeta: {
+            /**
+             * Error Years
+             * @description Years beyond which `mpc_unreliable` is raised and samples are null.
+             * @example 50
+             */
+            error_years: number;
+            /**
+             * Warn Years
+             * @description Years from the elements epoch beyond which `mpc_extrapolation` is raised.
+             * @example 2
+             */
+            warn_years: number;
+        };
+        /** ObserverMeta */
+        ObserverMeta: {
+            /**
+             * Approximation Code
+             * @description Set when the observer is approximated (`pluto_barycenter`).
+             * @example pluto_barycenter
+             */
+            approximation_code?: ("iau_rotation_approximate" | "pluto_barycenter" | "delta_t_approximate" | "proper_motion_extrapolated" | "mpc_extrapolation" | "mpc_unreliable") | null;
+            /**
+             * Coverage Tt
+             * @description TT range this observer can be served in (ephemeris and frame kernels).
+             */
+            coverage_tt: [
+                number,
+                number
+            ];
+            /**
+             * Frame
+             * @description SPICE/IAU frame of the body-fixed coordinates.
+             * @example IAU_MARS
+             */
+            frame: string;
+            /**
+             * Id
+             * @example mars
+             * @enum {string}
+             */
+            id: "mercury" | "venus" | "earth" | "moon" | "mars" | "jupiter" | "saturn" | "uranus" | "neptune" | "pluto";
+            /**
+             * Latitude Kind
+             * @description Geodetic (WGS84, Earth) or planetocentric latitude.
+             * @enum {string}
+             */
+            latitude_kind: "geodetic" | "planetocentric";
+            /**
+             * Name Key
+             * @description Translation key of the body name.
+             * @example bodies.mars
+             */
+            name_key: string;
+            /**
+             * Radii Km
+             * @description IAU reference ellipsoid radii (a, b, c) in km.
+             * @example [
+             *       3396.19,
+             *       3396.19,
+             *       3376.2
+             *     ]
+             */
+            radii_km: [
+                number,
+                number,
+                number
+            ];
+        };
+        /**
+         * Problem
+         * @description RFC 9457 problem document (`type`, `title`, `status`, `detail`, `instance`, `errors[]`).
+         */
+        Problem: {
+            /**
+             * Detail
+             * @description Explanation specific to this occurrence.
+             * @default null
+             * @example unknown body ids: vulcan
+             */
+            detail: string | null;
+            /**
+             * Errors
+             * @description Per-parameter validation errors (400 only).
+             * @default null
+             */
+            errors: components["schemas"]["ProblemError"][] | null;
+            /**
+             * Instance
+             * @description Path of the request (never its query string).
+             * @default null
+             * @example /api/v1/sky/frame
+             */
+            instance: string | null;
+            /**
+             * Range Tt
+             * @description Valid TT Julian Date range when the request fell outside data coverage (422).
+             * @default null
+             * @example [
+             *       2396758.5,
+             *       2506000.5
+             *     ]
+             */
+            range_tt: [
+                number,
+                number
+            ] | null;
+            /**
+             * Status
+             * @description HTTP status code.
+             * @example 400
+             */
+            status: number;
+            /**
+             * Title
+             * @description Short summary of the problem type.
+             * @example Invalid parameter
+             */
+            title: string;
+            /**
+             * Type
+             * @description URI identifying the problem type; every type is documented in docs/api.md.
+             * @example https://github.com/j-about/InterSidera/blob/master/docs/api.md#problem-invalid-parameter
+             */
+            type: string;
+        };
+        /**
+         * ProblemError
+         * @description One invalid input, in pydantic's `loc`/`msg`/`type` vocabulary.
+         */
+        ProblemError: {
+            /**
+             * Loc
+             * @description Location of the offending value: `query` and the parameter name.
+             * @example [
+             *       "query",
+             *       "n"
+             *     ]
+             */
+            loc: (string | number)[];
+            /**
+             * Msg
+             * @description Human-readable explanation.
+             * @example Input should be less than or equal to 64
+             */
+            msg: string;
+            /**
+             * Type
+             * @description Machine-readable error type (pydantic's error type).
+             * @example less_than_equal
+             */
+            type: string;
+        };
+        /** QuaternionSeries */
+        QuaternionSeries: {
+            /**
+             * Q
+             * @description Unit quaternions `[x, y, z, w]` (Hamilton), sign-continuous along the window.
+             */
+            q: [
+                number,
+                number,
+                number,
+                number
+            ][];
+        };
+        /** SamplesModel */
+        SamplesModel: {
+            /**
+             * Diam Deg
+             * @description Apparent angular diameter, degrees.
+             */
+            diam_deg: number[];
+            /**
+             * Dir
+             * @description Apparent ICRF unit vectors observer -> body.
+             */
+            dir: [
+                number,
+                number,
+                number
+            ][];
+            /**
+             * Dist Au
+             * @description Distance observer -> body, au.
+             */
+            dist_au: number[];
+            /**
+             * Mag
+             * @description Apparent V magnitude (null when unknown).
+             */
+            mag: (number | null)[];
+            /**
+             * Phase
+             * @description Illuminated fraction in [0, 1].
+             */
+            phase: number[];
+        };
+        /** ServerTime */
+        ServerTime: {
+            /**
+             * Tt
+             * @description Server wall clock as a TT Julian Date.
+             * @example 2461285.5
+             */
+            tt: number;
+            /**
+             * Tt Minus Utc Seconds
+             * @description TT - UTC at that instant (69.184 s in 2026).
+             * @example 69.184
+             */
+            tt_minus_utc_seconds: number;
+            /**
+             * Utc
+             * @description The same instant in UTC, ISO 8601 with astronomical year numbering.
+             * @example 2026-09-06T12:00:00Z
+             */
+            utc: string;
+        };
+        /**
+         * StarIndexEntry
+         * @description One row of `GET /catalogs/stars/index` (brief l.141-142).
+         */
+        StarIndexEntry: {
+            /**
+             * Con
+             * @description IAU constellation abbreviation.
+             * @example Ori
+             */
+            con: string;
+            /**
+             * Hip
+             * @description Hipparcos identifier.
+             * @example 27989
+             */
+            hip: number;
+            names: components["schemas"]["StarNames"];
+        };
+        /**
+         * StarNames
+         * @description Names of a designated star; every field is optional but at least one is present.
+         */
+        StarNames: {
+            /**
+             * Bayer
+             * @description Bayer designation: Greek letter, optional superscript, IAU abbreviation.
+             * @example α Ori
+             */
+            bayer?: string | null;
+            /**
+             * Flamsteed
+             * @description Flamsteed designation: number and IAU abbreviation.
+             * @example 58 Ori
+             */
+            flamsteed?: string | null;
+            /**
+             * Proper
+             * @description IAU proper name (HYG `proper`), never translated.
+             * @example Betelgeuse
+             */
+            proper?: string | null;
+        };
+        /** StarsCatalogMeta */
+        StarsCatalogMeta: {
+            /** Attribution */
+            attribution: string;
+            /**
+             * Count
+             * @example 117955
+             */
+            count: number;
+            /**
+             * Epoch Tt
+             * @description Catalog epoch, TT Julian Date.
+             * @example 2451545
+             */
+            epoch_tt: number;
+            /**
+             * Etag
+             * @description SHA-256 of `/catalogs/stars` (the header carries it quoted).
+             */
+            etag: string;
+            /** License */
+            license: string;
+            /**
+             * Magnitude Limit
+             * @description Faintest V magnitude in the catalog.
+             */
+            magnitude_limit: number;
+            /**
+             * Version
+             * @description Cache format and source hash.
+             * @example 1-0123456789ab
+             */
+            version: string;
+        };
+        /**
+         * WarningModel
+         * @description `{ code, params?, range_tt? }`: a closed list of codes, translated by the frontend.
+         */
+        WarningModel: {
+            /**
+             * Code
+             * @example delta_t_approximate
+             * @enum {string}
+             */
+            code: "iau_rotation_approximate" | "pluto_barycenter" | "delta_t_approximate" | "proper_motion_extrapolated" | "mpc_extrapolation" | "mpc_unreliable";
+            /**
+             * Params
+             * @description Numbers a translation may need.
+             * @example {
+             *       "years": 10000
+             *     }
+             */
+            params?: {
+                [key: string]: number | string;
+            } | null;
+            /**
+             * Range Tt
+             * @description Valid TT range when one exists.
+             */
+            range_tt?: [
+                number,
+                number
+            ] | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -89,6 +1276,186 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_constellations_api_v1_catalogs_constellations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConstellationsResponse"];
+                };
+            };
+            /** @description Not modified (`If-None-Match` matched the ETag); `ETag` and `Cache-Control` are repeated, the body is empty. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Data not ready (starting, or degraded for this endpoint); retry after `Retry-After`. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Any other error, as an RFC 9457 problem document. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_dso_api_v1_catalogs_dso_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DsoEntry"][];
+                };
+            };
+            /** @description Not modified (`If-None-Match` matched the ETag); `ETag` and `Cache-Control` are repeated, the body is empty. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Data not ready (starting, or degraded for this endpoint); retry after `Retry-After`. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Any other error, as an RFC 9457 problem document. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_stars_api_v1_catalogs_stars_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The SKYS v1 file (`24 + 32 n` bytes, `n` in the header). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description Not modified (`If-None-Match` matched the ETag); `ETag` and `Cache-Control` are repeated, the body is empty. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Data not ready (starting, or degraded for this endpoint); retry after `Retry-After`. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Any other error, as an RFC 9457 problem document. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_stars_index_api_v1_catalogs_stars_index_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StarIndexEntry"][];
+                };
+            };
+            /** @description Not modified (`If-None-Match` matched the ETag); `ETag` and `Cache-Control` are repeated, the body is empty. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Data not ready (starting, or degraded for this endpoint); retry after `Retry-After`. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Any other error, as an RFC 9457 problem document. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     get_health_api_v1_health_get: {
         parameters: {
             query?: never;
@@ -105,6 +1472,343 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+            /** @description Starting: data is being fetched or loaded (`Retry-After`), or the bootstrap failed (`detail`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+            /** @description Any other error, as an RFC 9457 problem document. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_meta_api_v1_meta_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaResponse"];
+                };
+            };
+            /** @description Data not ready (starting, or degraded for this endpoint); retry after `Retry-After`. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Any other error, as an RFC 9457 problem document. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    default_minor_bodies_api_v1_minor_bodies_defaults_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MinorBodySummary"][];
+                };
+            };
+            /** @description Data not ready (starting, or degraded for this endpoint); retry after `Retry-After`. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Any other error, as an RFC 9457 problem document. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    search_minor_bodies_api_v1_minor_bodies_search_get: {
+        parameters: {
+            query: {
+                /** @description Maximum number of results. */
+                limit?: number;
+                /** @description Id, number, designation prefix or name substring; whitespace is collapsed and the match is case-insensitive. */
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MinorBodySummary"][];
+                };
+            };
+            /** @description Invalid parameter (`errors[]` lists each one). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limited; retry after `Retry-After` seconds. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Data not ready (starting, or degraded for this endpoint); retry after `Retry-After`. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Any other error, as an RFC 9457 problem document. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_altaz_api_v1_sky_altaz_get: {
+        parameters: {
+            query: {
+                /** @description Observer body id: `earth`, `moon`, `mercury`, `venus`, `mars`, `jupiter`, `saturn`, `uranus`, `neptune` or `pluto` (the Sun is never an observer). */
+                body?: string;
+                /** @description Observer elevation above the reference surface in metres, canonicalized to 1 m. */
+                elev?: number;
+                /** @description Observer latitude in degrees (geodetic on Earth, planetocentric elsewhere), canonicalized to 1e-6 degree. */
+                lat: number;
+                /** @description Observer east longitude in degrees within [-360, 360], canonicalized to 1e-6 degree and wrapped into [-180, 180). */
+                lon: number;
+                /** @description Apply Skyfield's standard-atmosphere refraction (Earth observers only). */
+                refraction?: boolean;
+                /** @description Comma-separated targets (`hip:<number>`, `dso:<id>`, body id, `a:<..>`, `c:<..>`), at most 200. */
+                targets: string;
+                /** @description TT Julian Date of the instant, canonicalized to 1e-8 day. */
+                tt: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AltAzEntry"][];
+                };
+            };
+            /** @description Invalid parameter (`errors[]` lists each one). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unknown object. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Outside data coverage; `range_tt` carries the valid TT range. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limited; retry after `Retry-After` seconds. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Data not ready (starting, or degraded for this endpoint); retry after `Retry-After`. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Any other error, as an RFC 9457 problem document. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_frame_api_v1_sky_frame_get: {
+        parameters: {
+            query: {
+                /** @description `all` (every body but the observer's own) or a comma-separated list of body ids; naming the observer's body is a 400. */
+                bodies?: string;
+                /** @description Observer body id: `earth`, `moon`, `mercury`, `venus`, `mars`, `jupiter`, `saturn`, `uranus`, `neptune` or `pluto` (the Sun is never an observer). */
+                body?: string;
+                /** @description Observer elevation above the reference surface in metres, canonicalized to 1 m. */
+                elev?: number;
+                /** @description Observer latitude in degrees (geodetic on Earth, planetocentric elsewhere), canonicalized to 1e-6 degree. */
+                lat: number;
+                /** @description Observer east longitude in degrees within [-360, 360], canonicalized to 1e-6 degree and wrapped into [-180, 180). */
+                lon: number;
+                /** @description Comma-separated minor-body ids (`a:<number>`, `a:<packed designation>`, `c:<designation>`), at most 100. */
+                minor?: string | null;
+                /** @description Number of samples. */
+                n?: number;
+                /** @description Seconds between samples; clamped to the requested bodies' class maximum and echoed in `time.step_s`. */
+                step_s?: number;
+                /** @description TT Julian Date of the first sample, canonicalized to 1e-8 day; any finite value is accepted and the data coverage decides (422 outside it). */
+                tt: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FrameResponse"];
+                };
+            };
+            /** @description Invalid parameter (`errors[]` lists each one). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unknown object. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Outside data coverage; `range_tt` carries the valid TT range. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rate limited; retry after `Retry-After` seconds. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Data not ready (starting, or degraded for this endpoint); retry after `Retry-After`. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Any other error, as an RFC 9457 problem document. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };

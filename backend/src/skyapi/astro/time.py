@@ -67,6 +67,16 @@ def make_times(ts: Timescale, tt0: float, step_s: int, n: int) -> Time:
     return ts.tt_jd(window(tt0, step_s, n))
 
 
+def now(ts: Timescale) -> Time:
+    """The server clock as a scalar `Time` (`/meta.server_time`, `/minor-bodies/defaults`).
+
+    The one place the API reads the wall clock: a route calls it once per request and passes
+    the `Time` on, so a response never mixes two instants. `ts.now()` reads the system UTC
+    clock and applies the leap-second table of the timescale.
+    """
+    return ts.now()
+
+
 def _iso(fields: NDArray[np.int64]) -> str:
     year, month, day, hour, minute, second = (int(value) for value in fields)
     # Astronomical year numbering: year 0 exists and prints as 0000, 45 BC as -0044.
@@ -87,6 +97,36 @@ def utc_iso(t: Time) -> str | list[str]:
     if fields.ndim == 1:
         return _iso(fields)
     return [_iso(fields[:, i]) for i in range(fields.shape[1])]
+
+
+def ut1_iso(t: Time) -> str | list[str]:
+    """Format UT1 as `YYYY-MM-DDThh:mm:ssZ`: the TT instant shifted by ΔT on a uniform calendar.
+
+    Before 1972 the contract's "UTC" means UT1 (brief l.51, l.160): `tt_minus_utc_seconds`
+    returns ΔT there, and the label must be the calendar of `tt - ΔT`, not Skyfield's UTC (a
+    fixed offset from TAI before 1972). The shifted Julian Date is read through the TT calendar,
+    which has no leap seconds, with the same half-second rounding as `utc_iso`.
+    """
+    delta_t = np.asarray(t.delta_t, dtype=np.float64)
+    shifted = t.ts.tt_jd(t.whole, t.tt_fraction - (delta_t - 0.5) / DAY_S)
+    calendar = np.asarray(shifted.tt_calendar(), dtype=np.float64)  # (6,) or (6, N)
+    fields = np.floor(calendar).astype(np.int64)
+    if fields.ndim == 1:
+        return _iso(fields)
+    return [_iso(fields[:, i]) for i in range(fields.shape[1])]
+
+
+def time_reference(t: Time) -> tuple[float, str]:
+    """`tt_minus_utc_seconds` at the first sample and the matching `utc0` label of a window.
+
+    Both come from the same rule: UTC from 1972 on, UT1 before (whole window, like
+    `tt_minus_utc_seconds`), so `utc0` always names the instant `tt0 - tt_minus_utc_seconds`.
+    """
+    delta, utc_is_ut1 = tt_minus_utc_seconds(t)
+    first = float(np.atleast_1d(np.asarray(delta, dtype=np.float64))[0])
+    t0 = t[0] if np.ndim(t.tt) else t
+    label = ut1_iso(t0) if utc_is_ut1 else utc_iso(t0)
+    return first, label if isinstance(label, str) else label[0]
 
 
 def _scalar_or_array(value: NDArray[np.float64]) -> FloatOrArray:

@@ -159,3 +159,21 @@ def test_time_warnings(ts: Timescale) -> None:
 def test_iau_reliability_span_matches_the_calendar_boundaries(ts: Timescale) -> None:
     assert np.isclose(IAU_ROTATION_RELIABLE_TT[0], ts.tt(1800, 1, 1).tt)
     assert np.isclose(IAU_ROTATION_RELIABLE_TT[1], ts.tt(2200, 1, 1).tt)
+
+
+def test_time_reference_labels_ut1_before_1972(ts) -> None:
+    """Before 1972 `utc0` names the instant `tt0 - tt_minus_utc_seconds` (UT1), not TAI - 10 s."""
+    from skyapi.astro.time import DAY_S, time_reference, utc_iso
+
+    t = ts.tt(1941, 1, 1, 12, 0, 0)
+    delta, label = time_reference(t)
+    expected = ts.tt_jd(t.tt - delta / DAY_S)
+    year, month, day, hour, minute, second = (int(value) for value in expected.tt_calendar())
+    assert label == f"{year:04d}-{month:02d}-{day:02d}T{hour:02d}:{minute:02d}:{round(second):02d}Z"
+    assert 20 < delta < 30  # delta T in 1941 (TT - UT1 about 24.6 s)
+    assert label != utc_iso(t)  # Skyfield's pre-1972 "UTC" differs by TT - TAI - 10 s
+
+    modern = ts.tt(2024, 4, 8, 12, 0, 0)
+    delta_modern, label_modern = time_reference(modern)
+    assert label_modern == utc_iso(modern)
+    assert delta_modern == 69.184

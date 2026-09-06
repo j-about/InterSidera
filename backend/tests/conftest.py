@@ -20,6 +20,13 @@ from skyapi.data.download import Manifest, download_file, verify_file
 from skyapi.data.registry import load_registry
 from skyapi.main import create_app
 from skyapi.settings import Settings
+from support.fixtures_api import (
+    KERNEL_KEYS,
+    api_app,
+    api_client,
+    api_data_dir,
+    api_settings,
+)
 from support.fixtures_astro import astro_state, greenwich, jezero, tranquility, ts
 from support.fixtures_catalogs import built_caches, catalog_state, excerpts_dir
 from support.fixtures_data import (
@@ -40,6 +47,10 @@ from support.fixtures_mpc import (
 )
 
 __all__ = [
+    "api_app",
+    "api_client",
+    "api_data_dir",
+    "api_settings",
     "app",
     "astro_state",
     "built_caches",
@@ -70,7 +81,7 @@ __all__ = [
 # tests/conftest.py -> tests -> backend -> repository root
 REPO_ROOT = Path(__file__).resolve().parents[2]
 # The test kernel set (D38, B-31): de440s plus the PCK text kernel and the two Moon kernels.
-TEST_KERNEL_KEYS = ("de440s", "pck00011", "moon_tf", "moon_bpc")
+TEST_KERNEL_KEYS = KERNEL_KEYS
 
 
 @pytest.fixture(autouse=True)

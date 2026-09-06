@@ -13,6 +13,15 @@ from numpy.typing import NDArray
 DAY_S = 86400.0
 MAX_SAMPLES = 64
 MIN_STEP_S = 1
+# Upper bound of `step_s` at the query layer (one Julian year); brief l.398 wants explicit bounds
+# on every parameter, and `clamp_step` only bounds requests that name a body.
+MAX_STEP_S_CEILING = 31_557_600
+# Request caps of the API contract (brief l.127, l.169, l.172).
+MAX_MINOR_BODIES = 100
+MAX_TARGETS = 200
+MAX_FRAME_CELLS = 4096  # n * (bodies + minor) <= 4096
+# Time-lapse speeds of the reference frontend (brief l.50); the frontend adds the negatives.
+SPEEDS: tuple[int, ...] = (1, 10, 60, 600, 3600, 86400, 604800, 2629800, 31557600)
 
 MAX_STEP_S: Mapping[str, int] = MappingProxyType(
     {

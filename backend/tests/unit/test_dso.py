@@ -64,6 +64,7 @@ def test_dso_direction(catalog_state: CatalogState) -> None:
 
 def test_state_catalog_indexes(catalog_state: CatalogState) -> None:
     dso = catalog_state.dso
+    assert dso is not None
     assert len(dso.entries) == len(dso.by_id)
     assert all(dso.by_id[entry.id] is entry for entry in dso.entries)
     assert dso.messier[31] is dso.by_id["NGC224"]

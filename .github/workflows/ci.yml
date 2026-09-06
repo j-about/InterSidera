@@ -46,6 +46,8 @@ jobs:
       - run: uv run ruff format --check --config pyproject.toml ../scripts
       - run: uv run ruff check --config pyproject.toml ../scripts
       - run: uv run pyright
+      # scripts/ lies outside `[tool.pyright] include`; both scripts are checked in basic mode (B-47).
+      - run: uv run pyright ../scripts/bench_api.py ../scripts/generate_fixtures.py
       # Test kernels (de440s + PCK/Moon kernels, ~46 MB, public domain): restored from the cache, downloaded by
       # the session fixture through the data registry on a miss, saved even when the tests fail.
       - uses: actions/cache/restore@v6

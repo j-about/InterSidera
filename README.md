@@ -23,10 +23,10 @@ Other targets: `make test` (full pytest and vitest), `make e2e` (Playwright agai
 ## Repository map
 
 - `/`: `Makefile`, `.node-version` (24), `.python-version` (3.14), `.env.example` (every `SKYAPI_` variable), `CLAUDE.md` (working agreement for Claude Code), `.claude/rules/` (file-specific rules), `.github/workflows/ci.yml`.
-- `backend/`: the `skyapi` FastAPI + Skyfield service (uv-managed packaged app, src layout, `pyproject.toml`, `uv.lock`, tests). It exposes `GET /api/v1/health` (M0) and carries the data pipeline (`sky-data`, `skyapi.data`), the astronomy core (`skyapi.astro`) and the catalog builders (`skyapi.catalogs`) from M1; the other endpoints arrive at M2. `backend/typings/` holds the local type stubs for Skyfield and jplephem.
+- `backend/`: the `skyapi` FastAPI + Skyfield service (uv-managed packaged app, src layout, `pyproject.toml`, `uv.lock`, tests). It carries the data pipeline (`sky-data`, `skyapi.data`), the astronomy core (`skyapi.astro`) and the catalog builders (`skyapi.catalogs`) from M1, and serves API v1 from M2: `/api/v1/{health,meta,catalogs/stars,catalogs/stars/index,catalogs/dso,catalogs/constellations,minor-bodies/search,minor-bodies/defaults,sky/frame,sky/altaz}` (see [docs/api.md](docs/api.md)); the data is loaded by a background bootstrap, so `/health` reports `starting` with download progress until the API is `ready`. `backend/typings/` holds the local type stubs for Skyfield and jplephem.
 - `frontend/`: the React 19 + Vite 8 + Tailwind 4 client (TypeScript 6 strict, ESLint 10, Prettier, Vitest, Playwright). At M0 it renders a placeholder page and proxies `/api`.
 - `docs/`: the specification (`brief.xml`), the plan and durable memory (`plan.md`), architecture, API, data, WSL 2 development, testing, backlog, and `decisions/` (ADRs); `openapi.json` is generated.
-- `scripts/`: repository-level scripts (`check_i18n.mjs`, the translation completeness gate; `generate_fixtures.py`, the JPL Horizons and Skyfield fixture generator, run manually; benchmarks arrive at M2).
+- `scripts/`: repository-level scripts (`check_i18n.mjs`, the translation completeness gate; `generate_fixtures.py`, the JPL Horizons and Skyfield fixture generator, run manually; `bench_api.py`, the latency benchmark of the API against the brief's budgets, run against a locally started `fastapi run`).
 - `data/` (gitignored): the development `DATA_DIR` filled by `make data` (downloads plus `data/cache/`).
 - `THIRD_PARTY_NOTICES.md`: every dataset with its license and attribution, generated from `backend/src/skyapi/data/data_files.toml`.
 
@@ -35,7 +35,7 @@ Other targets: `make test` (full pytest and vitest), `make e2e` (Playwright agai
 - [docs/brief.xml](docs/brief.xml): the authoritative specification.
 - [docs/plan.md](docs/plan.md): status, decisions, milestones, risks, open questions, progress log.
 - [docs/architecture.md](docs/architecture.md): principles, time model, frames, data flow, backend, frontend, deployment.
-- [docs/api.md](docs/api.md): API conventions, generated types, binary catalog layout.
+- [docs/api.md](docs/api.md): every endpoint, canonicalization, problem types, caching, rate limiting, binary catalog layout.
 - [docs/data.md](docs/data.md): data sources, sizes, licenses and attributions.
 - [docs/dev-wsl2.md](docs/dev-wsl2.md): HTTPS dev server, reaching it from a phone through WSL 2, Playwright prerequisites.
 - [docs/testing.md](docs/testing.md): `make check` vs `make test` vs `make e2e`, coverage gates, budgets.

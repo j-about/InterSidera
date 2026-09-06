@@ -15,7 +15,7 @@ from skyfield.api import load
 from skyfield.positionlib import SSB
 from skyfield.starlib import Star
 
-from skyapi.catalogs.artifacts import CachePaths
+from skyapi.catalogs.artifacts import CACHE_FORMAT_VERSION, CachePaths
 from skyapi.catalogs.builders import (
     J2000_TT,
     BuildError,
@@ -50,6 +50,7 @@ from skyapi.catalogs.state import (
     load_catalog_state,
     load_hipparcos_table,
 )
+from skyapi.data.caches import ArtifactRecord, CacheManifest
 from skyapi.models.catalogs import ConstellationsResponse, DsoEntry, StarIndexEntry
 from support.fixtures_catalogs import (
     CONSTELLATION_NAMES_CSV,
@@ -197,12 +198,14 @@ def test_dso_subset_keeps_every_messier_and_drops_dup_nonex(built_caches: CacheP
 
 
 def test_dso_messier_alias_resolves_in_state(catalog_state: CatalogState) -> None:
-    assert catalog_state.dso.messier[102].id == "NGC5457"
-    assert catalog_state.dso.messier[101].id == "NGC5457"
-    assert catalog_state.dso.messier[31].id == "NGC224"
-    assert catalog_state.dso.messier[45].id == "Mel22"
-    assert catalog_state.dso.messier[40].id == "M40"
-    assert len(catalog_state.dso.messier) == 110
+    dso = catalog_state.dso
+    assert dso is not None
+    assert dso.messier[102].id == "NGC5457"
+    assert dso.messier[101].id == "NGC5457"
+    assert dso.messier[31].id == "NGC224"
+    assert dso.messier[45].id == "Mel22"
+    assert dso.messier[40].id == "M40"
+    assert len(dso.messier) == 110
 
 
 def test_dso_id_normalisation() -> None:
@@ -636,21 +639,40 @@ def test_load_catalog_state_errors_and_manifest(built_caches: CachePaths, tmp_pa
         source: Path = getattr(built_caches, name)
         target: Path = getattr(copy, name)
         target.write_bytes(source.read_bytes())
-    manifest = {
-        "cache_format_version": 1,
-        "artifacts": {
-            "stars": {"sha256": "ab" * 32, "version": "1-deadbeef0000", "meta": {}},
-            "constellations": {
-                "sha256": "cd" * 32,
-                "version": "1-deadbeef0001",
-                "declared_license": "CC BY-SA 4.0",
-            },
+    manifest = CacheManifest(
+        cache_format_version=CACHE_FORMAT_VERSION,
+        skyapi_version="test",
+        built_at="2026-09-06T00:00:00Z",
+        sources={},
+        artifacts={
+            "stars": ArtifactRecord(
+                path="stars.skys",
+                sha256="ab" * 32,
+                bytes=1,
+                count=2,
+                version="1-deadbeef0000",
+                source_keys=("hipparcos",),
+                meta={"epoch_tt": 2451545.0},
+            ),
+            "constellations": ArtifactRecord(
+                path="constellations.json",
+                sha256="cd" * 32,
+                bytes=1,
+                count=5,
+                version="1-deadbeef0001",
+                source_keys=("stellarium_modern",),
+                meta={},
+                declared_license="CC BY-SA 4.0",
+            ),
         },
-    }
-    copy.manifest.write_text(json.dumps(manifest), encoding="utf-8")
+    )
+    manifest.save(copy.manifest)
     state = load_catalog_state(copy)
-    assert state.identities["stars"] == ArtifactIdentity("ab" * 32, "1-deadbeef0000", None)
+    assert state.identities["stars"] == ArtifactIdentity(
+        "ab" * 32, "1-deadbeef0000", None, 2, {"epoch_tt": 2451545.0}
+    )
     assert state.identities["constellations"].declared_license == "CC BY-SA 4.0"
+    assert state.identities["constellations"].count == 5
     assert "hip" not in state.hipparcos.columns
     assert state.hipparcos.index.name == "hip"
     assert "ra_hours" in state.hipparcos.columns
@@ -662,7 +684,7 @@ def test_load_catalog_state_errors_and_manifest(built_caches: CachePaths, tmp_pa
     with pytest.raises(CatalogStateError, match="artifacts"):
         load_catalog_state(copy)
     copy.manifest.write_text('{"artifacts": {"stars": 1}}', encoding="utf-8")
-    with pytest.raises(CatalogStateError, match="must be an object"):
+    with pytest.raises(CatalogStateError, match="artifacts"):
         load_catalog_state(copy)
     copy.manifest.unlink()
 

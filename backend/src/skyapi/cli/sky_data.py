@@ -102,6 +102,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         return code if isinstance(code, int) else (EXIT_OK if code is None else EXIT_USAGE)
     _configure_logging(verbose=bool(args.verbose))
     try:
+        return _dispatch(args)
+    finally:
+        # The handler binds the `sys.stderr` of this call; detaching it keeps an in-process
+        # caller (the tests) from logging into a stream that is closed afterwards.
+        _remove_cli_handlers()
+
+
+def _dispatch(args: argparse.Namespace) -> int:
+    try:
         registry = load_registry(args.registry)
         settings = Settings()
     except RegistryError as exc:
@@ -427,11 +436,16 @@ class _CliHandler(logging.StreamHandler[TextIO]):
     """Marks the handler `main()` installs so a second call replaces it (tests)."""
 
 
-def _configure_logging(*, verbose: bool) -> None:
+def _remove_cli_handlers() -> None:
     root = logging.getLogger("skyapi")
     for handler in list(root.handlers):
         if isinstance(handler, _CliHandler):
             root.removeHandler(handler)
+
+
+def _configure_logging(*, verbose: bool) -> None:
+    root = logging.getLogger("skyapi")
+    _remove_cli_handlers()
     handler = _CliHandler(sys.stderr)
     handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
     root.addHandler(handler)

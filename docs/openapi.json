@@ -1,6 +1,488 @@
 {
   "components": {
     "schemas": {
+      "AltAzEntry": {
+        "additionalProperties": false,
+        "description": "Authoritative Skyfield values for one target at one instant.",
+        "properties": {
+          "alt_deg": {
+            "description": "Altitude, degrees (refracted only when requested).",
+            "title": "Alt Deg",
+            "type": "number"
+          },
+          "az_deg": {
+            "description": "Azimuth from north through east, degrees in [0, 360).",
+            "title": "Az Deg",
+            "type": "number"
+          },
+          "dec_date_deg": {
+            "description": "Declination of date, degrees.",
+            "title": "Dec Date Deg",
+            "type": "number"
+          },
+          "dec_icrs_deg": {
+            "description": "ICRS declination, degrees.",
+            "title": "Dec Icrs Deg",
+            "type": "number"
+          },
+          "diam_deg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Apparent angular diameter, degrees (bodies only).",
+            "title": "Diam Deg"
+          },
+          "dist_au": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Distance, au (bodies and minor bodies).",
+            "title": "Dist Au"
+          },
+          "id": {
+            "description": "Target id as requested: `hip:<n>`, `dso:<id>`, a body id, `a:<..>`, `c:<..>`.",
+            "examples": [
+              "hip:32349"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "mag": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Apparent V magnitude when known.",
+            "title": "Mag"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Illuminated fraction (bodies and minor bodies).",
+            "title": "Phase"
+          },
+          "ra_date_deg": {
+            "description": "Right ascension on the true equator and equinox of date, degrees in [0, 360).",
+            "title": "Ra Date Deg",
+            "type": "number"
+          },
+          "ra_icrs_deg": {
+            "description": "ICRS right ascension, degrees in [0, 360).",
+            "title": "Ra Icrs Deg",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "alt_deg",
+          "az_deg",
+          "ra_icrs_deg",
+          "dec_icrs_deg",
+          "ra_date_deg",
+          "dec_date_deg"
+        ],
+        "title": "AltAzEntry",
+        "type": "object"
+      },
+      "BodyMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "examples": [
+              "jupiter"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "star",
+              "planet",
+              "dwarf_planet",
+              "moon"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name_key": {
+            "examples": [
+              "bodies.jupiter"
+            ],
+            "title": "Name Key",
+            "type": "string"
+          },
+          "radius_km": {
+            "description": "Equatorial radius (IAU), km.",
+            "examples": [
+              71492.0
+            ],
+            "title": "Radius Km",
+            "type": "number"
+          },
+          "step_class": {
+            "description": "Key of `limits.max_step_s` that bounds `step_s` when this body is requested.",
+            "examples": [
+              "sun_and_outer"
+            ],
+            "title": "Step Class",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name_key",
+          "radius_km",
+          "step_class"
+        ],
+        "title": "BodyMeta",
+        "type": "object"
+      },
+      "CatalogsMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "constellations": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConstellationsCatalogMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Absent while the constellation data is missing (degraded)."
+          },
+          "dso": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DsoCatalogMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Absent while the DSO data is missing (degraded)."
+          },
+          "minor_bodies": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MinorBodiesCatalogMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Absent while the MPC data is missing (degraded)."
+          },
+          "stars": {
+            "$ref": "#/components/schemas/StarsCatalogMeta"
+          }
+        },
+        "required": [
+          "stars"
+        ],
+        "title": "CatalogsMeta",
+        "type": "object"
+      },
+      "ConstellationEntry": {
+        "additionalProperties": false,
+        "description": "One constellation of `GET /catalogs/constellations` (brief l.148-150).",
+        "properties": {
+          "abbr": {
+            "examples": [
+              "Ori"
+            ],
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Abbr",
+            "type": "string"
+          },
+          "boundary": {
+            "description": "IAU boundary polygon, ICRS J2000 `[ra_deg, dec_deg]` vertices, closed ring.",
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Boundary",
+            "type": "array"
+          },
+          "boundary_parts": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Every boundary polygon when the constellation has more than one (Serpens); `boundary` then holds the first part. Absent otherwise.",
+            "title": "Boundary Parts"
+          },
+          "genitive": {
+            "examples": [
+              "Orionis"
+            ],
+            "title": "Genitive",
+            "type": "string"
+          },
+          "label": {
+            "$ref": "#/components/schemas/ConstellationLabel",
+            "description": "Suggested label position."
+          },
+          "latin": {
+            "examples": [
+              "Orion"
+            ],
+            "title": "Latin",
+            "type": "string"
+          },
+          "lines": {
+            "description": "Line segments as pairs of Hipparcos identifiers (Stellarium `modern`).",
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Lines",
+            "type": "array"
+          }
+        },
+        "required": [
+          "abbr",
+          "latin",
+          "genitive",
+          "lines",
+          "boundary",
+          "label"
+        ],
+        "title": "ConstellationEntry",
+        "type": "object"
+      },
+      "ConstellationLabel": {
+        "additionalProperties": false,
+        "properties": {
+          "dec_deg": {
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Dec Deg",
+            "type": "number"
+          },
+          "ra_deg": {
+            "exclusiveMaximum": 360.0,
+            "minimum": 0.0,
+            "title": "Ra Deg",
+            "type": "number"
+          }
+        },
+        "required": [
+          "ra_deg",
+          "dec_deg"
+        ],
+        "title": "ConstellationLabel",
+        "type": "object"
+      },
+      "ConstellationsCatalogMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "attribution": {
+            "title": "Attribution",
+            "type": "string"
+          },
+          "count": {
+            "examples": [
+              88
+            ],
+            "title": "Count",
+            "type": "integer"
+          },
+          "culture": {
+            "const": "modern",
+            "default": "modern",
+            "title": "Culture",
+            "type": "string"
+          },
+          "etag": {
+            "title": "Etag",
+            "type": "string"
+          },
+          "license": {
+            "title": "License",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "etag",
+          "license",
+          "attribution"
+        ],
+        "title": "ConstellationsCatalogMeta",
+        "type": "object"
+      },
+      "ConstellationsResponse": {
+        "additionalProperties": false,
+        "description": "Body of `GET /catalogs/constellations`.",
+        "properties": {
+          "constellations": {
+            "items": {
+              "$ref": "#/components/schemas/ConstellationEntry"
+            },
+            "title": "Constellations",
+            "type": "array"
+          },
+          "culture": {
+            "const": "modern",
+            "default": "modern",
+            "title": "Culture",
+            "type": "string"
+          }
+        },
+        "required": [
+          "constellations"
+        ],
+        "title": "ConstellationsResponse",
+        "type": "object"
+      },
+      "CoverageMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "delta_t": {
+            "$ref": "#/components/schemas/DeltaTCoverageMeta"
+          },
+          "ephemeris_tt": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Ephemeris Tt",
+            "type": "array"
+          },
+          "iau_rotation_reliable_tt": {
+            "description": "Span the IAU rotation models are fitted to (1800..2200).",
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Iau Rotation Reliable Tt",
+            "type": "array"
+          },
+          "mpc_elements": {
+            "$ref": "#/components/schemas/MpcElementsMeta"
+          },
+          "proper_motion_warning_years": {
+            "examples": [
+              10000
+            ],
+            "title": "Proper Motion Warning Years",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ephemeris_tt",
+          "delta_t",
+          "iau_rotation_reliable_tt",
+          "proper_motion_warning_years",
+          "mpc_elements"
+        ],
+        "title": "CoverageMeta",
+        "type": "object"
+      },
+      "DeltaTCoverageMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "observed_tt": {
+            "description": "TT range where delta T comes from historical tables and IERS measurements.",
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Observed Tt",
+            "type": "array"
+          },
+          "predicted_until_tt": {
+            "description": "End of the IERS Bulletin A predictions.",
+            "title": "Predicted Until Tt",
+            "type": "number"
+          }
+        },
+        "required": [
+          "observed_tt",
+          "predicted_until_tt"
+        ],
+        "title": "DeltaTCoverageMeta",
+        "type": "object"
+      },
       "DownloadProgress": {
         "additionalProperties": false,
         "description": "Progress of the data file currently being downloaded at startup.",
@@ -40,10 +522,651 @@
         "title": "DownloadProgress",
         "type": "object"
       },
+      "DsoCatalogMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "attribution": {
+            "title": "Attribution",
+            "type": "string"
+          },
+          "count": {
+            "examples": [
+              5229
+            ],
+            "title": "Count",
+            "type": "integer"
+          },
+          "etag": {
+            "title": "Etag",
+            "type": "string"
+          },
+          "license": {
+            "title": "License",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "version",
+          "etag",
+          "license",
+          "attribution"
+        ],
+        "title": "DsoCatalogMeta",
+        "type": "object"
+      },
+      "DsoEntry": {
+        "additionalProperties": false,
+        "description": "One row of `GET /catalogs/dso` (brief l.144-146): an OpenNGC object, J2000.",
+        "properties": {
+          "con": {
+            "description": "IAU constellation abbreviation.",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Con",
+            "type": "string"
+          },
+          "dec_deg": {
+            "description": "ICRS declination, degrees.",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Dec Deg",
+            "type": "number"
+          },
+          "id": {
+            "description": "Canonical OpenNGC id: catalog prefix plus number without zero padding, spaces replaced by `_` (`NGC224`, `IC434`, `Mel22`).",
+            "examples": [
+              "NGC7000"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "mag": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "V magnitude, else B magnitude.",
+            "title": "Mag"
+          },
+          "major_arcmin": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Major axis, arcminutes.",
+            "title": "Major Arcmin"
+          },
+          "messier": {
+            "anyOf": [
+              {
+                "maximum": 110.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Messier number.",
+            "examples": [
+              31
+            ],
+            "title": "Messier"
+          },
+          "minor_arcmin": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Minor axis, arcminutes.",
+            "title": "Minor Arcmin"
+          },
+          "names": {
+            "description": "Common names from OpenNGC.",
+            "examples": [
+              [
+                "North America Nebula"
+              ]
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Names",
+            "type": "array"
+          },
+          "pa_deg": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 360.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Major-axis position angle, north through east.",
+            "title": "Pa Deg"
+          },
+          "ra_deg": {
+            "description": "ICRS right ascension, degrees.",
+            "exclusiveMaximum": 360.0,
+            "minimum": 0.0,
+            "title": "Ra Deg",
+            "type": "number"
+          },
+          "type": {
+            "description": "Object class mapped from the OpenNGC type code.",
+            "enum": [
+              "galaxy",
+              "open_cluster",
+              "globular_cluster",
+              "planetary_nebula",
+              "nebula",
+              "other"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "names",
+          "type",
+          "ra_deg",
+          "dec_deg",
+          "con"
+        ],
+        "title": "DsoEntry",
+        "type": "object"
+      },
+      "EphemerisMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "coverage_tt": {
+            "description": "TT Julian Date range the ephemeris serves (light-time margin applied).",
+            "examples": [
+              [
+                -3100014.5,
+                8000015.5
+              ]
+            ],
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Coverage Tt",
+            "type": "array"
+          },
+          "name": {
+            "description": "Ephemeris file in use.",
+            "examples": [
+              "de441.bsp"
+            ],
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "coverage_tt"
+        ],
+        "title": "EphemerisMeta",
+        "type": "object"
+      },
+      "FrameBody": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "examples": [
+              "mars"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "star",
+              "planet",
+              "dwarf_planet",
+              "moon"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "samples": {
+            "$ref": "#/components/schemas/SamplesModel"
+          },
+          "warnings": {
+            "description": "Empty at API v1.",
+            "items": {
+              "$ref": "#/components/schemas/WarningModel"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "samples",
+          "warnings"
+        ],
+        "title": "FrameBody",
+        "type": "object"
+      },
+      "FrameMinorBody": {
+        "additionalProperties": false,
+        "properties": {
+          "elements_epoch_tt": {
+            "title": "Elements Epoch Tt",
+            "type": "number"
+          },
+          "extrapolation_years": {
+            "description": "Largest distance between the window and the elements epoch, Julian years.",
+            "title": "Extrapolation Years",
+            "type": "number"
+          },
+          "id": {
+            "examples": [
+              "a:1"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "asteroid",
+              "comet"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "examples": [
+              "Ceres"
+            ],
+            "title": "Name"
+          },
+          "samples": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SamplesModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when the elements are older than `error_years` (`mpc_unreliable`)."
+          },
+          "warnings": {
+            "description": "`mpc_extrapolation`, `mpc_unreliable`.",
+            "items": {
+              "$ref": "#/components/schemas/WarningModel"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "elements_epoch_tt",
+          "extrapolation_years",
+          "warnings"
+        ],
+        "title": "FrameMinorBody",
+        "type": "object"
+      },
+      "FrameObserver": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "description": "Observer body id.",
+            "examples": [
+              "earth"
+            ],
+            "title": "Body",
+            "type": "string"
+          },
+          "elev_m": {
+            "description": "Canonical elevation, metres.",
+            "examples": [
+              35.0
+            ],
+            "title": "Elev M",
+            "type": "number"
+          },
+          "lat_deg": {
+            "description": "Canonical latitude, degrees.",
+            "examples": [
+              48.8566
+            ],
+            "title": "Lat Deg",
+            "type": "number"
+          },
+          "latitude_kind": {
+            "enum": [
+              "geodetic",
+              "planetocentric"
+            ],
+            "title": "Latitude Kind",
+            "type": "string"
+          },
+          "lon_deg": {
+            "description": "Canonical east longitude, degrees.",
+            "examples": [
+              2.3522
+            ],
+            "title": "Lon Deg",
+            "type": "number"
+          },
+          "warnings": {
+            "description": "`iau_rotation_approximate`, `pluto_barycenter`.",
+            "items": {
+              "$ref": "#/components/schemas/WarningModel"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "body",
+          "lat_deg",
+          "lon_deg",
+          "elev_m",
+          "latitude_kind",
+          "warnings"
+        ],
+        "title": "FrameObserver",
+        "type": "object"
+      },
+      "FrameResponse": {
+        "additionalProperties": false,
+        "description": "One window of `n` samples spaced `step_s` seconds apart: rotations, bodies, minor bodies.",
+        "properties": {
+          "bodies": {
+            "items": {
+              "$ref": "#/components/schemas/FrameBody"
+            },
+            "title": "Bodies",
+            "type": "array"
+          },
+          "equinox_of_date": {
+            "$ref": "#/components/schemas/QuaternionSeries",
+            "description": "ICRF -> true equator and equinox of date per sample."
+          },
+          "horizon": {
+            "$ref": "#/components/schemas/QuaternionSeries",
+            "description": "ICRF -> ENU per sample."
+          },
+          "minor": {
+            "items": {
+              "$ref": "#/components/schemas/FrameMinorBody"
+            },
+            "title": "Minor",
+            "type": "array"
+          },
+          "observer": {
+            "$ref": "#/components/schemas/FrameObserver"
+          },
+          "observer_velocity_au_d": {
+            "description": "Barycentric velocity of the observer in ICRF, au/day (client-side aberration).",
+            "items": {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Observer Velocity Au D",
+            "type": "array"
+          },
+          "sun_dir": {
+            "description": "Apparent ICRF unit vector observer -> Sun.",
+            "items": {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Sun Dir",
+            "type": "array"
+          },
+          "time": {
+            "$ref": "#/components/schemas/FrameTime"
+          }
+        },
+        "required": [
+          "observer",
+          "time",
+          "horizon",
+          "equinox_of_date",
+          "observer_velocity_au_d",
+          "sun_dir",
+          "bodies",
+          "minor"
+        ],
+        "title": "FrameResponse",
+        "type": "object"
+      },
+      "FrameTime": {
+        "additionalProperties": false,
+        "properties": {
+          "lst_hours": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Local apparent sidereal time per sample in [0, 24); Earth only.",
+            "title": "Lst Hours"
+          },
+          "n": {
+            "description": "Number of samples.",
+            "examples": [
+              32
+            ],
+            "title": "N",
+            "type": "integer"
+          },
+          "step_s": {
+            "description": "Step actually used after clamping, seconds.",
+            "examples": [
+              300
+            ],
+            "title": "Step S",
+            "type": "integer"
+          },
+          "tt0": {
+            "description": "Canonical TT Julian Date of the first sample.",
+            "title": "Tt0",
+            "type": "number"
+          },
+          "tt_minus_utc_seconds": {
+            "description": "TT - UTC at `tt0` (TT - UT1 before 1972, when the display is labelled UT).",
+            "examples": [
+              69.184
+            ],
+            "title": "Tt Minus Utc Seconds",
+            "type": "number"
+          },
+          "utc0": {
+            "description": "`tt0` in UTC, ISO 8601 with astronomical year numbering.",
+            "examples": [
+              "2026-09-06T12:00:00Z"
+            ],
+            "title": "Utc0",
+            "type": "string"
+          },
+          "warnings": {
+            "description": "`delta_t_approximate`, `proper_motion_extrapolated`.",
+            "items": {
+              "$ref": "#/components/schemas/WarningModel"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tt0",
+          "step_s",
+          "n",
+          "tt_minus_utc_seconds",
+          "utc0",
+          "warnings"
+        ],
+        "title": "FrameTime",
+        "type": "object"
+      },
+      "GeocoderMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "attribution": {
+            "examples": [
+              "Geocoding: (c) OpenStreetMap contributors, via Nominatim"
+            ],
+            "title": "Attribution",
+            "type": "string"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Contact e-mail to send as the Nominatim `email` parameter.",
+            "title": "Email"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "min_interval_ms": {
+            "description": "Minimum interval between two geocoder requests.",
+            "examples": [
+              1000
+            ],
+            "title": "Min Interval Ms",
+            "type": "integer"
+          },
+          "url": {
+            "examples": [
+              "https://nominatim.openstreetmap.org"
+            ],
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "url",
+          "attribution",
+          "min_interval_ms"
+        ],
+        "title": "GeocoderMeta",
+        "type": "object"
+      },
       "HealthResponse": {
         "additionalProperties": false,
         "description": "Readiness report used by the Docker healthcheck and the frontend splash screen.",
         "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the bootstrap failed, when it did (`status` then stays `starting`).",
+            "examples": [
+              "de441.bsp is missing from DATA_DIR and SKYAPI_AUTO_FETCH is false"
+            ],
+            "title": "Detail"
+          },
+          "missing": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Data groups that are absent while `degraded`: `dso`, `constellations`, `mpc` (the endpoints that need them answer 503).",
+            "examples": [
+              [
+                "mpc"
+              ]
+            ],
+            "title": "Missing"
+          },
           "progress": {
             "anyOf": [
               {
@@ -63,7 +1186,7 @@
             ]
           },
           "status": {
-            "description": "`starting` while data is being fetched or loaded, `ready` when every endpoint answers, `degraded` when the API runs with reduced coverage.",
+            "description": "`starting` while data is being fetched or loaded (answered with 503 and `Retry-After`), `ready` when every endpoint answers, `degraded` when optional data is missing and only the affected endpoints answer 503.",
             "enum": [
               "starting",
               "ready",
@@ -90,18 +1213,1164 @@
         ],
         "title": "HealthResponse",
         "type": "object"
+      },
+      "LimitsMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "max_minor_bodies": {
+            "examples": [
+              100
+            ],
+            "title": "Max Minor Bodies",
+            "type": "integer"
+          },
+          "max_samples": {
+            "examples": [
+              64
+            ],
+            "title": "Max Samples",
+            "type": "integer"
+          },
+          "max_step_s": {
+            "$ref": "#/components/schemas/MaxStepMeta"
+          },
+          "max_targets": {
+            "examples": [
+              200
+            ],
+            "title": "Max Targets",
+            "type": "integer"
+          },
+          "speeds": {
+            "description": "Time-lapse speeds offered by the reference frontend (and their negatives).",
+            "examples": [
+              [
+                1,
+                10,
+                60,
+                600,
+                3600,
+                86400,
+                604800,
+                2629800,
+                31557600
+              ]
+            ],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Speeds",
+            "type": "array"
+          }
+        },
+        "required": [
+          "max_samples",
+          "max_minor_bodies",
+          "max_targets",
+          "speeds",
+          "max_step_s"
+        ],
+        "title": "LimitsMeta",
+        "type": "object"
+      },
+      "MaxStepMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "inner_planets": {
+            "examples": [
+              21600
+            ],
+            "title": "Inner Planets",
+            "type": "integer"
+          },
+          "minor": {
+            "examples": [
+              86400
+            ],
+            "title": "Minor",
+            "type": "integer"
+          },
+          "moon": {
+            "examples": [
+              3600
+            ],
+            "title": "Moon",
+            "type": "integer"
+          },
+          "sun_and_outer": {
+            "examples": [
+              86400
+            ],
+            "title": "Sun And Outer",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "moon",
+          "inner_planets",
+          "sun_and_outer",
+          "minor"
+        ],
+        "title": "MaxStepMeta",
+        "type": "object"
+      },
+      "MetaResponse": {
+        "additionalProperties": false,
+        "description": "Body of `GET /meta`: contract version, server time, coverage, catalogs and limits.",
+        "properties": {
+          "api_version": {
+            "description": "Semantic version of the API contract.",
+            "examples": [
+              "1.0.0"
+            ],
+            "title": "Api Version",
+            "type": "string"
+          },
+          "bodies": {
+            "items": {
+              "$ref": "#/components/schemas/BodyMeta"
+            },
+            "title": "Bodies",
+            "type": "array"
+          },
+          "catalogs": {
+            "$ref": "#/components/schemas/CatalogsMeta"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/CoverageMeta"
+          },
+          "ephemeris": {
+            "$ref": "#/components/schemas/EphemerisMeta"
+          },
+          "geocoder": {
+            "$ref": "#/components/schemas/GeocoderMeta"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/LimitsMeta"
+          },
+          "observers": {
+            "items": {
+              "$ref": "#/components/schemas/ObserverMeta"
+            },
+            "title": "Observers",
+            "type": "array"
+          },
+          "server_time": {
+            "$ref": "#/components/schemas/ServerTime"
+          }
+        },
+        "required": [
+          "api_version",
+          "server_time",
+          "ephemeris",
+          "observers",
+          "coverage",
+          "bodies",
+          "catalogs",
+          "geocoder",
+          "limits"
+        ],
+        "title": "MetaResponse",
+        "type": "object"
+      },
+      "MinorBodiesCatalogMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "asteroids": {
+            "examples": [
+              1562091
+            ],
+            "title": "Asteroids",
+            "type": "integer"
+          },
+          "attribution": {
+            "title": "Attribution",
+            "type": "string"
+          },
+          "comets": {
+            "examples": [
+              957
+            ],
+            "title": "Comets",
+            "type": "integer"
+          },
+          "elements_epoch_range_tt": {
+            "description": "TT range of the orbital-element epochs in the MPC tables.",
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Elements Epoch Range Tt",
+            "type": "array"
+          },
+          "license": {
+            "title": "License",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asteroids",
+          "comets",
+          "elements_epoch_range_tt",
+          "license",
+          "attribution"
+        ],
+        "title": "MinorBodiesCatalogMeta",
+        "type": "object"
+      },
+      "MinorBodySummary": {
+        "additionalProperties": false,
+        "description": "One row of `/minor-bodies/search` and `/minor-bodies/defaults` (brief l.152-155).",
+        "properties": {
+          "designation": {
+            "examples": [
+              "(1) Ceres"
+            ],
+            "title": "Designation",
+            "type": "string"
+          },
+          "elements_epoch_tt": {
+            "description": "Epoch of the orbital elements, TT Julian Date.",
+            "title": "Elements Epoch Tt",
+            "type": "number"
+          },
+          "h_mag": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Absolute magnitude H (asteroids).",
+            "title": "H Mag"
+          },
+          "id": {
+            "description": "`a:<number>`, `a:<packed designation>` or `c:<designation>` (URL-safe).",
+            "examples": [
+              "a:1",
+              "c:1P"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "asteroid",
+              "comet"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "examples": [
+              "Ceres"
+            ],
+            "title": "Name"
+          }
+        },
+        "required": [
+          "id",
+          "designation",
+          "kind",
+          "elements_epoch_tt"
+        ],
+        "title": "MinorBodySummary",
+        "type": "object"
+      },
+      "MpcElementsMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "error_years": {
+            "description": "Years beyond which `mpc_unreliable` is raised and samples are null.",
+            "examples": [
+              50
+            ],
+            "title": "Error Years",
+            "type": "integer"
+          },
+          "warn_years": {
+            "description": "Years from the elements epoch beyond which `mpc_extrapolation` is raised.",
+            "examples": [
+              2
+            ],
+            "title": "Warn Years",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "warn_years",
+          "error_years"
+        ],
+        "title": "MpcElementsMeta",
+        "type": "object"
+      },
+      "ObserverMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "approximation_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "iau_rotation_approximate",
+                  "pluto_barycenter",
+                  "delta_t_approximate",
+                  "proper_motion_extrapolated",
+                  "mpc_extrapolation",
+                  "mpc_unreliable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set when the observer is approximated (`pluto_barycenter`).",
+            "examples": [
+              "pluto_barycenter"
+            ],
+            "title": "Approximation Code"
+          },
+          "coverage_tt": {
+            "description": "TT range this observer can be served in (ephemeris and frame kernels).",
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Coverage Tt",
+            "type": "array"
+          },
+          "frame": {
+            "description": "SPICE/IAU frame of the body-fixed coordinates.",
+            "examples": [
+              "IAU_MARS"
+            ],
+            "title": "Frame",
+            "type": "string"
+          },
+          "id": {
+            "enum": [
+              "mercury",
+              "venus",
+              "earth",
+              "moon",
+              "mars",
+              "jupiter",
+              "saturn",
+              "uranus",
+              "neptune",
+              "pluto"
+            ],
+            "examples": [
+              "mars"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "latitude_kind": {
+            "description": "Geodetic (WGS84, Earth) or planetocentric latitude.",
+            "enum": [
+              "geodetic",
+              "planetocentric"
+            ],
+            "title": "Latitude Kind",
+            "type": "string"
+          },
+          "name_key": {
+            "description": "Translation key of the body name.",
+            "examples": [
+              "bodies.mars"
+            ],
+            "title": "Name Key",
+            "type": "string"
+          },
+          "radii_km": {
+            "description": "IAU reference ellipsoid radii (a, b, c) in km.",
+            "examples": [
+              [
+                3396.19,
+                3396.19,
+                3376.2
+              ]
+            ],
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Radii Km",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name_key",
+          "frame",
+          "radii_km",
+          "latitude_kind",
+          "coverage_tt"
+        ],
+        "title": "ObserverMeta",
+        "type": "object"
+      },
+      "Problem": {
+        "additionalProperties": false,
+        "description": "RFC 9457 problem document (`type`, `title`, `status`, `detail`, `instance`, `errors[]`).",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Explanation specific to this occurrence.",
+            "examples": [
+              "unknown body ids: vulcan"
+            ],
+            "title": "Detail"
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ProblemError"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Per-parameter validation errors (400 only).",
+            "title": "Errors"
+          },
+          "instance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Path of the request (never its query string).",
+            "examples": [
+              "/api/v1/sky/frame"
+            ],
+            "title": "Instance"
+          },
+          "range_tt": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Valid TT Julian Date range when the request fell outside data coverage (422).",
+            "examples": [
+              [
+                2396758.5,
+                2506000.5
+              ]
+            ],
+            "title": "Range Tt"
+          },
+          "status": {
+            "description": "HTTP status code.",
+            "examples": [
+              400
+            ],
+            "maximum": 599,
+            "minimum": 400,
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "description": "Short summary of the problem type.",
+            "examples": [
+              "Invalid parameter"
+            ],
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "description": "URI identifying the problem type; every type is documented in docs/api.md.",
+            "examples": [
+              "https://github.com/j-about/InterSidera/blob/master/docs/api.md#problem-invalid-parameter"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status"
+        ],
+        "title": "Problem",
+        "type": "object"
+      },
+      "ProblemError": {
+        "additionalProperties": false,
+        "description": "One invalid input, in pydantic's `loc`/`msg`/`type` vocabulary.",
+        "properties": {
+          "loc": {
+            "description": "Location of the offending value: `query` and the parameter name.",
+            "examples": [
+              [
+                "query",
+                "n"
+              ]
+            ],
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Loc",
+            "type": "array"
+          },
+          "msg": {
+            "description": "Human-readable explanation.",
+            "examples": [
+              "Input should be less than or equal to 64"
+            ],
+            "title": "Msg",
+            "type": "string"
+          },
+          "type": {
+            "description": "Machine-readable error type (pydantic's error type).",
+            "examples": [
+              "less_than_equal"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ProblemError",
+        "type": "object"
+      },
+      "QuaternionSeries": {
+        "additionalProperties": false,
+        "properties": {
+          "q": {
+            "description": "Unit quaternions `[x, y, z, w]` (Hamilton), sign-continuous along the window.",
+            "items": {
+              "maxItems": 4,
+              "minItems": 4,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Q",
+            "type": "array"
+          }
+        },
+        "required": [
+          "q"
+        ],
+        "title": "QuaternionSeries",
+        "type": "object"
+      },
+      "SamplesModel": {
+        "additionalProperties": false,
+        "properties": {
+          "diam_deg": {
+            "description": "Apparent angular diameter, degrees.",
+            "items": {
+              "type": "number"
+            },
+            "title": "Diam Deg",
+            "type": "array"
+          },
+          "dir": {
+            "description": "Apparent ICRF unit vectors observer -> body.",
+            "items": {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Dir",
+            "type": "array"
+          },
+          "dist_au": {
+            "description": "Distance observer -> body, au.",
+            "items": {
+              "type": "number"
+            },
+            "title": "Dist Au",
+            "type": "array"
+          },
+          "mag": {
+            "description": "Apparent V magnitude (null when unknown).",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Mag",
+            "type": "array"
+          },
+          "phase": {
+            "description": "Illuminated fraction in [0, 1].",
+            "items": {
+              "type": "number"
+            },
+            "title": "Phase",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dir",
+          "dist_au",
+          "mag",
+          "phase",
+          "diam_deg"
+        ],
+        "title": "SamplesModel",
+        "type": "object"
+      },
+      "ServerTime": {
+        "additionalProperties": false,
+        "properties": {
+          "tt": {
+            "description": "Server wall clock as a TT Julian Date.",
+            "examples": [
+              2461285.5
+            ],
+            "title": "Tt",
+            "type": "number"
+          },
+          "tt_minus_utc_seconds": {
+            "description": "TT - UTC at that instant (69.184 s in 2026).",
+            "examples": [
+              69.184
+            ],
+            "title": "Tt Minus Utc Seconds",
+            "type": "number"
+          },
+          "utc": {
+            "description": "The same instant in UTC, ISO 8601 with astronomical year numbering.",
+            "examples": [
+              "2026-09-06T12:00:00Z"
+            ],
+            "title": "Utc",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tt",
+          "utc",
+          "tt_minus_utc_seconds"
+        ],
+        "title": "ServerTime",
+        "type": "object"
+      },
+      "StarIndexEntry": {
+        "additionalProperties": false,
+        "description": "One row of `GET /catalogs/stars/index` (brief l.141-142).",
+        "properties": {
+          "con": {
+            "description": "IAU constellation abbreviation.",
+            "examples": [
+              "Ori"
+            ],
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Con",
+            "type": "string"
+          },
+          "hip": {
+            "description": "Hipparcos identifier.",
+            "examples": [
+              27989
+            ],
+            "minimum": 1.0,
+            "title": "Hip",
+            "type": "integer"
+          },
+          "names": {
+            "$ref": "#/components/schemas/StarNames"
+          }
+        },
+        "required": [
+          "hip",
+          "names",
+          "con"
+        ],
+        "title": "StarIndexEntry",
+        "type": "object"
+      },
+      "StarNames": {
+        "additionalProperties": false,
+        "description": "Names of a designated star; every field is optional but at least one is present.",
+        "properties": {
+          "bayer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bayer designation: Greek letter, optional superscript, IAU abbreviation.",
+            "examples": [
+              "α Ori"
+            ],
+            "title": "Bayer"
+          },
+          "flamsteed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Flamsteed designation: number and IAU abbreviation.",
+            "examples": [
+              "58 Ori"
+            ],
+            "title": "Flamsteed"
+          },
+          "proper": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "IAU proper name (HYG `proper`), never translated.",
+            "examples": [
+              "Betelgeuse"
+            ],
+            "title": "Proper"
+          }
+        },
+        "title": "StarNames",
+        "type": "object"
+      },
+      "StarsCatalogMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "attribution": {
+            "title": "Attribution",
+            "type": "string"
+          },
+          "count": {
+            "examples": [
+              117955
+            ],
+            "title": "Count",
+            "type": "integer"
+          },
+          "epoch_tt": {
+            "description": "Catalog epoch, TT Julian Date.",
+            "examples": [
+              2451545.0
+            ],
+            "title": "Epoch Tt",
+            "type": "number"
+          },
+          "etag": {
+            "description": "SHA-256 of `/catalogs/stars` (the header carries it quoted).",
+            "title": "Etag",
+            "type": "string"
+          },
+          "license": {
+            "title": "License",
+            "type": "string"
+          },
+          "magnitude_limit": {
+            "description": "Faintest V magnitude in the catalog.",
+            "title": "Magnitude Limit",
+            "type": "number"
+          },
+          "version": {
+            "description": "Cache format and source hash.",
+            "examples": [
+              "1-0123456789ab"
+            ],
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "version",
+          "etag",
+          "epoch_tt",
+          "magnitude_limit",
+          "license",
+          "attribution"
+        ],
+        "title": "StarsCatalogMeta",
+        "type": "object"
+      },
+      "WarningModel": {
+        "additionalProperties": false,
+        "description": "`{ code, params?, range_tt? }`: a closed list of codes, translated by the frontend.",
+        "properties": {
+          "code": {
+            "enum": [
+              "iau_rotation_approximate",
+              "pluto_barycenter",
+              "delta_t_approximate",
+              "proper_motion_extrapolated",
+              "mpc_extrapolation",
+              "mpc_unreliable"
+            ],
+            "examples": [
+              "delta_t_approximate"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "params": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Numbers a translation may need.",
+            "examples": [
+              {
+                "years": 10000
+              }
+            ],
+            "title": "Params"
+          },
+          "range_tt": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Valid TT range when one exists.",
+            "title": "Range Tt"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "WarningModel",
+        "type": "object"
       }
     }
   },
   "info": {
+    "description": "Stateless, cacheable GET API behind InterSidera: Skyfield is the astronomical authority, clients only rotate, interpolate and apply the corrections it supplies. Angles in degrees, distances in au, times as TT Julian Dates unless suffixed `_utc`. Errors are RFC 9457 problem documents (`application/problem+json`).",
     "title": "InterSidera Sky API",
     "version": "0.1.0"
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/catalogs/constellations": {
+      "get": {
+        "description": "The 88 IAU constellations: Stellarium `modern` line segments as pairs of Hipparcos identifiers (so lines follow the rendered stars), IAU boundary polygons as closed rings of ICRS J2000 `[ra_deg, dec_deg]` vertices (`boundary_parts` lists every ring when a constellation has more than one, Serpens), Latin and genitive names and a label position. Answers 503 while the Stellarium or d3-celestial data is missing (`/health` lists `constellations` in `missing`). Served with `Cache-Control: public, max-age=3600, stale-while-revalidate=86400` and a strong `ETag` (the artifact SHA-256, bare in `/meta.catalogs`); `If-None-Match` -> 304.",
+        "operationId": "get_constellations_api_v1_catalogs_constellations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConstellationsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "304": {
+            "description": "Not modified (`If-None-Match` matched the ETag); `ETag` and `Cache-Control` are repeated, the body is empty."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Data not ready (starting, or degraded for this endpoint); retry after `Retry-After`."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Any other error, as an RFC 9457 problem document."
+          }
+        },
+        "summary": "Constellation lines, boundaries and labels (modern culture)",
+        "tags": [
+          "catalogs"
+        ]
+      }
+    },
+    "/api/v1/catalogs/dso": {
+      "get": {
+        "description": "Every Messier object plus the NGC/IC objects with `mag <= 14` or a major axis of at least 5 arcminutes, J2000 ICRS. `id` is the OpenNGC name without zero padding and with spaces replaced by `_` (`NGC224`, `IC434`, `Mel22`); `messier` carries the Messier number when the object has one; `type` is the OpenNGC class mapped to six values. Answers 503 while the OpenNGC data is missing (`/health` lists `dso` in `missing`). Served with `Cache-Control: public, max-age=3600, stale-while-revalidate=86400` and a strong `ETag` (the artifact SHA-256, bare in `/meta.catalogs`); `If-None-Match` -> 304.",
+        "operationId": "get_dso_api_v1_catalogs_dso_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DsoEntry"
+                  },
+                  "title": "Response Get Dso Api V1 Catalogs Dso Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "304": {
+            "description": "Not modified (`If-None-Match` matched the ETag); `ETag` and `Cache-Control` are repeated, the body is empty."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Data not ready (starting, or degraded for this endpoint); retry after `Retry-After`."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Any other error, as an RFC 9457 problem document."
+          }
+        },
+        "summary": "Deep-sky objects (OpenNGC subset)",
+        "tags": [
+          "catalogs"
+        ]
+      }
+    },
+    "/api/v1/catalogs/stars": {
+      "get": {
+        "description": "Every Hipparcos star with a position, as the little-endian binary format `SKYS` v1 (`application/octet-stream`). Header, 24 bytes: magic `SKYS` (4 bytes), `u32` version = 1, `u32` count `n`, `f64` epoch_tt (2451545.0 = J2000; Hipparcos positions are propagated from J1991.25 by Skyfield at build time), `u32` flags (reserved, 0). Then the columns, packed without padding: `dir` f32[3n] ICRF unit vector at the epoch, `pm` f32[3n] tangential proper-motion velocity in ICRF in radians per Julian year (parallax and radial velocity ignored), `mag` i16[n] Johnson V in millimagnitudes, `bv` i16[n] B-V in millimagnitudes (32767 when unknown), `hip` u32[n] Hipparcos identifier; total 24 + 32 n bytes. Stars are sorted by magnitude ascending, so any prefix is a valid brighter-than subset. Shader rule: `dir(t) = normalize(dir + pm * years_since_epoch)`, then aberration `normalize(dir(t) + observer_velocity / c)`. Served with `Cache-Control: public, max-age=3600, stale-while-revalidate=86400` and a strong `ETag` (the artifact SHA-256, bare in `/meta.catalogs`); `If-None-Match` -> 304.",
+        "operationId": "get_stars_api_v1_catalogs_stars_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {}
+            },
+            "description": "The SKYS v1 file (`24 + 32 n` bytes, `n` in the header)."
+          },
+          "304": {
+            "description": "Not modified (`If-None-Match` matched the ETag); `ETag` and `Cache-Control` are repeated, the body is empty."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Data not ready (starting, or degraded for this endpoint); retry after `Retry-After`."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Any other error, as an RFC 9457 problem document."
+          }
+        },
+        "summary": "Star catalog, binary SKYS v1",
+        "tags": [
+          "catalogs"
+        ]
+      }
+    },
+    "/api/v1/catalogs/stars/index": {
+      "get": {
+        "description": "The stars that carry an IAU proper name, a Bayer or a Flamsteed designation (about 3 400 of the Hipparcos catalog), with their constellation. Proper names are the IAU names and are not translated; `bayer` is the Greek letter with an optional superscript and the IAU abbreviation (`α Ori`), `flamsteed` the number and abbreviation (`58 Ori`). Served with `Cache-Control: public, max-age=3600, stale-while-revalidate=86400` and a strong `ETag` (the artifact SHA-256, bare in `/meta.catalogs`); `If-None-Match` -> 304.",
+        "operationId": "get_stars_index_api_v1_catalogs_stars_index_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StarIndexEntry"
+                  },
+                  "title": "Response Get Stars Index Api V1 Catalogs Stars Index Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "304": {
+            "description": "Not modified (`If-None-Match` matched the ETag); `ETag` and `Cache-Control` are repeated, the body is empty."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Data not ready (starting, or degraded for this endpoint); retry after `Retry-After`."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Any other error, as an RFC 9457 problem document."
+          }
+        },
+        "summary": "Named or designated stars for search and labels",
+        "tags": [
+          "catalogs"
+        ]
+      }
+    },
     "/api/v1/health": {
       "get": {
-        "description": "Reports whether the sky data is loaded. `starting` carries the download progress of the file currently being fetched; `degraded` means the API answers with reduced coverage. Never cached (`Cache-Control: no-store`).",
+        "description": "Reports whether the sky data is loaded. `starting` (HTTP 503 with `Retry-After`) carries the download progress of the file currently being fetched, or `detail` when the bootstrap failed; `degraded` (200) lists the `missing` data groups whose endpoints answer 503; `ready` (200) means every endpoint answers. Never cached (`Cache-Control: no-store`).",
         "operationId": "get_health_api_v1_health_get",
         "responses": {
           "200": {
@@ -113,6 +2382,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Starting: data is being fetched or loaded (`Retry-After`), or the bootstrap failed (`detail`)."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Any other error, as an RFC 9457 problem document."
           }
         },
         "summary": "Readiness of the API and its data",
@@ -120,6 +2409,654 @@
           "health"
         ]
       }
+    },
+    "/api/v1/meta": {
+      "get": {
+        "description": "Everything a client needs before its first sky request, computed once at startup except `server_time` (`tt`, `utc`, `tt_minus_utc_seconds`, read from the server clock on every call). `ephemeris` names the JPL kernel and its TT range; `coverage` gives the ranges the warnings refer to: the ephemeris, the tabulated delta T (`observed_tt` and the end of the IERS predictions), the span the IAU rotation models are fitted to, the proper-motion extrapolation limit in years and the MPC element ages that raise `mpc_extrapolation` (warn) and `mpc_unreliable` (error). `observers[]` lists the ten bodies one can stand on with their body-fixed frame (`ITRS`, `MOON_ME_DE440_ME421`, `IAU_<BODY>`), IAU ellipsoid radii, latitude convention and the TT range the frame and the ephemeris serve; `pluto` is approximated by the Pluto-system barycenter (`approximation_code`). `bodies[]` lists the Sun, planets, Moon and Pluto with the `limits.max_step_s` class that bounds `step_s` when they are requested. `catalogs` describes the star, deep-sky, constellation and minor-body data: counts, cache versions, the bare SHA-256 `etag` the `/catalogs/*` routes send quoted, the star catalog epoch and magnitude limit, licenses and attributions; an entry is absent while its data is missing (`/health` says `degraded`). `geocoder` tells whether Nominatim lookups are enabled, the URL, the contact e-mail to send when configured, the attribution to display and the minimum interval between requests (1000 ms). `limits` carries the request caps (`max_samples` 64, `max_minor_bodies` 100, `max_targets` 200), the time-lapse speeds of the reference frontend and `max_step_s` per body class. Never cached (`Cache-Control: no-store`); 503 with `Retry-After` while the data loads.",
+        "operationId": "get_meta_api_v1_meta_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Data not ready (starting, or degraded for this endpoint); retry after `Retry-After`."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Any other error, as an RFC 9457 problem document."
+          }
+        },
+        "summary": "Contract version, server time, coverage, observers, bodies, catalogs and limits",
+        "tags": [
+          "meta"
+        ]
+      }
+    },
+    "/api/v1/minor-bodies/defaults": {
+      "get": {
+        "description": "At most `limits.max_minor_bodies` (100) entries in the shape of `/minor-bodies/search`: the asteroids with H <= 9 sorted by H (Pluto excluded: it is served as a major body), then the comets whose orbital-element epoch lies within 2 years of the server date, sorted by the proximity of their perihelion to the server date. Depends on the server clock only; `Cache-Control: public, max-age=300`; 503 with `Retry-After` while the MPC data is missing.",
+        "operationId": "default_minor_bodies_api_v1_minor_bodies_defaults_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MinorBodySummary"
+                  },
+                  "title": "Response Default Minor Bodies Api V1 Minor Bodies Defaults Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Data not ready (starting, or degraded for this endpoint); retry after `Retry-After`."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Any other error, as an RFC 9457 problem document."
+          }
+        },
+        "summary": "Default minor bodies ranked by expected brightness",
+        "tags": [
+          "minor-bodies"
+        ]
+      }
+    },
+    "/api/v1/minor-bodies/search": {
+      "get": {
+        "description": "Case-insensitive search over the MPC orbit tables: an exact id (`a:433`, `c:1P`), a bare number (`433`), a short comet form (`1P`), a designation prefix (`2024 YR`, `C/2023`) or a substring of a name (`ceres`, `hale`). Results carry the URL-safe id to use in `/sky/frame` and `/sky/altaz`, the MPC designation, the name when the object has one, the kind, the absolute magnitude H (asteroids) and the epoch of the orbital elements. Name matches are ranked by brightness; at most `limit` entries. Rate-limited per client IP (429 with `Retry-After`); `Cache-Control: public, max-age=300`; 503 with `Retry-After` while the MPC data is missing.",
+        "operationId": "search_minor_bodies_api_v1_minor_bodies_search_get",
+        "parameters": [
+          {
+            "description": "Id, number, designation prefix or name substring; whitespace is collapsed and the match is case-insensitive.",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Id, number, designation prefix or name substring; whitespace is collapsed and the match is case-insensitive.",
+              "examples": [
+                "ceres",
+                "433",
+                "2024 YR",
+                "1P",
+                "C/2023 A3"
+              ],
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum number of results.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "description": "Maximum number of results.",
+              "examples": [
+                20
+              ],
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MinorBodySummary"
+                  },
+                  "title": "Response Search Minor Bodies Api V1 Minor Bodies Search Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid parameter (`errors[]` lists each one)."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Rate limited; retry after `Retry-After` seconds."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Data not ready (starting, or degraded for this endpoint); retry after `Retry-After`."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Any other error, as an RFC 9457 problem document."
+          }
+        },
+        "summary": "Search asteroids and comets by id, designation or name",
+        "tags": [
+          "minor-bodies"
+        ]
+      }
+    },
+    "/api/v1/sky/altaz": {
+      "get": {
+        "description": "Skyfield's apparent altitude and azimuth, ICRS and of-date right ascension and declination for up to 200 targets seen from the observer at `tt`: `hip:<number>`, `dso:<canonical OpenNGC id>` (Messier aliases resolved through the catalog), body ids, `a:<number>` and `c:<designation>`. Bodies and minor bodies also carry `dist_au`, `mag` and `phase` (bodies: `diam_deg` too). Refraction (standard atmosphere) is applied only when requested and only for Earth observers. Rows follow the canonical (sorted) target list and echo the ids as requested. Rate limited per client IP; `Cache-Control: public, max-age=300`.",
+        "operationId": "get_altaz_api_v1_sky_altaz_get",
+        "parameters": [
+          {
+            "description": "Observer body id: `earth`, `moon`, `mercury`, `venus`, `mars`, `jupiter`, `saturn`, `uranus`, `neptune` or `pluto` (the Sun is never an observer).",
+            "in": "query",
+            "name": "body",
+            "required": false,
+            "schema": {
+              "default": "earth",
+              "description": "Observer body id: `earth`, `moon`, `mercury`, `venus`, `mars`, `jupiter`, `saturn`, `uranus`, `neptune` or `pluto` (the Sun is never an observer).",
+              "examples": [
+                "earth"
+              ],
+              "maxLength": 16,
+              "title": "Body",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Observer latitude in degrees (geodetic on Earth, planetocentric elsewhere), canonicalized to 1e-6 degree.",
+            "in": "query",
+            "name": "lat",
+            "required": true,
+            "schema": {
+              "description": "Observer latitude in degrees (geodetic on Earth, planetocentric elsewhere), canonicalized to 1e-6 degree.",
+              "examples": [
+                48.8566
+              ],
+              "maximum": 90.0,
+              "minimum": -90.0,
+              "title": "Lat",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Observer east longitude in degrees within [-360, 360], canonicalized to 1e-6 degree and wrapped into [-180, 180).",
+            "in": "query",
+            "name": "lon",
+            "required": true,
+            "schema": {
+              "description": "Observer east longitude in degrees within [-360, 360], canonicalized to 1e-6 degree and wrapped into [-180, 180).",
+              "examples": [
+                2.3522
+              ],
+              "maximum": 360.0,
+              "minimum": -360.0,
+              "title": "Lon",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Observer elevation above the reference surface in metres, canonicalized to 1 m.",
+            "in": "query",
+            "name": "elev",
+            "required": false,
+            "schema": {
+              "default": 0.0,
+              "description": "Observer elevation above the reference surface in metres, canonicalized to 1 m.",
+              "examples": [
+                35
+              ],
+              "maximum": 100000.0,
+              "minimum": -12000.0,
+              "title": "Elev",
+              "type": "number"
+            }
+          },
+          {
+            "description": "TT Julian Date of the instant, canonicalized to 1e-8 day.",
+            "in": "query",
+            "name": "tt",
+            "required": true,
+            "schema": {
+              "description": "TT Julian Date of the instant, canonicalized to 1e-8 day.",
+              "examples": [
+                2461285.5
+              ],
+              "title": "Tt",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Comma-separated targets (`hip:<number>`, `dso:<id>`, body id, `a:<..>`, `c:<..>`), at most 200.",
+            "in": "query",
+            "name": "targets",
+            "required": true,
+            "schema": {
+              "description": "Comma-separated targets (`hip:<number>`, `dso:<id>`, body id, `a:<..>`, `c:<..>`), at most 200.",
+              "examples": [
+                "hip:32349,moon,dso:NGC224,a:1,c:1P"
+              ],
+              "maxLength": 8192,
+              "title": "Targets",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Apply Skyfield's standard-atmosphere refraction (Earth observers only).",
+            "in": "query",
+            "name": "refraction",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Apply Skyfield's standard-atmosphere refraction (Earth observers only).",
+              "examples": [
+                false
+              ],
+              "title": "Refraction",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AltAzEntry"
+                  },
+                  "title": "Response Get Altaz Api V1 Sky Altaz Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid parameter (`errors[]` lists each one)."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unknown object."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Outside data coverage; `range_tt` carries the valid TT range."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Rate limited; retry after `Retry-After` seconds."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Data not ready (starting, or degraded for this endpoint); retry after `Retry-After`."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Any other error, as an RFC 9457 problem document."
+          }
+        },
+        "summary": "Authoritative alt/az and RA/Dec of targets at one instant",
+        "tags": [
+          "sky"
+        ]
+      }
+    },
+    "/api/v1/sky/frame": {
+      "get": {
+        "description": "One window of `n` samples spaced `step_s` seconds apart from `tt`: the ICRF -> ENU horizon quaternions, the ICRF -> equinox-of-date quaternions, the observer's barycentric velocity, the Sun direction and, per requested body and minor body, the apparent direction, distance, magnitude, illuminated fraction and angular diameter. Parameters are canonicalized before computing and before the cache lookup (coordinates to 1e-6 degree, elevation to 1 m, `tt` to 1e-8 day, lists sorted and de-duplicated) and the canonical values are echoed. `step_s` is clamped to the smallest per-class maximum among the requested bodies (`/meta.limits.max_step_s`) and the value used is reported. `n * (bodies + minor)` may not exceed 4096. Hard coverage limits (ephemeris, observer frame) answer 422 with the valid range; soft ones are `warnings`. Rate limited per client IP; `Cache-Control: public, max-age=300`; `Server-Timing` reports the compute time and the cache outcome.",
+        "operationId": "get_frame_api_v1_sky_frame_get",
+        "parameters": [
+          {
+            "description": "Observer body id: `earth`, `moon`, `mercury`, `venus`, `mars`, `jupiter`, `saturn`, `uranus`, `neptune` or `pluto` (the Sun is never an observer).",
+            "in": "query",
+            "name": "body",
+            "required": false,
+            "schema": {
+              "default": "earth",
+              "description": "Observer body id: `earth`, `moon`, `mercury`, `venus`, `mars`, `jupiter`, `saturn`, `uranus`, `neptune` or `pluto` (the Sun is never an observer).",
+              "examples": [
+                "earth"
+              ],
+              "maxLength": 16,
+              "title": "Body",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Observer latitude in degrees (geodetic on Earth, planetocentric elsewhere), canonicalized to 1e-6 degree.",
+            "in": "query",
+            "name": "lat",
+            "required": true,
+            "schema": {
+              "description": "Observer latitude in degrees (geodetic on Earth, planetocentric elsewhere), canonicalized to 1e-6 degree.",
+              "examples": [
+                48.8566
+              ],
+              "maximum": 90.0,
+              "minimum": -90.0,
+              "title": "Lat",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Observer east longitude in degrees within [-360, 360], canonicalized to 1e-6 degree and wrapped into [-180, 180).",
+            "in": "query",
+            "name": "lon",
+            "required": true,
+            "schema": {
+              "description": "Observer east longitude in degrees within [-360, 360], canonicalized to 1e-6 degree and wrapped into [-180, 180).",
+              "examples": [
+                2.3522
+              ],
+              "maximum": 360.0,
+              "minimum": -360.0,
+              "title": "Lon",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Observer elevation above the reference surface in metres, canonicalized to 1 m.",
+            "in": "query",
+            "name": "elev",
+            "required": false,
+            "schema": {
+              "default": 0.0,
+              "description": "Observer elevation above the reference surface in metres, canonicalized to 1 m.",
+              "examples": [
+                35
+              ],
+              "maximum": 100000.0,
+              "minimum": -12000.0,
+              "title": "Elev",
+              "type": "number"
+            }
+          },
+          {
+            "description": "TT Julian Date of the first sample, canonicalized to 1e-8 day; any finite value is accepted and the data coverage decides (422 outside it).",
+            "in": "query",
+            "name": "tt",
+            "required": true,
+            "schema": {
+              "description": "TT Julian Date of the first sample, canonicalized to 1e-8 day; any finite value is accepted and the data coverage decides (422 outside it).",
+              "examples": [
+                2461285.5
+              ],
+              "title": "Tt",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Seconds between samples; clamped to the requested bodies' class maximum and echoed in `time.step_s`.",
+            "in": "query",
+            "name": "step_s",
+            "required": false,
+            "schema": {
+              "default": 60,
+              "description": "Seconds between samples; clamped to the requested bodies' class maximum and echoed in `time.step_s`.",
+              "examples": [
+                300
+              ],
+              "maximum": 31557600,
+              "minimum": 1,
+              "title": "Step S",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of samples.",
+            "in": "query",
+            "name": "n",
+            "required": false,
+            "schema": {
+              "default": 32,
+              "description": "Number of samples.",
+              "examples": [
+                32
+              ],
+              "maximum": 64,
+              "minimum": 1,
+              "title": "N",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "`all` (every body but the observer's own) or a comma-separated list of body ids; naming the observer's body is a 400.",
+            "in": "query",
+            "name": "bodies",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "description": "`all` (every body but the observer's own) or a comma-separated list of body ids; naming the observer's body is a 400.",
+              "examples": [
+                "all",
+                "moon,mars,jupiter"
+              ],
+              "maxLength": 256,
+              "title": "Bodies",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated minor-body ids (`a:<number>`, `a:<packed designation>`, `c:<designation>`), at most 100.",
+            "in": "query",
+            "name": "minor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4096,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated minor-body ids (`a:<number>`, `a:<packed designation>`, `c:<designation>`), at most 100.",
+              "examples": [
+                "a:1,c:1P"
+              ],
+              "title": "Minor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrameResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid parameter (`errors[]` lists each one)."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unknown object."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Outside data coverage; `range_tt` carries the valid TT range."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Rate limited; retry after `Retry-After` seconds."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Data not ready (starting, or degraded for this endpoint); retry after `Retry-After`."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Any other error, as an RFC 9457 problem document."
+          }
+        },
+        "summary": "Sky frame: rotations and body samples over a time window",
+        "tags": [
+          "sky"
+        ]
+      }
     }
-  }
+  },
+  "tags": [
+    {
+      "description": "Readiness of the API and its data (`no-store`).",
+      "name": "health"
+    },
+    {
+      "description": "Contract version, coverage ranges, observers, bodies, catalogs, limits.",
+      "name": "meta"
+    },
+    {
+      "description": "Prebuilt star, deep-sky and constellation catalogs served from cache files with a content-hash ETag (`If-None-Match` -> 304, `max-age=3600`).",
+      "name": "catalogs"
+    },
+    {
+      "description": "Search and default lists of asteroids and comets.",
+      "name": "minor-bodies"
+    },
+    {
+      "description": "Compute endpoints: sky frames (rotations and body samples over a time window) and authoritative alt/az values; rate-limited per client IP, `max-age=300`.",
+      "name": "sky"
+    }
+  ]
 }

@@ -11,8 +11,8 @@ from collections.abc import Sequence
 import numpy as np
 from numpy.typing import NDArray
 
-from skyapi.catalogs.state import CatalogState
-from skyapi.models.catalogs import ConstellationEntry
+from skyapi.catalogs.state import CatalogState, CatalogUnavailableError
+from skyapi.models.catalogs import ConstellationEntry, ConstellationsResponse
 
 
 class UnknownConstellationError(LookupError):
@@ -21,8 +21,15 @@ class UnknownConstellationError(LookupError):
         self.abbr = abbr
 
 
+def constellation_catalog(state: CatalogState) -> ConstellationsResponse:
+    """The loaded constellations, or `CatalogUnavailableError` when the data is missing."""
+    if state.constellations is None:
+        raise CatalogUnavailableError("constellations")
+    return state.constellations
+
+
 def constellation_by_abbr(state: CatalogState, abbr: str) -> ConstellationEntry:
-    for entry in state.constellations.constellations:
+    for entry in constellation_catalog(state).constellations:
         if entry.abbr == abbr:
             return entry
     raise UnknownConstellationError(abbr)
@@ -68,7 +75,7 @@ def ring_contains(ring: Sequence[tuple[float, float]], ra_deg: float, dec_deg: f
 def constellation_at(state: CatalogState, ra_deg: float, dec_deg: float) -> str | None:
     """IAU abbreviation of the constellation containing the ICRS J2000 position, if any."""
     ra = ra_deg % 360.0
-    for entry in state.constellations.constellations:
+    for entry in constellation_catalog(state).constellations:
         rings = entry.boundary_parts if entry.boundary_parts is not None else [entry.boundary]
         if any(ring_contains(ring, ra, dec_deg) for ring in rings):
             return entry.abbr

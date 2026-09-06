@@ -1,16 +1,17 @@
-"""Frozen in-memory view of the catalog caches, loaded once at startup (D33, brief l.535).
+"""Frozen in-memory view of the catalog caches, loaded once at startup (D33, D53, brief l.535).
 
 `load_catalog_state(cache)` reads the artifacts written by `catalogs/builders.py` under
-`DATA_DIR/cache` and the artifact identities (`sha256` = ETag, `version`) from
-`cache/manifest.json` when `data/caches.py` has written it. Nothing here recomputes astronomy.
+`DATA_DIR/cache` and the artifact identities (`sha256` = ETag, `version`, `count`, `meta`) from
+`cache/manifest.json` when `data/caches.py` has written it. The star artifacts are mandatory;
+the DSO and constellation artifacts are optional (`None` when absent: the API is degraded for
+them, brief l.280). Nothing here recomputes astronomy.
 """
 
-import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
@@ -18,24 +19,36 @@ from pydantic import TypeAdapter
 
 from skyapi.catalogs.artifacts import CachePaths
 from skyapi.catalogs.formats import StarTable, read_skys
+from skyapi.data.caches import CacheError, CacheManifest, MetaValue
 from skyapi.models.catalogs import ConstellationsResponse, DsoEntry, StarIndexEntry
 
 _DSO_ADAPTER: TypeAdapter[list[DsoEntry]] = TypeAdapter(list[DsoEntry])
 _INDEX_ADAPTER: TypeAdapter[list[StarIndexEntry]] = TypeAdapter(list[StarIndexEntry])
 _MESSIER_NAME = re.compile(r"^M(\d+)$")
+_NO_META: Mapping[str, MetaValue] = MappingProxyType({})
 
 
 class CatalogStateError(RuntimeError):
     """A cache artifact is missing or malformed: run `sky-data build-caches`."""
 
 
+class CatalogUnavailableError(RuntimeError):
+    """An optional catalog is not loaded (its data is missing): the API is degraded for it."""
+
+    def __init__(self, name: str) -> None:
+        super().__init__(f"the {name} catalog is not loaded: its data is missing (degraded)")
+        self.name = name
+
+
 @dataclass(frozen=True, slots=True)
 class ArtifactIdentity:
-    """What `/meta.catalogs.<name>` and the ETag need from `cache/manifest.json` (D33)."""
+    """What `/meta.catalogs.<name>` and the ETag need from `cache/manifest.json` (D33, D53)."""
 
     sha256: str
     version: str
     declared_license: str | None = None
+    count: int = 0
+    meta: Mapping[str, MetaValue] = _NO_META
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,8 +65,10 @@ class CatalogState:
     hipparcos: pd.DataFrame
     """Indexed by `hip`, with `ra_hours` added so `Star.from_dataframe` works on any row set."""
     star_index: tuple[StarIndexEntry, ...]
-    dso: DsoCatalog
-    constellations: ConstellationsResponse
+    dso: DsoCatalog | None
+    """`None` when the OpenNGC data is missing (degraded)."""
+    constellations: ConstellationsResponse | None
+    """`None` when the Stellarium or d3-celestial data is missing (degraded)."""
     identities: Mapping[str, ArtifactIdentity]
     """Per artifact name; empty when `cache/manifest.json` is absent."""
 
@@ -89,45 +104,49 @@ def build_dso_catalog(entries: list[DsoEntry]) -> DsoCatalog:
 
 
 def read_identities(manifest_path: Path) -> Mapping[str, ArtifactIdentity]:
-    """`artifacts.{name}.{sha256, version, declared_license?}` from `cache/manifest.json`."""
-    if not manifest_path.is_file():
+    """Artifact identities from `cache/manifest.json` (empty when the caches were never built)."""
+    try:
+        manifest = CacheManifest.load(manifest_path)
+    except CacheError as exc:
+        raise CatalogStateError(str(exc)) from exc
+    if manifest is None:
         return {}
-    document: object = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(document, dict):
-        raise CatalogStateError(f"{manifest_path}: expected a JSON object")
-    artifacts: object = document.get("artifacts", {})  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
-    if not isinstance(artifacts, dict):
-        raise CatalogStateError(f"{manifest_path}: `artifacts` must be an object")
-    identities: dict[str, ArtifactIdentity] = {}
-    for name, record in artifacts.items():  # pyright: ignore[reportUnknownVariableType]
-        if not isinstance(record, dict):
-            raise CatalogStateError(f"{manifest_path}: artifact {name!r} must be an object")
-        typed: dict[str, Any] = {str(key): value for key, value in record.items()}  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
-        license_value = typed.get("declared_license")
-        identities[str(name)] = ArtifactIdentity(  # pyright: ignore[reportUnknownArgumentType]
-            sha256=str(typed["sha256"]),
-            version=str(typed["version"]),
-            declared_license=str(license_value) if license_value is not None else None,
+    return {
+        name: ArtifactIdentity(
+            sha256=record.sha256,
+            version=record.version,
+            declared_license=record.declared_license,
+            count=record.count,
+            meta=record.meta,
         )
-    return identities
+        for name, record in manifest.artifacts.items()
+    }
 
 
 def load_catalog_state(cache: CachePaths) -> CatalogState:
-    """Load every catalog artifact from the cache directory (`CatalogStateError` when missing)."""
+    """Load the catalog artifacts (`CatalogStateError` when a star artifact is missing).
+
+    The DSO and constellation artifacts are optional: absent files leave the corresponding
+    field `None` so the API can run degraded (brief l.280).
+    """
     stars = read_skys(_require(cache.stars_skys).read_bytes())
     if not np.all(stars.mag[1:] >= stars.mag[:-1]):
         raise CatalogStateError(f"{cache.stars_skys.name}: not sorted by magnitude")
     hipparcos = load_hipparcos_table(cache.hipparcos_parquet)
     star_index = _INDEX_ADAPTER.validate_json(_require(cache.stars_index).read_bytes())
-    dso_entries = _DSO_ADAPTER.validate_json(_require(cache.dso_json).read_bytes())
-    constellations = ConstellationsResponse.model_validate_json(
-        _require(cache.constellations_json).read_bytes()
-    )
+    dso: DsoCatalog | None = None
+    if cache.dso_json.is_file():
+        dso = build_dso_catalog(_DSO_ADAPTER.validate_json(cache.dso_json.read_bytes()))
+    constellations: ConstellationsResponse | None = None
+    if cache.constellations_json.is_file():
+        constellations = ConstellationsResponse.model_validate_json(
+            cache.constellations_json.read_bytes()
+        )
     return CatalogState(
         stars=stars,
         hipparcos=hipparcos,
         star_index=tuple(star_index),
-        dso=build_dso_catalog(dso_entries),
+        dso=dso,
         constellations=constellations,
         identities=read_identities(cache.manifest),
     )

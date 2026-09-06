@@ -56,6 +56,9 @@ class ServerBehaviour:
     truncate_at: int | None = None
     """Send only this many body bytes to the next request, then close the connection."""
     allow_head: bool = True
+    hold: threading.Event | None = None
+    """Send the headers and the first KiB, then block until the event is set (progress tests)."""
+    hold_prefix_bytes: int = 1024
 
 
 class LocalServer:
@@ -210,6 +213,13 @@ class _Handler(BaseHTTPRequestHandler):
             self.wfile.flush()
             self.close_connection = True
             return
+        hold = behaviour.hold
+        if hold is not None:
+            prefix = min(behaviour.hold_prefix_bytes, len(body))
+            self.wfile.write(body[:prefix])
+            self.wfile.flush()
+            hold.wait(timeout=60)
+            body = body[prefix:]
         self.wfile.write(body)
 
     def _send_text(self, status: int, text: str) -> None:

@@ -67,6 +67,7 @@ check-backend:
 	$(PY) ruff format --check --config pyproject.toml ../scripts
 	$(PY) ruff check --config pyproject.toml ../scripts
 	$(PYNODE) pyright
+	$(PYNODE) pyright ../scripts/bench_api.py ../scripts/generate_fixtures.py
 	$(PY) pytest -m "not slow" --cov=skyapi.astro --cov=skyapi.catalogs --cov-report=term-missing:skip-covered
 	$(PY) coverage report --include='src/skyapi/astro/*' --fail-under=90
 	$(PY) coverage report --include='src/skyapi/catalogs/*' --fail-under=90

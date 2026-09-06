@@ -10,7 +10,7 @@ Moon and Pluto.
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -23,12 +23,12 @@ from skyfield.vectorlib import VectorFunction
 from skyapi.astro.observers import Observer, ensure_coverage
 from skyapi.astro.samples import Samples
 from skyapi.astro.sampling import step_class
+from skyapi.models.meta import BodyKind
 
 if TYPE_CHECKING:
     from skyapi.astro.state import AstroState
 
 Float64Array = NDArray[np.float64]
-BodyKind = Literal["star", "planet", "dwarf_planet", "moon"]
 
 
 @dataclass(frozen=True, slots=True)

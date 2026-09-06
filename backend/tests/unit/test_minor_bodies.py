@@ -4,17 +4,22 @@ import io
 
 import numpy as np
 import pytest
-from skyfield.constants import GM_SUN_DE440_km3_s2
+from skyfield.constants import AU_KM, GM_SUN_DE440_km3_s2
 from skyfield.data import mpc
 from skyfield.jpllib import SpiceKernel
+from skyfield.timelib import Time
 from skyfield.units import Angle
+from skyfield.vectorlib import VectorFunction
 
 from skyapi.astro.frames import CoverageError
 from skyapi.astro.minor_bodies import (
+    MPC_ERROR_YEARS,
     MinorBodyIndex,
     MinorBodyState,
     OrbitCache,
+    StackedOrbits,
     UnknownMinorBodyError,
+    comet_magnitude,
     defaults,
     hg_magnitude,
     minor_body_samples,
@@ -146,12 +151,18 @@ def test_orbit_for_matches_skyfield_recipe(
 ) -> None:
     earth = de440s_kernel["earth"]
     t = mpc_state.ts.tt_jd(CERES_EPOCH_TT + np.array([0.0, 30.0, 200.0]))
-    orbit, row = orbit_for(mpc_state, "a:1")
+    entry = orbit_for(mpc_state, "a:1")
+    orbit, row = entry.vector, entry.row
     assert row.designation == "(1) Ceres"
     assert row.name == "Ceres"
     assert row.kind == "asteroid"
     assert row.h_mag == pytest.approx(3.34)
     assert row.slope_g == pytest.approx(0.15)
+    assert entry.epoch.epoch_tt == CERES_EPOCH_TT
+    assert entry.epoch.position_au.shape == (3,)
+    assert entry.epoch.velocity_au_d.shape == (3,)
+    assert 2.5 < float(np.linalg.norm(entry.epoch.position_au)) < 3.0  # Ceres: a = 2.77 au
+    assert entry.epoch.mu_au3_d2 == pytest.approx(GM_SUN_DE440_km3_s2 * 86400.0**2 / AU_KM**3)
     ours = earth.at(t).observe(orbit).apparent()
     reference = earth.at(t).observe(_reference_ceres(mpc_excerpts, mpc_state)).apparent()
     separation = ours.separation_from(reference)
@@ -162,7 +173,8 @@ def test_orbit_for_matches_skyfield_recipe(
 
 
 def test_orbit_for_comet(mpc_state: MinorBodyState) -> None:
-    orbit, row = orbit_for(mpc_state, "c:1P")
+    entry = orbit_for(mpc_state, "c:1P")
+    orbit, row = entry.vector, entry.row
     assert row.kind == "comet"
     assert row.name == "Halley"
     assert row.magnitude_g == pytest.approx(5.5)
@@ -175,7 +187,8 @@ def test_orbit_for_comet(mpc_state: MinorBodyState) -> None:
 def test_orbit_for_unnumbered_asteroid(mpc_state: MinorBodyState) -> None:
     body_id = search(mpc_state.index, "2024")[0].id
     assert body_id.startswith("a:K24")
-    orbit, row = orbit_for(mpc_state, body_id)
+    entry = orbit_for(mpc_state, body_id)
+    orbit, row = entry.vector, entry.row
     assert row.kind == "asteroid"
     assert row.name is None
     assert row.designation.startswith("2024")
@@ -198,17 +211,18 @@ def test_orbit_cache_hits_on_second_call(mpc_state: MinorBodyState) -> None:
         sun=mpc_state.sun,
         orbits=OrbitCache(capacity=2),
     )
-    first, row_first = orbit_for(state, "a:1")
-    second, row_second = orbit_for(state, "a:1")
+    first = orbit_for(state, "a:1")
+    second = orbit_for(state, "a:1")
     assert second is first
-    assert row_second is row_first
+    assert second.vector is first.vector
+    assert second.row is first.row
     assert len(state.orbits) == 1
     orbit_for(state, "a:4")
     orbit_for(state, "c:1P")  # evicts the least recently used entry (a:1)
     assert len(state.orbits) == 2
     assert state.orbits.get("a:1") is None
     assert state.orbits.get("a:4") is not None
-    third, _ = orbit_for(state, "a:1")
+    third = orbit_for(state, "a:1")
     assert third is not first
 
 
@@ -338,3 +352,105 @@ def test_extrapolation_warnings(mpc_state: MinorBodyState, de440s_kernel: SpiceK
     mixed = minor_body_samples(mpc_state, earth, window, ["a:1"])["a:1"]
     assert mixed.extrapolation_years == pytest.approx(2.5)
     assert [w.code for w in mixed.warnings] == ["mpc_extrapolation"]
+
+
+# --------------------------------------------------------------------------- batched (D69)
+
+
+def _reference_samples(
+    state: MinorBodyState, observer_vector: VectorFunction, t: Time, body_id: str
+) -> dict[str, np.ndarray]:
+    """The per-body recipe: one `observe(sun + orbit).apparent()` per body, as before D69."""
+    entry = orbit_for(state, body_id)
+    observer = observer_vector.at(t)
+    apparent = observer.observe(entry.vector).apparent()
+    xyz = np.asarray(apparent.xyz.au, dtype=np.float64).reshape(3, -1)
+    delta_au = np.linalg.norm(xyz, axis=0)
+    phase_angle = np.atleast_1d(np.asarray(apparent.phase_angle(state.sun).radians))
+    observer_xyz = np.asarray(observer.xyz.au, dtype=np.float64).reshape(3, -1)
+    sun_xyz = np.asarray(state.sun.at(t).xyz.au, dtype=np.float64).reshape(3, -1)
+    r_au = np.linalg.norm(observer_xyz + xyz - sun_xyz, axis=0)
+    row = entry.row
+    if row.kind == "comet":
+        if row.magnitude_g is None or row.magnitude_k is None:
+            mag = np.full(delta_au.shape, np.nan)
+        else:
+            mag = comet_magnitude(row.magnitude_g, row.magnitude_k, r_au, delta_au)
+    elif row.h_mag is None:
+        mag = np.full(delta_au.shape, np.nan)
+    else:
+        slope = 0.15 if row.slope_g is None else row.slope_g
+        mag = hg_magnitude(row.h_mag, slope, r_au, delta_au, phase_angle)
+    return {
+        "dir": (xyz / delta_au).T,
+        "dist_au": delta_au,
+        "phase": 0.5 * (1.0 + np.cos(phase_angle)),
+        "mag": mag,
+    }
+
+
+def test_batched_samples_match_the_per_body_recipe(
+    mpc_state: MinorBodyState, de440s_kernel: SpiceKernel
+) -> None:
+    # Every excerpt body (24 asteroids, 19 comets: elliptic, hyperbolic and parabolic orbits,
+    # epochs from 1947 to 2026) in one stack; bodies beyond MPC_ERROR_YEARS stay `None`.
+    ids = [value.decode("ascii") for value in mpc_state.index.ids]
+    earth = de440s_kernel["earth"]
+    t = mpc_state.ts.tt_jd(CERES_EPOCH_TT + np.linspace(0.0, 3.0, 4))
+    batched = minor_body_samples(mpc_state, earth, t, ids)
+    assert list(batched) == ids
+    reliable = 0
+    for body_id in ids:
+        result = batched[body_id]
+        if result.extrapolation_years > MPC_ERROR_YEARS:
+            assert result.samples is None
+            continue
+        reliable += 1
+        assert result.samples is not None
+        reference = _reference_samples(mpc_state, earth, t, body_id)
+        assert np.allclose(result.samples.dir, reference["dir"], rtol=0.0, atol=1e-9), body_id
+        assert np.allclose(result.samples.dist_au, reference["dist_au"], rtol=0.0, atol=1e-9)
+        assert np.allclose(result.samples.phase, reference["phase"], rtol=0.0, atol=1e-9)
+        assert np.allclose(
+            result.samples.mag, reference["mag"], rtol=0.0, atol=1e-9, equal_nan=True
+        ), body_id
+    assert reliable >= 30
+    assert reliable < len(ids)  # the 1947 comet fragment is unreliable at this epoch
+
+
+def test_batched_samples_with_a_scalar_time_and_duplicate_ids(
+    mpc_state: MinorBodyState, de440s_kernel: SpiceKernel
+) -> None:
+    earth = de440s_kernel["earth"]
+    t = mpc_state.ts.tt_jd(CERES_EPOCH_TT)
+    out = minor_body_samples(mpc_state, earth, t, ["a:4", "a:1", "a:4"])
+    assert list(out) == ["a:4", "a:1"]
+    vesta = out["a:4"].samples
+    assert vesta is not None
+    assert vesta.dir.shape == (1, 3)
+    reference = _reference_samples(mpc_state, earth, t, "a:4")
+    assert np.allclose(vesta.dir, reference["dir"], atol=1e-9)
+    assert minor_body_samples(mpc_state, earth, t, []) == {}
+
+
+def test_stacked_orbits_shape_checks(mpc_state: MinorBodyState) -> None:
+    ceres = orbit_for(mpc_state, "a:1").epoch
+    vesta = orbit_for(mpc_state, "a:4").epoch
+    stacked = StackedOrbits(mpc_state.sun, [ceres, vesta])
+    assert stacked.center == 0
+    assert stacked.target is stacked
+    assert stacked.count == 2
+    t = mpc_state.ts.tt_jd(CERES_EPOCH_TT + np.array([0.0, 1.0, 0.0, 1.0]))
+    position, velocity, gcrs, message = stacked._at(t)
+    assert position.shape == velocity.shape == (3, 4)
+    assert gcrs is None
+    assert message is None
+    # Orbit 0 occupies the first row of dates, orbit 1 the second: at its epoch each body sits
+    # at its cached epoch state plus the Sun.
+    sun = np.asarray(mpc_state.sun.at(t).xyz.au)
+    assert np.allclose(position[:, 0] - sun[:, 0], ceres.position_au, atol=1e-12)
+    assert np.allclose(position[:, 2] - sun[:, 2], vesta.position_au, atol=1e-12)
+    with pytest.raises(ValueError, match="multiple of 2"):
+        stacked._at(mpc_state.ts.tt_jd(CERES_EPOCH_TT + np.array([0.0, 1.0, 2.0])))
+    with pytest.raises(ValueError, match="at least one"):
+        StackedOrbits(mpc_state.sun, [])

@@ -850,6 +850,7 @@ def build_star_fixture(state: object, data_dir: Path, generated_at: str) -> dict
     rows: the rule is per star, so the values equal the full catalog build's bit for bit.
     """
     import numpy as np
+    import pandas as pd
     from skyfield.positionlib import SSB
 
     from skyapi.astro.stars import hipparcos_star
@@ -874,6 +875,9 @@ def build_star_fixture(state: object, data_dir: Path, generated_at: str) -> dict
     for hip, name in TEST_STARS.items():
         star = hipparcos_star(ts, hipparcos, hip)
         row = hipparcos.loc[hip]
+        # Typing only: `hip` is the unique index of the table, so `.loc[hip]` is always a row.
+        if not isinstance(row, pd.Series):
+            raise FixtureError(f"HIP {hip} is not unique in {hip_main.name}")
         index = int(np.flatnonzero(table.hip == np.uint32(hip))[0])
         samples: list[dict[str, object]] = []
         for epoch, t in zip(STAR_EPOCHS_TT, times, strict=True):
@@ -929,6 +933,8 @@ def build_star_fixture(state: object, data_dir: Path, generated_at: str) -> dict
 
 def build_frames_fixture(state: object, generated_at: str) -> dict[str, object]:
     """`skyfield_frames.json`: the `/sky/frame` quantities of three windows, one per body kind."""
+    import numpy as np
+
     from skyapi.astro import bodies, horizon
     from skyapi.astro.observers import build_observer
     from skyapi.astro.state import AstroState
@@ -961,7 +967,8 @@ def build_frames_fixture(state: object, generated_at: str) -> dict[str, object]:
                 "calendar_tt0": calendar_tt(spec.tt0),
                 "step_s": spec.step_s,
                 "n": spec.n,
-                "tt": [float(value) for value in t.tt],
+                # `Time.tt` is typed float-or-array; the window always holds `n` samples.
+                "tt": [float(value) for value in np.atleast_1d(np.asarray(t.tt, dtype=np.float64))],
                 "horizon_q": sig_list(horizon.horizon_quaternions(observer, t).tolist()),
                 "equinox_q": sig_list(horizon.equinox_of_date_quaternions(t).tolist()),
                 "observer_velocity_au_d": sig_list(
