@@ -6,7 +6,8 @@ import fr from './fr.json';
 
 // Resources are bundled inline, so `init` resolves synchronously and its promise carries nothing
 // we need: `void` it explicitly (strictTypeChecked forbids floating promises, plan D19).
-// Language detection and the URL `lang` parameter arrive with the UI at M4.
+// The URL `lang` parameter is applied by main.tsx before the first render (M3); detection from
+// `navigator.languages` and the manual toggle arrive with the UI at M4.
 void i18next.use(initReactI18next).init({
   resources: { en: { translation: en }, fr: { translation: fr } },
   lng: 'en',

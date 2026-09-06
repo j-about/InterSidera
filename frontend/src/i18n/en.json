@@ -2,5 +2,22 @@
   "app": {
     "title": "InterSidera",
     "tagline": "The sky as seen from anywhere in the Solar System, at any time."
+  },
+  "canvas": {
+    "label": "Sky view"
+  },
+  "boot": {
+    "connecting": "Connecting to the sky service…",
+    "starting": "The sky service is starting…",
+    "downloading": "Downloading {{file}} ({{percent}}%)…",
+    "downloadingBytes": "Downloading {{file}} ({{mb}} MB so far)…",
+    "failed": "The sky service failed: {{detail}}",
+    "meta": "Reading the sky service description…",
+    "catalogs": "Loading the star catalogs…",
+    "frame": "Computing the first sky positions…",
+    "unreachable": "The sky service cannot be reached; retrying in {{seconds}} s…"
+  },
+  "engine": {
+    "unsupported": "This browser offers neither WebGPU nor WebGL2, so the sky cannot be rendered. Please use a current browser with hardware acceleration enabled."
   }
 }

@@ -2,6 +2,11 @@ import { defineConfig, devices } from '@playwright/test';
 
 const isCI = !!process.env.CI;
 
+// The WebGPU project asserts the WebGPU backend; every other project drives WebGL2 and ignores
+// that spec (plan D89). Headless WebGPU on the CI runner is unmeasured, so `chromium-webgpu` is
+// configured but not part of the CI project list (docs/testing.md, maintainer question 16).
+const webgpuSpec = /webgpu\.spec\.ts/;
+
 // https://playwright.dev/docs/test-configuration
 export default defineConfig({
   testDir: './e2e',
@@ -18,16 +23,27 @@ export default defineConfig({
   },
   // Desktop, mobile emulation and WebKit (brief l.410). No WebGL flags: Playwright already passes
   // --enable-unsafe-swiftshader to headless Chromium.
-  // M3 adds a WebGPU project (headless WebGPU flags measured there, brief l.540).
   projects: [
-    { name: 'chromium-desktop', use: { ...devices['Desktop Chrome'] } },
-    { name: 'chromium-mobile', use: { ...devices['Pixel 7'] } },
-    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
+    { name: 'chromium-desktop', testIgnore: webgpuSpec, use: { ...devices['Desktop Chrome'] } },
+    { name: 'chromium-mobile', testIgnore: webgpuSpec, use: { ...devices['Pixel 7'] } },
+    { name: 'webkit', testIgnore: webgpuSpec, use: { ...devices['Desktop Safari'] } },
+    {
+      // Full Chromium in new headless mode (the headless shell has no WebGPU) with the SwiftShader
+      // fallback adapter allowed (brief l.540, l.407).
+      name: 'chromium-webgpu',
+      testMatch: webgpuSpec,
+      use: {
+        ...devices['Desktop Chrome'],
+        channel: 'chromium',
+        launchOptions: { args: ['--enable-unsafe-webgpu', '--use-webgpu-adapter=swiftshader'] },
+      },
+    },
   ],
   webServer: [
     {
       // The API on de440s without downloads (brief l.428); `uv run` inside backend/ so
-      // fastapi-cli finds `[tool.fastapi] entrypoint` in that pyproject.
+      // fastapi-cli finds `[tool.fastapi] entrypoint` in that pyproject. Playwright waits while
+      // `/health` answers 503 `starting`.
       command: 'uv run fastapi run --host 127.0.0.1 --port 8000',
       cwd: '../backend',
       url: 'http://127.0.0.1:8000/api/v1/health',
@@ -36,6 +52,8 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
+      // Serves the e2e build (`npm run build:e2e`, `import.meta.env.MODE === 'e2e'`), the only
+      // build that exposes `window.__sky` (brief l.410).
       command: 'npm run preview',
       url: 'http://127.0.0.1:4173',
       reuseExistingServer: !isCI,

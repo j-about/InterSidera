@@ -1,6 +1,6 @@
 # Development on WSL 2 (Debian)
 
-Status: stub written at M0; completed at M5 (phone-testing procedure for augmented reality). Covers the facts already fixed by the M0 tooling; everything about reaching the dev server from a phone is verified and finalised at M5.
+Status: stub written at M0; Playwright libraries and the Windows-browser check added at M3; completed at M5 (phone-testing procedure for augmented reality). Covers the facts already fixed by the tooling; everything about reaching the dev server from a phone is verified and finalised at M5.
 
 ## Toolchain
 
@@ -37,15 +37,40 @@ Geolocation, camera, device orientation and WebXR need a secure context, so the 
 
 Exact steps, screenshots of the trust dialogs and the sensor permission flow are added at M5.
 
-## Playwright system libraries
+## Playwright browsers and system libraries
 
-Browsers download with `make setup` (`playwright install chromium webkit`), but launching them needs shared libraries that are absent on a fresh WSL Debian (libnss3, libgbm1, libasound2, libwoff2dec, ...). Install them once with sudo:
+`make setup` downloads the Playwright 1.63 browsers (`playwright install chromium webkit`: Chromium 153 as `chromium-1243`, its headless shell, WebKit `webkit-2359`; all have debian13-arm64 builds), but launching them needs shared libraries that a fresh WSL Debian lacks (libnss3, libgbm1, libasound2, libwoff2dec, ...). Two ways to get them:
+
+1. With sudo, once:
+
+   ```bash
+   sudo env "PATH=$PATH" fnm exec --using=24 npm --prefix frontend exec -- playwright install-deps
+   ```
+
+2. Without sudo, a user-space library directory (verified 2026-09-06 on this Debian 13 aarch64): resolve Playwright's Debian 13 Chromium package list (`playwright-core/lib/coreBundle.js`, the `debian13-*` entry) with `apt-get install --print-uris` (no root needed), download the `.deb` files, extract each with `dpkg-deb -x <file> ~/.local/pw-libs`, then export the two variables before any Playwright command:
+
+   ```bash
+   L="$HOME/.local/pw-libs/usr/lib/aarch64-linux-gnu"
+   export LD_LIBRARY_PATH="$L:$L/pulseaudio" FONTCONFIG_PATH="$HOME/.local/pw-libs/etc/fonts"
+   make e2e
+   ```
+
+   The headless shell and full Chromium (`channel: 'chromium'`) both launch; WebGL2 renders through SwiftShader; `TextRunHarfBuzz error` lines on stderr are font noise from the extracted fontconfig and can be ignored. WebKit does not launch this way: with the Chromium package list extracted it still reports 45 missing libraries (gstreamer 1.0, gtk-4, ICU 76, flite, libjxl, libsoup 3, ...), so the `webkit` project needs the sudo path.
+
+CI needs neither: it runs `playwright install --with-deps chromium`. WebKit stays a manual, local run (`npm run e2e -- --project=webkit` from `frontend/`).
+
+## Checking the sky from a Windows browser
+
+Headless SwiftShader is slow and has no WebGPU worth measuring; a browser on the Windows host uses the real GPU. WSL 2 forwards `localhost` ports to Windows, so:
 
 ```bash
-sudo env "PATH=$PATH" fnm exec --using=24 npm --prefix frontend exec -- playwright install-deps
+fnm exec --using=24 npm --prefix frontend run build:e2e   # the build with window.__sky (make build-e2e)
+fnm exec --using=24 npm --prefix frontend run preview     # http://127.0.0.1:4173, proxies /api to 8000
 ```
 
-Until this manual step is done, `make e2e` cannot run locally; CI installs them with `playwright install --with-deps chromium`.
+with the API running on 8000 (`make dev-api`, or `SKYAPI_DATA_DIR=../data SKYAPI_EPHEMERIS=de440s.bsp SKYAPI_AUTO_FETCH=false uv run --directory backend fastapi run --port 8000` when no `.env` exists). Open `http://localhost:4173/?body=earth&lat=51.48&lon=0&elev=0&t=2460409.25&speed=0` in Chrome, Edge or Brave on Windows; `await window.__sky.ready` then `window.__sky.backend` (expect `webgpu` on a WebGPU-capable GPU, `webgl2` with `#engine=webgl2` appended), `window.__sky.fps()` after ten seconds and `window.__sky.state().parseMs` give the numbers `docs/testing.md` records. Plain HTTP on `localhost` is a secure context, so `navigator.gpu` is available; the dev server on 5173 (HTTPS, self-signed) works too after accepting the certificate.
+
+To measure instead of look, add the self-test hash of the debug hook (dev and e2e builds only): `http://localhost:4173/?body=earth&lat=51.48&lon=0&elev=0&t=2460409.25&speed=0&az=0&alt=45&fov=60#engine=webgpu&selftest` renders for 10 s after the first frame and overlays a JSON report (`backend`, `adapterInfo`, `fps`, `frameMs`, `parseMs`, Polaris against the latitude, every body against `/sky/altaz`); `#engine=webgl2&selftest` does the same on WebGL2, and `&report=http://localhost:<port>/report` POSTs the report to a collector listening in WSL (Windows reaches WSL ports on `localhost` in the default NAT mode). The 2026-09-06 host-GPU numbers in `docs/testing.md` come from this recipe with Brave 152.
 
 ## Data directory
 

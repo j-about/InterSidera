@@ -29,7 +29,7 @@ GENERATED := docs/openapi.json frontend/src/api/schema.d.ts THIRD_PARTY_NOTICES.
 SCRIPTS_PRETTIER := --no-config --print-width 100 --single-quote
 
 .PHONY: help setup data dev dev-api dev-web check check-backend check-frontend check-i18n \
-        check-contract types notices test e2e build up down format
+        check-contract types notices test e2e build build-e2e up down format
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
@@ -98,11 +98,15 @@ test: ## Full test suites (pytest including slow and conformance, vitest)
 	$(PY) pytest
 	$(NPM) run test
 
-e2e: build ## Playwright end-to-end tests against a locally started stack
-	$(NPM) run e2e
+e2e: build-e2e ## Playwright end-to-end tests against a locally started stack (the CI project list)
+	$(NPM) run e2e -- --project=chromium-desktop --project=chromium-mobile
 
-build: ## Production frontend build
+build: ## Production frontend build (never contains the window.__sky debug hook)
 	$(NPM) run build
+	! grep -rl "__sky" frontend/dist/assets
+
+build-e2e: ## Test build exposing window.__sky for Playwright (vite build --mode e2e)
+	$(NPM) run build:e2e
 
 up: ## docker compose up (arrives in M7)
 	@echo "make up: compose.yaml arrives in M7"; exit 2

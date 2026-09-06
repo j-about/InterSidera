@@ -58,4 +58,85 @@ export default defineConfig([
     files: ['vite.config.ts', 'playwright.config.ts', 'e2e/**/*.ts'],
     languageOptions: { globals: globals.node },
   },
+
+  // D. Babylon.js is imported only under src/sky/engine/ (brief l.406, plan D90).
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/sky/engine/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [{ name: 'babylonjs', message: 'Never the UMD package.' }],
+          patterns: [
+            {
+              group: ['@babylonjs/*'],
+              message: 'Babylon.js is imported only under src/sky/engine/ (brief l.406).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  // E. Pure modules (rules/sky-math.md): no Babylon, no React, no store, no I/O.
+  {
+    files: [
+      'src/sky/math/**/*.ts',
+      'src/state/types.ts',
+      'src/state/url.ts',
+      'src/state/clock.ts',
+      'src/state/frames.ts',
+    ],
+    ignores: ['**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [{ name: 'babylonjs', message: 'Never the UMD package.' }],
+          patterns: [
+            {
+              group: [
+                '@babylonjs/*',
+                'react',
+                'react-dom',
+                'react-dom/*',
+                'react-i18next',
+                'i18next',
+                'zustand',
+                'zustand/*',
+                'node:*',
+                'fs',
+                'path',
+              ],
+              message: 'Pure module: no Babylon, React, store or I/O imports (rules/sky-math.md).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  // F. UI components contain no astronomy math (brief l.407).
+  {
+    files: ['src/ui/**/*.{ts,tsx}', 'src/App.tsx'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [{ name: 'babylonjs', message: 'Never the UMD package.' }],
+          patterns: [
+            {
+              group: ['@babylonjs/*'],
+              message: 'Babylon.js is imported only under src/sky/engine/ (brief l.406).',
+            },
+            {
+              group: ['**/sky/math/*', '**/sky/math'],
+              message: 'UI components contain no astronomy math (brief l.407).',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ]);

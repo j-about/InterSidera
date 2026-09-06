@@ -40,9 +40,17 @@ Deferred: `@vitest/coverage-v8` exact `4.1.11` is added at M3 with the coverage 
 - Any third-party warning that still appears under `filterwarnings = ["error"]` is fixed at the source or silenced with a targeted `ignore:<message>:<Category>:<module>` entry carrying a comment and a backlog line (never a blanket ignore).
 - Recorded as deviations B-11, B-15, B-18 and B-22 in `docs/backlog.md`.
 
+## Amendment (2026-09-06, M3)
+
+`@vitest/coverage-v8` is added at exact version `4.1.11`, and `vitest` itself is pinned exact (`4.1.11`, no caret) so the two cannot drift apart: the coverage provider peers the exact vitest version, and a caret on `vitest` would ERESOLVE on the next `npm install` (the tooling rule forbids `--legacy-peer-deps`). Rule: every vitest bump bumps `@vitest/coverage-v8` to the same version in the same commit (deviations B-22 done and B-55 in `docs/backlog.md`).
+
+Vitest 5.0.0 was available at M3 and is deferred: `@testing-library/jest-dom` 7.0.1's `Assertion<T>` augmentation no longer merges with Vitest 5's types (testing-library/jest-dom#738), so `tsc -b` would fail on `toHaveTextContent`. Revisit trigger: a jest-dom release closing #738; then bump both vitest packages in one commit and re-check the coverage `include` pattern (`src/state/url.{ts,tsx}` was chosen because Vitest 5 changes how bare file paths in `include` are matched; backlog B-49).
+
+`@playwright/test` moves to `^1.63.0` at M3 (the release notes were read: Chromium 153, Ubuntu 20.04 dropped); `make setup` re-downloads the browsers. The Playwright system libraries are still not part of `npm ci` (B-24); `docs/dev-wsl2.md` documents both the sudo path and a user-space library directory.
+
 ## Revisit trigger
 
 - `@testing-library/react` starts declaring `@testing-library/dom` as a regular dependency: drop the explicit entry.
 - The fastapi extra switches its `httpx` dependency to `httpx2`, or Starlette drops the fallback warning: drop `httpx2` from the dev group.
-- M3: amend this ADR when `@vitest/coverage-v8` is added; any vitest bump must bump it in the same commit.
+- M3 (done, amendment above): `@vitest/coverage-v8` added; any vitest bump bumps it in the same commit; Vitest 5 waits for jest-dom #738.
 - A dependency is removed from the brief's lists or a new tool replaces one of these: update this ADR rather than adding an undocumented package.

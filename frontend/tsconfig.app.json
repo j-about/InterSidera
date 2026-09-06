@@ -4,8 +4,9 @@
     "target": "es2023",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "esnext",
-    /* TypeScript 6 defaults `types` to []: ambient type packages must be listed explicitly. */
-    "types": ["vite/client", "vitest/globals"],
+    /* TypeScript 6 defaults `types` to []: ambient type packages must be listed explicitly. `node` types
+       the fixture loader (src/test/fixtures.ts); browser code uses `window.setTimeout` (plan D88). */
+    "types": ["vite/client", "vitest/globals", "node"],
     "allowArbitraryExtensions": true,
     /* Not a TypeScript 6 default; needed for the i18n resource files (src/i18n/*.json). */
     "resolveJsonModule": true,

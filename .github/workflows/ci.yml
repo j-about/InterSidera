@@ -34,7 +34,9 @@ jobs:
           path: ~/.cache/pyright-python
           key: pyright-${{ runner.os }}-${{ hashFiles('backend/uv.lock') }}
           restore-keys: pyright-${{ runner.os }}-
-      - uses: astral-sh/setup-uv@v10
+      # setup-uv publishes no floating major tag after v7 (v8-v10 exist only as full tags), so the
+      # action is pinned to the commit of v10.0.1 as its README does; `@v10` fails at resolution.
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           working-directory: backend
           enable-cache: true
@@ -102,13 +104,71 @@ jobs:
       - run: npm run gen:types
       - run: git ls-files --error-unmatch -- src/api/schema.d.ts && git diff --exit-code -- src/api/schema.d.ts
       - run: node --check ../scripts/check_i18n.mjs
-      - run: node ../scripts/check_i18n.mjs
       - run: npm exec -- prettier --no-config --print-width 100 --single-quote --check ../scripts
+      - run: node ../scripts/check_i18n.mjs
       - run: npm run build
+      # The production build never contains the window.__sky debug hook (brief l.410; make build).
+      - run: '! grep -rl "__sky" dist/assets'
 
-  # e2e (M3): needs [backend, frontend]; starts the API on de440s and serves the built frontend;
-  #           `npx playwright install --with-deps chromium`; runs chromium-desktop and chromium-mobile;
-  #           actions/upload-artifact@v7 (if: ${{ !cancelled() }}, path: frontend/test-results and
-  #           frontend/playwright-report, if-no-files-found: ignore).
+  # End-to-end (M3): the API on de440s with the full star, DSO and constellation data (never de441 or
+  # MPCORB: the API then reports `degraded` with `missing: ["mpc"]`, which the suite accepts), the e2e
+  # build of the frontend (`vite build --mode e2e` exposes window.__sky) and Playwright Chromium on the
+  # two projects `make e2e` runs. The `chromium-webgpu` project is configured but unmeasured on a
+  # GPU-less runner (docs/testing.md, plan.md maintainer question 16).
+  e2e:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1 (see the backend job)
+        with:
+          working-directory: backend
+          enable-cache: true
+          cache-dependency-glob: "**/uv.lock"
+      - run: uv sync --locked
+        working-directory: backend
+      - run: npm ci
+        working-directory: frontend
+      # Data for the e2e API (about 113 MB of pinned files plus the small refreshable catalogs) with the
+      # built caches, restored from the cache and rebuilt when the registry or the cache builders change.
+      - uses: actions/cache/restore@v6
+        id: e2e-data
+        with:
+          path: data
+          key: e2e-data-${{ hashFiles('backend/src/skyapi/data/data_files.toml', 'backend/src/skyapi/catalogs/*.py', 'backend/src/skyapi/data/caches.py') }}
+      - run: uv run --directory backend sky-data fetch --only de440s pck00011 moon_tf moon_bpc hipparcos hyg ngc ngc_addendum stellarium_modern stellarium_description d3_bounds
+      - run: uv run --directory backend sky-data build-caches
+      - uses: actions/cache/save@v6
+        if: always() && steps.e2e-data.outputs.cache-hit != 'true'
+        with:
+          path: data
+          key: e2e-data-${{ hashFiles('backend/src/skyapi/data/data_files.toml', 'backend/src/skyapi/catalogs/*.py', 'backend/src/skyapi/data/caches.py') }}
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+      # `npm exec`, never a root `npx` (CLAUDE.md); installs Chromium, its headless shell and the system libraries.
+      - run: npm exec -- playwright install --with-deps chromium
+        working-directory: frontend
+      - run: npm run build:e2e
+        working-directory: frontend
+      - run: npm run e2e -- --project=chromium-desktop --project=chromium-mobile
+        working-directory: frontend
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright
+          path: |
+            frontend/test-results
+            frontend/playwright-report
+          if-no-files-found: ignore
+          retention-days: 7
+
   # docker (M7): docker/setup-buildx-action@v4 + docker/build-push-action@v7 for both images
   #           (push: false, platforms: linux/amd64).

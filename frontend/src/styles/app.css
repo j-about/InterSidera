@@ -8,3 +8,22 @@
 
 /* Night-vision variant, driven by `data-mode="night"` on an ancestor (brief l.408, l.550). */
 @custom-variant night (&:where([data-mode=night], [data-mode=night] *));
+
+@layer base {
+  /* The page is the sky: the body carries the canvas colour so nothing flashes white before the
+     first rendered frame, and the viewport never scrolls around the fixed canvas (plan D87). */
+  body {
+    background-color: var(--color-sky-bg);
+    color: var(--color-sky-fg);
+    overflow: hidden;
+  }
+
+  /* The canvas is a block filling its container; the camera controller owns every gesture, so
+     the browser must not scroll, zoom or select on it (plan D85, VIEW-1). */
+  canvas {
+    display: block;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+}

@@ -2,5 +2,22 @@
   "app": {
     "title": "InterSidera",
     "tagline": "Le ciel vu de n'importe où dans le Système solaire, à tout instant."
+  },
+  "canvas": {
+    "label": "Vue du ciel"
+  },
+  "boot": {
+    "connecting": "Connexion au service du ciel…",
+    "starting": "Le service du ciel démarre…",
+    "downloading": "Téléchargement de {{file}} ({{percent}} %)…",
+    "downloadingBytes": "Téléchargement de {{file}} ({{mb}} Mo reçus)…",
+    "failed": "Le service du ciel a échoué : {{detail}}",
+    "meta": "Lecture de la description du service du ciel…",
+    "catalogs": "Chargement des catalogues d'étoiles…",
+    "frame": "Calcul des premières positions du ciel…",
+    "unreachable": "Le service du ciel est injoignable ; nouvel essai dans {{seconds}} s…"
+  },
+  "engine": {
+    "unsupported": "Ce navigateur n'offre ni WebGPU ni WebGL2 : le ciel ne peut pas être affiché. Utilisez un navigateur récent avec l'accélération matérielle activée."
   }
 }
