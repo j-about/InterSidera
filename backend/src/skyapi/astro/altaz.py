@@ -89,6 +89,7 @@ class AltAzResult:
     mag: float | None = None
     phase: float | None = None
     diam_deg: float | None = None
+    constellation: str | None = None
 
 
 def _scalar(value: FloatOrArray) -> float:
@@ -124,6 +125,7 @@ def _result(
         mag=None if mag is None else _optional_magnitude(mag),
         phase=phase,
         diam_deg=diam_deg,
+        constellation=reference.constellation,
     )
 
 
@@ -170,7 +172,13 @@ def _minor_rows(
         if samples is None:
             raise _unreliable(target.key, entry)
         orbit = orbit_for(minor_bodies, target.key)
-        reference = altaz_reference(observer, orbit.vector, t, refraction=refraction)
+        reference = altaz_reference(
+            observer,
+            orbit.vector,
+            t,
+            refraction=refraction,
+            constellation_map=sky.astro.constellation_at,
+        )
         rows[target.raw] = _result(
             target.raw,
             reference,
@@ -205,7 +213,11 @@ def compute_altaz(sky: SkyState, query: AltAzQuery) -> list[AltAzResult]:
         if target.kind == "body":
             spec = astro.bodies[target.key]
             reference = altaz_reference(
-                observer, astro.eph[spec.ephemeris_key], t, refraction=refraction
+                observer,
+                astro.eph[spec.ephemeris_key],
+                t,
+                refraction=refraction,
+                constellation_map=astro.constellation_at,
             )
             samples = bodies[target.key]
             results.append(
@@ -221,11 +233,19 @@ def compute_altaz(sky: SkyState, query: AltAzQuery) -> list[AltAzResult]:
         elif target.kind == "hip":
             hip = int(target.key)
             star = hipparcos_star(astro.ts, sky.catalogs.hipparcos, hip)
-            reference = altaz_reference(observer, star, t, refraction=refraction)
+            reference = altaz_reference(
+                observer, star, t, refraction=refraction, constellation_map=astro.constellation_at
+            )
             results.append(_result(target.raw, reference, mag=_hipparcos_magnitude(sky, hip)))
         elif target.kind == "dso":
             entry = resolve_dso_id(sky.catalogs, target.key)
-            reference = altaz_reference(observer, dso_star(entry), t, refraction=refraction)
+            reference = altaz_reference(
+                observer,
+                dso_star(entry),
+                t,
+                refraction=refraction,
+                constellation_map=astro.constellation_at,
+            )
             results.append(_result(target.raw, reference, mag=entry.mag))
         else:
             results.append(minor[target.raw])

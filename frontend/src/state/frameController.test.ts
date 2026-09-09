@@ -4,7 +4,7 @@
 // policies and `whenCovering`.
 
 import { ApiProblem, NetworkError } from '../api/client';
-import type { FrameResponse, MetaResponse } from '../api/client';
+import type { FrameResponse, MetaResponse, MinorBodySummary } from '../api/client';
 import { DAY_MS, DAY_S } from '../sky/math/time';
 import {
   BLOCKING_RETRY_AFTER_S,
@@ -17,6 +17,7 @@ import type { FrameQuery } from './frames';
 import { createSkyStore } from './store';
 import type { SkyStore } from './storeTypes';
 import { createFrameEval } from './types';
+import type { LayerId } from './types';
 
 const T0 = 1_757_000_000_000;
 const TT = 2460409.3123456;
@@ -44,6 +45,23 @@ const BODIES: MetaResponse['bodies'] = (
   radius_km: 1,
   step_class,
 }));
+
+const MINOR_CATALOG: NonNullable<MetaResponse['catalogs']['minor_bodies']> = {
+  asteroids: 1_400_000,
+  comets: 1200,
+  elements_epoch_range_tt: [2460000.5, 2461300.5],
+  license: 'MPC',
+  attribution: 'Minor Planet Center',
+};
+
+function summary(id: string): MinorBodySummary {
+  return {
+    id,
+    designation: id,
+    kind: id.startsWith('c:') ? 'comet' : 'asteroid',
+    elements_epoch_tt: 2461200.5,
+  };
+}
 
 function makeMeta(bodies: MetaResponse['bodies'] = BODIES): MetaResponse {
   return {
@@ -188,7 +206,7 @@ interface Harness {
 }
 
 function harness(
-  url: { t?: 'live' | number; speed?: number } = { t: TT },
+  url: { t?: 'live' | number; speed?: number; layers?: readonly LayerId[] } = { t: TT },
   meta = makeMeta(),
 ): Harness {
   const store = createSkyStore(url, T0);
@@ -248,6 +266,9 @@ describe('createFrameController', () => {
     expect(store.getState().frames).toEqual({
       status: 'ready',
       lastError: null,
+      failing: null,
+      coverageStop: null,
+      minor: [],
       window: {
         tt0: query.tt,
         stepS: 1,
@@ -343,8 +364,10 @@ describe('createFrameController', () => {
     expect(state.clock.mode).toBe('paused');
     expect(state.clock.speed).toBe(0);
     // The time itself lies beyond `range_tt`: the clock stops one guard inside the bound (plan
-    // D76; the bound itself is not requestable after the API's 1e-8 day rounding).
+    // D76; the bound itself is not requestable after the API's 1e-8 day rounding), through
+    // `stopAtBound`, so the banner sees the range the clock was stopped at (TIME-4).
     expect(state.clock.tt).toBe(end - COVERAGE_GUARD_D);
+    expect(state.frames.coverageStop).toEqual({ rangeTt: [2400000.5, end] });
     expect(h.onError).toHaveBeenCalledTimes(1);
     // The same shape is refetched at once, ending half a guard inside the bound and covering
     // the stopped clock, so a cold start at the bound renders the sky there (TIME-4).
@@ -365,11 +388,28 @@ describe('createFrameController', () => {
     await flush();
     expect(covered).toBe(true);
     expect(h.store.getState().frames.status).toBe('ready');
-    // Paused at the bound the window covers the time: nothing more is asked for.
+    // Paused at the bound the window covers the time: nothing more is asked for, and the stop
+    // stays visible until the user moves the clock.
     tick(h, state.clock.tt, 1000);
     tick(h, state.clock.tt, 1000);
     expect(h.calls).toHaveLength(2);
     expect(h.store.getState().frames.extrapolating).toBe(false);
+    expect(h.store.getState().frames.coverageStop).toEqual({ rangeTt: [2400000.5, end] });
+    h.store.getState().actions.setTime(TT - 1, h.clock.ms);
+    expect(h.store.getState().frames.coverageStop).toBeNull();
+    h.controller.dispose();
+  });
+
+  it('pauses without a coverage stop when the 422 carries no range', async () => {
+    const h = harness({ t: TT, speed: 60 });
+    h.controller.update(TT, T0);
+    call(h.calls, 0).reject(problem(422, 'outside-coverage'));
+    await flush();
+    const state = h.store.getState();
+    expect(state.clock.mode).toBe('paused');
+    expect(state.frames.coverageStop).toBeNull();
+    expect(state.frames.lastError).toEqual({ status: 422, blocked: true });
+    expect(h.calls).toHaveLength(1);
     h.controller.dispose();
   });
 
@@ -540,6 +580,197 @@ describe('createFrameController', () => {
     expect(h.onError).toHaveBeenLastCalledWith(expect.any(RangeError));
     expect(h.controller.state.next).toBeNull();
     h.controller.dispose();
+  });
+
+  it('publishes the retried failure next to a live window and clears it on success', async () => {
+    const h = harness({ t: TT, speed: 60 });
+    h.controller.update(TT, T0);
+    call(h.calls, 0).resolve(syntheticResponse(call(h.calls, 0).query));
+    await flush();
+    expect(h.store.getState().frames.failing).toBeNull();
+    const current = h.controller.state.current;
+    if (current === null) {
+      throw new Error('no current window');
+    }
+    const span = (current.n - 1) * current.stepD;
+    tick(h, current.tt0 + 0.75 * span);
+    expect(h.calls).toHaveLength(2);
+    call(h.calls, 1).reject(problem(502, 'http-error'));
+    await flush();
+    // The picture stays (`status` ready, no `lastError`) while the banner learns of the retry.
+    const failedAt = h.clock.ms;
+    expect(h.store.getState().frames.status).toBe('ready');
+    expect(h.store.getState().frames.lastError).toBeNull();
+    expect(h.store.getState().frames.failing).toEqual({
+      status: 502,
+      attempts: 1,
+      nextRetryMs: failedAt + 500,
+    });
+    tick(h, current.tt0 + 0.8 * span, 500);
+    expect(h.calls).toHaveLength(3);
+    call(h.calls, 2).reject(new NetworkError('/api/v1/sky/frame', new TypeError('offline')));
+    await flush();
+    expect(h.store.getState().frames.failing).toEqual({
+      status: 0,
+      attempts: 2,
+      nextRetryMs: h.clock.ms + 1000,
+    });
+    tick(h, current.tt0 + 0.85 * span, 1000);
+    expect(h.calls).toHaveLength(4);
+    call(h.calls, 3).resolve(syntheticResponse(call(h.calls, 3).query));
+    await flush();
+    expect(h.store.getState().frames.failing).toBeNull();
+    h.controller.dispose();
+  });
+
+  it('re-issues the request at once when the user asks to retry now (boot.retrySeq)', async () => {
+    const h = harness();
+    h.controller.update(TT, T0);
+    call(h.calls, 0).reject(new NetworkError('/api/v1/sky/frame', new TypeError('offline')));
+    await flush();
+    expect(h.store.getState().frames.failing).toMatchObject({ status: 0, attempts: 1 });
+    // 500 ms of backoff: nothing at 100 ms...
+    tick(h, TT);
+    expect(h.calls).toHaveLength(1);
+    // ...until "retry now", which forgets the ladder and issues on the very next tick.
+    h.store.getState().actions.retryNow();
+    tick(h, TT, 1);
+    expect(h.calls).toHaveLength(2);
+    // The ladder starts afresh: a new failure waits 500 ms again, not 1000 ms.
+    call(h.calls, 1).reject(new NetworkError('/api/v1/sky/frame', new TypeError('offline')));
+    await flush();
+    expect(h.store.getState().frames.failing).toMatchObject({ attempts: 1 });
+    tick(h, TT, 400);
+    expect(h.calls).toHaveLength(2);
+    tick(h, TT, 100);
+    expect(h.calls).toHaveLength(3);
+    h.controller.dispose();
+  });
+
+  it('publishes the minor bodies of the window with their drawn flags', async () => {
+    const h = harness();
+    h.controller.update(TT, T0);
+    const { query } = call(h.calls, 0);
+    const response = syntheticResponse(query);
+    const first = response.bodies[0];
+    if (first === undefined) {
+      throw new Error('synthetic response without bodies');
+    }
+    response.minor = [
+      {
+        id: 'a:1',
+        name: 'Ceres',
+        kind: 'asteroid',
+        samples: null,
+        elements_epoch_tt: 2460200.5,
+        extrapolation_years: 60.12,
+        warnings: [{ code: 'mpc_unreliable', params: { years: 60.12 } }],
+      },
+      {
+        id: 'c:1P',
+        kind: 'comet',
+        samples: first.samples,
+        elements_epoch_tt: 2460200.5,
+        extrapolation_years: 0.5,
+        warnings: [],
+      },
+    ];
+    call(h.calls, 0).resolve(response);
+    await flush();
+    const { minor } = h.store.getState().frames;
+    expect(minor).toEqual([
+      {
+        id: 'a:1',
+        name: 'Ceres',
+        kind: 'asteroid',
+        elementsEpochTt: 2460200.5,
+        extrapolationYears: 60.12,
+        warnings: [{ code: 'mpc_unreliable', params: { years: 60.12 } }],
+        drawn: false,
+      },
+      {
+        id: 'c:1P',
+        kind: 'comet',
+        elementsEpochTt: 2460200.5,
+        extrapolationYears: 0.5,
+        warnings: [],
+        drawn: true,
+      },
+    ]);
+    expect(minor[1]).not.toHaveProperty('name');
+    // Evaluation fills the minor block of a FrameEval sized for the window.
+    const out = createFrameEval(16, 2);
+    h.controller.evaluate(TT, out);
+    expect(out.minorCount).toBe(2);
+    expect(Array.from(out.minorDrawn)).toEqual([0, 1]);
+    h.controller.dispose();
+  });
+
+  describe('the composed minor request (plan D102)', () => {
+    const withMinor = (): MetaResponse => {
+      const meta = makeMeta();
+      return { ...meta, catalogs: { ...meta.catalogs, minor_bodies: MINOR_CATALOG } };
+    };
+
+    it('sends no minor list while the layer is off, whatever is pinned', () => {
+      const h = harness({ t: TT }, withMinor());
+      h.store.getState().actions.setMinor(['a:433', 'a:1']);
+      h.controller.update(TT, T0);
+      expect(call(h.calls, 0).query).not.toHaveProperty('minor');
+      h.controller.dispose();
+    });
+
+    it('sends no minor list when /meta announces no MPC tables (the CI data set)', () => {
+      const h = harness({ t: TT, layers: ['stars', 'minor'] });
+      h.store.getState().actions.setMinor(['a:1']);
+      h.controller.update(TT, T0);
+      expect(call(h.calls, 0).query).not.toHaveProperty('minor');
+      // Turning the layer on later changes nothing either.
+      h.store.getState().actions.setLayer('minor', false);
+      h.store.getState().actions.setLayer('minor', true);
+      tick(h, TT, 1);
+      expect(h.calls).toHaveLength(1);
+      h.controller.dispose();
+    });
+
+    it('composes pins and shown defaults, sorted and capped with the pins first', async () => {
+      const h = harness(
+        { t: TT, layers: ['stars', 'minor'] },
+        {
+          ...withMinor(),
+          limits: { ...withMinor().limits, max_minor_bodies: 4 },
+        },
+      );
+      h.store.getState().actions.setMinor(['c:1P']);
+      h.controller.update(TT, T0);
+      // Pins alone until the defaults arrive.
+      expect(call(h.calls, 0).query.minor).toBe('c:1P');
+      // The defaults change the list: the request in flight is superseded like a body-set change.
+      h.store
+        .getState()
+        .actions.setMinorDefaults(['a:10', 'a:2', 'a:1', 'a:5', 'a:7'].map(summary), 'ready');
+      tick(h, TT, 1);
+      expect(h.calls).toHaveLength(2);
+      expect(call(h.calls, 0).signal.aborted).toBe(true);
+      // shown = 20 covers every default; cap 4: the pin first, then the first defaults in the
+      // server's brightness order (a:10, a:2, a:1), the list sorted for the cache key.
+      expect(call(h.calls, 1).query.minor).toBe('a:1,a:10,a:2,c:1P');
+      call(h.calls, 1).resolve(syntheticResponse(call(h.calls, 1).query));
+      await flush();
+      // No change of the inputs: nothing is re-issued on later ticks.
+      tick(h, TT, 1000);
+      expect(h.calls).toHaveLength(2);
+      // Unpinning changes the list and refetches; turning the layer off drops it entirely.
+      h.store.getState().actions.unpinMinor('c:1P');
+      tick(h, TT, 1);
+      expect(h.calls).toHaveLength(3);
+      expect(call(h.calls, 2).query.minor).toBe('a:1,a:10,a:2,a:5');
+      h.store.getState().actions.setLayer('minor', false);
+      tick(h, TT, 1);
+      expect(h.calls).toHaveLength(4);
+      expect(call(h.calls, 3).query).not.toHaveProperty('minor');
+      h.controller.dispose();
+    });
   });
 
   it('starts the backoff ladder afresh for another request shape', async () => {

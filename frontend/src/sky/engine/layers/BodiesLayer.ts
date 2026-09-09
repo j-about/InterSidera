@@ -2,7 +2,8 @@
 // per body plus one glare quad for the Sun, refreshed every frame from the CPU-interpolated
 // apparent directions (plan D74) rotated into ENU, refracted on Earth with the same D73
 // formula as the star shader so both share one apparent frame (brief l.41). The geometry stays
-// in ENU under the frozen world matrix P (ADR-0009).
+// in ENU under the frozen world matrix P (ADR-0009). The minor-body layer (plan D102) draws
+// through the same material (`material`), so its two classes share these uniforms.
 
 import bodiesFragmentGlsl from '../../shaders/bodies.fragment.glsl?raw';
 import bodiesFragmentWgsl from '../../shaders/bodies.fragment.wgsl?raw';
@@ -10,14 +11,21 @@ import bodiesVertexGlsl from '../../shaders/bodies.vertex.glsl?raw';
 import bodiesVertexWgsl from '../../shaders/bodies.vertex.wgsl?raw';
 
 import type { Backend, FrameEval, ViewState } from '../../../state/types';
-import { DEG, SKY_RADIUS, altAzToEnu, enuToAltAz } from '../../math/frames';
-import type { AltAz } from '../../math/frames';
+import { billboardBasis, enuFromApparentIcrf } from '../../math/apparent';
+import { DEG, SKY_RADIUS, cameraBasis } from '../../math/frames';
+import { COMET_TAIL_PX } from '../../math/minorBodies';
 import { rotate } from '../../math/quaternion';
-import { apparentAltitudeDeg } from '../../math/refraction';
 import { at, load3, vec3 } from '../../math/typed';
-import type { ReadonlyVec3 } from '../../math/typed';
-import { copy3, cross3, dot3, length3, scale3 } from '../../math/vec3';
-import { Constants, Mesh, ShaderLanguage, ShaderMaterial, Vector2, VertexBuffer } from '../babylon';
+import { copy3, dot3, length3, scale3 } from '../../math/vec3';
+import {
+  Constants,
+  Mesh,
+  ShaderLanguage,
+  ShaderMaterial,
+  Vector2,
+  Vector4,
+  VertexBuffer,
+} from '../babylon';
 import type { Matrix, Scene } from '../babylon';
 
 const BODY_PARAMS_KIND = 'bodyParams';
@@ -25,7 +33,7 @@ const BODY_SUN_KIND = 'bodySun';
 const VERTICES_PER_QUAD = 4;
 const INDICES_PER_QUAD = 6;
 
-/** Shader classes (bodies.*.glsl / .wgsl). */
+/** Shader classes (bodies.*.glsl / .wgsl); 4 and 5 belong to the minor-body layer. */
 const CLASS_SUN = 0;
 const CLASS_MOON = 1;
 const CLASS_OTHER = 2;
@@ -38,11 +46,13 @@ export const BODY_MIN_RADIUS_PX = 2.5;
 /** Glare radius added around the Sun disc, CSS pixels. */
 export const SUN_GLARE_RADIUS_PX = 40;
 
-const BODY_UNIFORMS: readonly string[] = ['worldViewProjection', 'uViewport', 'uFovV', 'uBodyPx'];
-
-const UP: ReadonlyVec3 = [0, 0, 1];
-/** Below this squared length the projected camera axis is degenerate (body on that axis). */
-const BASIS_EPSILON = 1e-12;
+const BODY_UNIFORMS: readonly string[] = [
+  'worldViewProjection',
+  'uViewport',
+  'uFovV',
+  'uBodyPx',
+  'uNight',
+];
 
 function classOf(id: string): number {
   if (id === 'sun') {
@@ -55,8 +65,9 @@ function classOf(id: string): number {
 }
 
 export class BodiesLayer {
+  /** Shared with the minor-body layer (same shader, same uniforms). */
+  readonly material: ShaderMaterial;
   private readonly scene: Scene;
-  private readonly material: ShaderMaterial;
   private readonly worldMatrix: Matrix;
   private mesh: Mesh | null = null;
   private positionBuffer: VertexBuffer | null = null;
@@ -69,16 +80,18 @@ export class BodiesLayer {
   private visible = true;
   // Preallocated uniform carriers and scratch vectors.
   private readonly viewport = new Vector2();
-  private readonly bodyPx = new Vector2();
+  private readonly bodyPx = new Vector4();
+  private readonly night = new Vector2(0, 1);
   private readonly dirIcrf = vec3();
   private readonly enu = vec3();
   private readonly enuApparent = vec3();
   private readonly sunEnu = vec3();
   private readonly lightEnu = vec3();
-  private readonly cameraRight = vec3();
+  private readonly camForward = vec3();
+  private readonly camRight = vec3();
+  private readonly camUp = vec3();
   private readonly right = vec3();
   private readonly up = vec3();
-  private readonly altAz: AltAz = { alt: 0, az: 0 };
 
   constructor(scene: Scene, backend: Backend, worldMatrix: Matrix) {
     this.scene = scene;
@@ -103,7 +116,8 @@ export class BodiesLayer {
     this.material.depthFunction = Constants.ALWAYS;
     this.material.backFaceCulling = false;
     this.material.setVector2('uViewport', this.viewport);
-    this.material.setVector2('uBodyPx', this.bodyPx);
+    this.material.setVector4('uBodyPx', this.bodyPx);
+    this.material.setVector2('uNight', this.night);
     this.material.setFloat('uFovV', 1);
   }
 
@@ -168,7 +182,8 @@ export class BodiesLayer {
    * direction (refracted when `refractionOn`) scaled to the sky radius, params = (angular
    * radius, magnitude, phase, class), sun = the body -> Sun light direction in the billboard
    * basis so the fragment shader can shade the phase. `width`/`height` are render pixels, `fovRad` the
-   * vertical field of view, `pixelScale` device pixels per CSS pixel.
+   * vertical field of view, `pixelScale` device pixels per CSS pixel. The uniforms are shared
+   * with the minor-body layer, so this runs before it every frame.
    */
   update(
     frame: FrameEval,
@@ -180,6 +195,14 @@ export class BodiesLayer {
     fovRad: number,
     pixelScale: number,
   ): void {
+    this.viewport.set(width, height);
+    this.bodyPx.set(
+      BODY_MIN_RADIUS_PX * pixelScale,
+      SUN_GLARE_RADIUS_PX * pixelScale,
+      pixelScale,
+      COMET_TAIL_PX * pixelScale,
+    );
+    this.material.setFloat('uFovV', fovRad);
     if (
       this.mesh === null ||
       this.positionBuffer === null ||
@@ -188,19 +211,13 @@ export class BodiesLayer {
     ) {
       return;
     }
-    this.viewport.set(width, height);
-    this.bodyPx.set(BODY_MIN_RADIUS_PX * pixelScale, SUN_GLARE_RADIUS_PX * pixelScale);
-    this.material.setFloat('uFovV', fovRad);
 
-    // The Sun direction as seen by the observer, and the camera's horizontal right axis (the
-    // `(cos az, -sin az, 0)` of `frames.ts` `cameraBasis`; the camera never rolls) from which
-    // `billboardBasis` derives each body's own screen-aligned basis.
+    // The Sun direction as seen by the observer, and the camera's horizontal right axis
+    // (`frames.ts::cameraBasis`; the camera never rolls) from which `billboardBasis` derives each
+    // body's own screen-aligned basis.
     const q = frame.horizonQ;
     rotate(this.sunEnu, q, frame.sunDir);
-    const azRad = view.az * DEG;
-    this.cameraRight[0] = Math.cos(azRad);
-    this.cameraRight[1] = -Math.sin(azRad);
-    this.cameraRight[2] = 0;
+    cameraBasis(this.camForward, this.camRight, this.camUp, view.az, view.alt);
 
     // The Sun's distance feeds the per-body light direction (`lightDirection`); the Sun is
     // always a requested body because it is never an observer (brief l.129, docs/api.md).
@@ -218,11 +235,7 @@ export class BodiesLayer {
       const id = frame.bodyIds[i] ?? '';
       load3(this.dirIcrf, frame.dir, 3 * i);
       rotate(this.enu, q, this.dirIcrf);
-      enuToAltAz(this.altAz, this.enu[0], this.enu[1], this.enu[2]);
-      const altApparent = refractionOn
-        ? apparentAltitudeDeg(this.altAz.alt, refractionFactor)
-        : this.altAz.alt;
-      altAzToEnu(this.enuApparent, altApparent, this.altAz.az);
+      enuFromApparentIcrf(this.enuApparent, this.dirIcrf, q, refractionOn, refractionFactor);
       const magRaw = at(frame.mag, i);
       const mag = Number.isNaN(magRaw) ? MAG_UNKNOWN : magRaw;
       const diamDeg = at(frame.diamDeg, i);
@@ -233,7 +246,7 @@ export class BodiesLayer {
       if (cls === CLASS_SUN) {
         sunSlot = i;
       }
-      this.billboardBasis(this.enu);
+      billboardBasis(this.right, this.up, this.enu, this.camRight);
       this.lightDirection(cls === CLASS_SUN ? NaN : at(frame.distAu, i), sunDist);
       this.writeQuad(
         i,
@@ -273,6 +286,11 @@ export class BodiesLayer {
     this.sunBuffer.updateDirectly(this.sun, 0);
   }
 
+  /** Night mode (plan D108): `uNight = (on, level)`, shared with the minor-body layer. */
+  setNight(on: boolean, level: number): void {
+    this.night.set(on ? 1 : 0, level);
+  }
+
   setVisible(on: boolean): void {
     this.visible = on;
     if (this.mesh !== null) {
@@ -283,40 +301,6 @@ export class BodiesLayer {
   dispose(): void {
     this.disposeMesh();
     this.material.dispose();
-  }
-
-  /**
-   * Orthonormal billboard basis of the body at unit ENU direction `dir`, into `right` and `up`.
-   * The quad is expanded in screen pixels, so the fragment shader's sphere normal
-   * `(corner, sqrt(1 - r^2))` lives in (screen right, screen up, toward the viewer) at the body's
-   * image. A rectilinear projection maps screen right at that image to the camera's right axis
-   * projected on the body's tangent plane, `cameraRight - (cameraRight . dir) dir`; `up` is then
-   * `(-dir) x right` so that `right x up` points to the viewer. Reusing the camera's own right/up
-   * for every body would make `(right, up, -dir)` non-orthonormal off-centre and skew the
-   * terminator (about 2 degrees at 25 degrees off-axis with a 60 degree field of view).
-   */
-  private billboardBasis(dir: ReadonlyVec3): void {
-    const r = this.right;
-    const along = dot3(this.cameraRight, dir);
-    r[0] = this.cameraRight[0] - along * dir[0];
-    r[1] = this.cameraRight[1] - along * dir[1];
-    r[2] = this.cameraRight[2] - along * dir[2];
-    let len2 = dot3(r, r);
-    if (len2 < BASIS_EPSILON) {
-      // The body lies on the camera's right axis (90 degrees off-screen, still uploaded as a
-      // hidden-by-clipping quad): screen right is undefined there, so use the horizontal
-      // direction to the body's right, `dir x Up`, which a horizontal `dir` never degenerates.
-      cross3(r, dir, UP);
-      len2 = dot3(r, r);
-    }
-    const inv = 1 / Math.sqrt(len2);
-    r[0] *= inv;
-    r[1] *= inv;
-    r[2] *= inv;
-    // up = (-dir) x right
-    this.up[0] = -(dir[1] * r[2] - dir[2] * r[1]);
-    this.up[1] = -(dir[2] * r[0] - dir[0] * r[2]);
-    this.up[2] = -(dir[0] * r[1] - dir[1] * r[0]);
   }
 
   /**

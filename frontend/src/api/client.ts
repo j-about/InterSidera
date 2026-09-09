@@ -28,6 +28,7 @@ export type FrameResponse = components['schemas']['FrameResponse'];
 export type MetaResponse = components['schemas']['MetaResponse'];
 export type HealthResponse = components['schemas']['HealthResponse'];
 export type AltAzEntry = components['schemas']['AltAzEntry'];
+export type MinorBodySummary = components['schemas']['MinorBodySummary'];
 type Problem = components['schemas']['Problem'];
 type ProblemError = components['schemas']['ProblemError'];
 
@@ -544,4 +545,20 @@ export function getAltAz(
   options?: RequestOptions,
 ): Promise<{ data: AltAzEntry[]; response: Response }> {
   return getJson('/api/v1/sky/altaz', query, options);
+}
+
+/** `/minor-bodies/defaults` (SKY-4, plan D102): the server's brightest asteroids and comets. */
+export function getMinorDefaults(
+  options?: RequestOptions,
+): Promise<{ data: MinorBodySummary[]; response: Response }> {
+  return getJson('/api/v1/minor-bodies/defaults', undefined, options);
+}
+
+/** `/minor-bodies/search?q=&limit=` (INFO-2 minor-body search): at most `limit` summaries. */
+export function searchMinorBodies(
+  q: string,
+  limit: number,
+  options?: RequestOptions,
+): Promise<{ data: MinorBodySummary[]; response: Response }> {
+  return getJson('/api/v1/minor-bodies/search', { q, limit }, options);
 }

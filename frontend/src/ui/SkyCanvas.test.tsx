@@ -1,7 +1,13 @@
 import { render, waitFor } from '@testing-library/react';
 import { StrictMode } from 'react';
 
-import type { SkyEngineApi, SkyEngineFactory, SkyEngineOptions } from '../sky/engine/types';
+import { labelText } from '../i18n/labelText';
+import type {
+  EngineTicker,
+  SkyEngineApi,
+  SkyEngineFactory,
+  SkyEngineOptions,
+} from '../sky/engine/types';
 import { WebGL2UnavailableError } from '../sky/engine/types';
 import type { FrameController } from '../state/frameController';
 import { createSkyStore } from '../state/store';
@@ -10,8 +16,8 @@ import SkyCanvas, { backendOverride } from './SkyCanvas';
 
 // The single engine effect (plan D87, brief l.551): one factory call even under StrictMode's
 // double effect, disposal on unmount, disposal of an engine that resolves after the abort, the
-// `engine` slice of the store, and the dev/e2e hash override. Fetch hangs so the boot never
-// reaches the network.
+// `engine` slice of the store, the D93 seam (label host, text resolver, tickers, `onEngine`) and
+// the dev/e2e hash override. Fetch hangs so the boot never reaches the network.
 
 /** A fake engine plus its `dispose` spy, kept apart so the assertions never unbind a method. */
 function fakeEngine(backend: 'webgl2' | 'webgpu' = 'webgl2'): {
@@ -29,6 +35,14 @@ function fakeEngine(backend: 'webgl2' | 'webgpu' = 'webgl2'): {
     fps: () => 0,
     frameMs: () => 0,
     starCount: () => 0,
+    directionOf: () => false,
+    readoutOf: () => false,
+    pick: () => null,
+    snapshot: () => Promise.reject(new Error('no snapshot in tests')),
+    labelBoxes: () => [],
+    skyBrightness: () => 0,
+    layerStats: () => ({ dso: 0, clinesSegments: 0 }),
+    reducedMotion: () => false,
     resize: () => undefined,
     dispose: () => {
       dispose();
@@ -108,6 +122,14 @@ describe('SkyCanvas', () => {
     expect(options?.canvas).toBeInstanceOf(HTMLCanvasElement);
     expect(options?.preferBackend).toBe('auto');
     expect(options?.signal.aborted).toBe(false);
+    // The D93 seam: the label host is an `aria-hidden` sibling of the canvas, the text resolver
+    // is the i18n one, and no ticker is handed over by default.
+    expect(options?.labelRoot).toBeInstanceOf(HTMLElement);
+    expect(options?.labelRoot.getAttribute('aria-hidden')).toBe('true');
+    expect(options?.labelRoot.hasAttribute('data-sky-labels')).toBe(true);
+    expect(options?.labelRoot.parentElement).toBe(options?.canvas.parentElement);
+    expect(options?.labelText).toBe(labelText);
+    expect(options?.tickers).toEqual([]);
     expect(dispose).not.toHaveBeenCalled();
     // Vitest runs as a dev build, so the debug hook is installed (plan D86). It lands after the
     // dynamic `import()` of `debug/skyDebug`, one or more ticks after `engine.status` flipped,
@@ -163,6 +185,49 @@ describe('SkyCanvas', () => {
     // engine promise at its engine step (after `/health`, `/meta` and the catalogs) would still
     // be in `health`. The component aborts it and writes the `webgl2` error itself.
     expect(store.getState().boot).toMatchObject({ phase: 'error', error: { kind: 'webgl2' } });
+  });
+
+  it('hands the tickers to the factory and reports the engine through onEngine', async () => {
+    const store = createSkyStore();
+    const { engine } = fakeEngine();
+    const factory = vi.fn<SkyEngineFactory>(() => Promise.resolve(engine));
+    const tickers: EngineTicker[] = [{ update: () => undefined }];
+    const frames = fakeFrames();
+    const onEngine = vi.fn<(api: SkyEngineApi | null) => void>();
+    const view = render(
+      <SkyCanvas
+        store={store}
+        frames={frames}
+        createEngine={factory}
+        tickers={tickers}
+        onEngine={onEngine}
+      />,
+    );
+    await waitFor(() => {
+      expect(onEngine).toHaveBeenCalledWith(engine);
+    });
+    expect(factory.mock.calls[0]?.[0].tickers).toBe(tickers);
+    expect(onEngine).toHaveBeenCalledTimes(1);
+
+    // A new callback identity does not recreate the engine, and the latest one hears the
+    // teardown; neither does a new tickers array (a parent writing the list inline): the engine
+    // copied the list at construction and a re-creation would only restart the boot.
+    const replacement = vi.fn<(api: SkyEngineApi | null) => void>();
+    view.rerender(
+      <SkyCanvas
+        store={store}
+        frames={frames}
+        createEngine={factory}
+        tickers={[...tickers]}
+        onEngine={replacement}
+      />,
+    );
+    await Promise.resolve();
+    expect(factory).toHaveBeenCalledTimes(1);
+    view.unmount();
+    expect(replacement).toHaveBeenCalledTimes(1);
+    expect(replacement).toHaveBeenLastCalledWith(null);
+    expect(onEngine).toHaveBeenCalledTimes(1);
   });
 
   it('labels the canvas for assistive technology', () => {

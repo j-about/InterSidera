@@ -1,8 +1,11 @@
 // Pointer, wheel and pinch input of the rotation-only camera (plan D85; VIEW-1, brief l.89,
 // l.543). The controller never touches Babylon: it writes the store's `view` at pointer rate and
 // the engine applies the camera through its store subscription (plan D80). Inertia after a
-// release decays as exp(-dt / 0.25 s) inside the engine tick (`update`). A double tap or click
-// centres the view on the picked sky direction through `frames.ts` `screenToDirection`.
+// release decays as exp(-dt / 0.25 s) inside the engine tick (`update`) and is skipped entirely
+// under `prefers-reduced-motion` (UX-4). A single tap picks the object under the finger through
+// the engine (`pick`, INFO-1) and selects it (nothing -> deselect); a double tap or click centres
+// the view on the tapped sky direction through `frames.ts` `screenToDirection`. Any pointer
+// contact ends follow mode (VIEW-4).
 
 import type { SkyStore } from '../../state/storeTypes';
 import { clampCameraAltDeg, clampFovDeg, screenToDirection, wrapAzimuthDeg } from '../math/frames';
@@ -23,18 +26,25 @@ const DOUBLE_TAP_DISTANCE_PX = 30;
 const WHEEL_LINE_PX = 16;
 const WHEEL_PAGE_PX = 400;
 const WHEEL_ZOOM_BASE = 1.1;
+const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 
 interface PointerPoint {
   x: number;
   y: number;
 }
 
+/** The engine's picker: canvas CSS pixels -> object id in the `sel` syntax, or `null`. */
+export type PickFn = (xCss: number, yCss: number) => string | null;
+
 export class CameraController {
   private readonly canvas: HTMLCanvasElement;
   private readonly store: SkyStore;
+  private readonly pick: PickFn;
   private readonly pointers = new Map<number, PointerPoint>();
   private readonly previousTouchAction: string;
   private readonly altAz: AltAz = { alt: 0, az: 0 };
+  private readonly motionQuery: MediaQueryList | null;
+  private reduced = false;
   private dragging = false;
   private lastX = 0;
   private lastY = 0;
@@ -53,9 +63,10 @@ export class CameraController {
   private lastTapX = 0;
   private lastTapY = 0;
 
-  constructor(canvas: HTMLCanvasElement, store: SkyStore) {
+  constructor(canvas: HTMLCanvasElement, store: SkyStore, pick: PickFn) {
     this.canvas = canvas;
     this.store = store;
+    this.pick = pick;
     // Pointer events need the browser's own touch gestures out of the way.
     this.previousTouchAction = canvas.style.touchAction;
     canvas.style.touchAction = 'none';
@@ -64,6 +75,16 @@ export class CameraController {
     canvas.addEventListener('pointerup', this.onPointerUp);
     canvas.addEventListener('pointercancel', this.onPointerUp);
     canvas.addEventListener('wheel', this.onWheel, { passive: false });
+    // `prefers-reduced-motion` (UX-4): no inertia glide; followed live through `change`.
+    this.motionQuery =
+      typeof window.matchMedia === 'function' ? window.matchMedia(REDUCED_MOTION_QUERY) : null;
+    this.reduced = this.motionQuery?.matches ?? false;
+    this.motionQuery?.addEventListener('change', this.onMotionChange);
+  }
+
+  /** `prefers-reduced-motion: reduce` as the page sees it (the debug hook reports it). */
+  get reducedMotion(): boolean {
+    return this.reduced;
   }
 
   /** Inertia step, called once per engine tick with the wall clock. */
@@ -98,10 +119,18 @@ export class CameraController {
     canvas.removeEventListener('pointerup', this.onPointerUp);
     canvas.removeEventListener('pointercancel', this.onPointerUp);
     canvas.removeEventListener('wheel', this.onWheel);
+    this.motionQuery?.removeEventListener('change', this.onMotionChange);
     canvas.style.touchAction = this.previousTouchAction;
     this.pointers.clear();
     this.inertia = false;
   }
+
+  private readonly onMotionChange = (event: MediaQueryListEvent): void => {
+    this.reduced = event.matches;
+    if (this.reduced) {
+      this.inertia = false;
+    }
+  };
 
   private readonly onPointerDown = (event: PointerEvent): void => {
     const nowMs = Date.now();
@@ -128,6 +157,7 @@ export class CameraController {
     } else if (this.pointers.size === 2) {
       this.dragging = false;
       this.moved = true;
+      this.endFollow();
       this.pinchStartDistance = this.pointerDistance();
       this.pinchStartFov = this.store.getState().view.fov;
     }
@@ -159,10 +189,14 @@ export class CameraController {
     this.lastX = event.clientX;
     this.lastY = event.clientY;
     if (
-      Math.abs(event.clientX - this.downX) > TAP_SLOP_PX ||
-      Math.abs(event.clientY - this.downY) > TAP_SLOP_PX
+      !this.moved &&
+      (Math.abs(event.clientX - this.downX) > TAP_SLOP_PX ||
+        Math.abs(event.clientY - this.downY) > TAP_SLOP_PX)
     ) {
+      // A drag takes the camera back from follow mode (VIEW-4, plan D106); a tap keeps it, so
+      // tapping another object follows that one instead.
       this.moved = true;
+      this.endFollow();
     }
     const height = this.canvas.clientHeight > 0 ? this.canvas.clientHeight : 1;
     const state = this.store.getState();
@@ -216,6 +250,7 @@ export class CameraController {
       return;
     }
     if (
+      !this.reduced &&
       this.moved &&
       nowMs - this.lastMoveMs <= INERTIA_MAX_GAP_MS &&
       Math.hypot(this.velocityAz, this.velocityAlt) >= INERTIA_STOP_DEG_S
@@ -239,23 +274,32 @@ export class CameraController {
     });
   };
 
-  /** A second tap within 350 ms and 30 px centres the view on the tapped direction. */
+  /**
+   * A single tap picks and selects the object under it (INFO-1); a second tap within 350 ms and
+   * 30 px centres the view on the tapped direction (the first tap's selection stands).
+   */
   private onTap(clientX: number, clientY: number, nowMs: number): void {
-    const isDouble =
-      nowMs - this.lastTapMs <= DOUBLE_TAP_MS &&
-      Math.hypot(clientX - this.lastTapX, clientY - this.lastTapY) <= DOUBLE_TAP_DISTANCE_PX;
-    if (!isDouble) {
-      this.lastTapMs = nowMs;
-      this.lastTapX = clientX;
-      this.lastTapY = clientY;
-      return;
-    }
-    this.lastTapMs = -Infinity;
     const rect = this.canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) {
       return;
     }
+    const isDouble =
+      nowMs - this.lastTapMs <= DOUBLE_TAP_MS &&
+      Math.hypot(clientX - this.lastTapX, clientY - this.lastTapY) <= DOUBLE_TAP_DISTANCE_PX;
     const state = this.store.getState();
+    if (!isDouble) {
+      this.lastTapMs = nowMs;
+      this.lastTapX = clientX;
+      this.lastTapY = clientY;
+      const id = this.pick(clientX - rect.left, clientY - rect.top);
+      if (id !== state.selection) {
+        state.actions.select(id);
+      }
+      return;
+    }
+    this.lastTapMs = -Infinity;
+    // A deliberate camera move: the follow would undo it at the next overlay tick.
+    this.endFollow();
     const { view } = state;
     screenToDirection(
       this.altAz,
@@ -268,6 +312,14 @@ export class CameraController {
       view.alt,
     );
     state.actions.setView({ az: this.altAz.az, alt: clampCameraAltDeg(this.altAz.alt) });
+  }
+
+  /** Drag, pinch and double tap end follow mode (VIEW-4, plan D106); a single tap keeps it. */
+  private endFollow(): void {
+    const state = this.store.getState();
+    if (state.follow) {
+      state.actions.setFollow(false);
+    }
   }
 
   private pointerDistance(): number {

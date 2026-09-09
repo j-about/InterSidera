@@ -11,11 +11,13 @@ import {
   getFrame,
   getJson,
   getMeta,
+  getMinorDefaults,
   isAbortError,
   observerQuery,
   parseRetryAfter,
   pollHealth,
   problemSlugOf,
+  searchMinorBodies,
   serializeQuery,
 } from './client';
 import type { HealthPollOptions, HealthResponse, RequestOptions } from './client';
@@ -109,6 +111,20 @@ describe('getJson and the typed helpers', () => {
     const init = fetchImpl.mock.calls[0]?.[1];
     expect(init?.method).toBe('GET');
     expect(init?.cache).toBeUndefined();
+  });
+
+  it('reaches the minor-body endpoints with their typed queries (plan D102)', async () => {
+    const summary = { id: 'a:1', designation: '(1) Ceres', kind: 'asteroid', elements_epoch_tt: 1 };
+    // One `Response` per call: a body can be read once.
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(() => Promise.resolve(jsonResponse(200, [summary])));
+    const defaults = await getMinorDefaults({ fetchImpl });
+    expect(requestUrl(fetchImpl)).toBe('/api/v1/minor-bodies/defaults');
+    expect(defaults.data[0]?.id).toBe('a:1');
+    const search = await searchMinorBodies('hale bopp', 8, { fetchImpl });
+    expect(requestUrl(fetchImpl, 1)).toBe('/api/v1/minor-bodies/search?limit=8&q=hale%20bopp');
+    expect(search.data).toHaveLength(1);
   });
 
   it('omits the query for /meta and forwards cache and signal', async () => {

@@ -51,7 +51,9 @@ def test_polaris_from_greenwich(api_client: TestClient, tt: float) -> None:
         "ra_date_deg",
         "dec_date_deg",
         "mag",
+        "constellation",
     }
+    assert polaris["constellation"] == "UMi"
 
 
 def test_mixed_targets(api_client: TestClient) -> None:
@@ -77,6 +79,9 @@ def test_mixed_targets(api_client: TestClient) -> None:
     assert "dist_au" not in andromeda
     sirius = by_id["hip:32349"]
     assert sirius["mag"] == pytest.approx(-1.44, abs=0.05)
+    assert sirius["constellation"] == "CMa"
+    assert andromeda["constellation"] == "And"
+    assert all(len(row["constellation"]) == 3 for row in rows)
     assert "dist_au" not in sirius
     assert "phase" not in sirius
     assert "diam_deg" not in sirius

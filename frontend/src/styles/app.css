@@ -1,15 +1,89 @@
 @import 'tailwindcss';
 
-/* Design tokens: CSS-first configuration, no tailwind.config.js (brief l.408). */
+/* Design tokens: CSS-first configuration, no tailwind.config.js (brief l.408; plan D108, D112).
+   Every colour the chrome uses is a token, so night mode can redefine the whole palette in one
+   place. Two families: the `sky-*` tokens are drawn over the sky itself (splash, canvas focus
+   ring) and only night mode redefines them, because the sky stays dark under every colour
+   scheme; the panel tokens (`panel-*`, `field-bg`, `muted`, `accent`, `on-accent`, `warn`,
+   `danger`, `focus`) are drawn on the panel surface and follow `prefers-color-scheme` too, so a
+   surface and its text always come from the same family (WCAG AA, brief l.290). A translucent
+   surface token carries its alpha itself (`--color-panel-bg`, `--color-field-bg`); `bg-token/NN`
+   on an opaque switchable token is fine: Tailwind 4 emits it as `color-mix(in oklab,
+   var(--color-token) NN%, transparent)` under `@supports`, and the inlined hex only serves the
+   pre-`color-mix` fallback that no browser of the l.267 floor reaches. Safe-area insets are
+   spacing tokens (`pt-safe-t`, `pb-safe-b`, ...) and the panel geometry has two tokens
+   (`w-panel`, `h-strip`). */
 @theme {
   --color-sky-bg: #05070f;
   --color-sky-fg: #e6e9f2;
+  --color-sky-warn: #ffc857;
+  --color-sky-focus: #9ad0ff;
+  --color-panel-bg: rgb(10 13 24 / 0.85);
+  --color-panel-fg: #e6e9f2;
+  --color-field-bg: rgb(5 7 15 / 0.6);
+  --color-muted: #9aa3b8;
+  --color-accent: #7cc4ff;
+  --color-on-accent: #05070f;
+  --color-warn: #ffc857;
+  --color-danger: #ff6b6b;
+  --color-focus: #9ad0ff;
+  --spacing-safe-t: env(safe-area-inset-top);
+  --spacing-safe-b: env(safe-area-inset-bottom);
+  --spacing-safe-l: env(safe-area-inset-left);
+  --spacing-safe-r: env(safe-area-inset-right);
+  --spacing-panel: 24rem;
+  --spacing-strip: 4rem;
 }
 
 /* Night-vision variant, driven by `data-mode="night"` on an ancestor (brief l.408, l.550). */
 @custom-variant night (&:where([data-mode=night], [data-mode=night] *));
 
 @layer base {
+  /* Native controls render dark (brief l.289); `--night-brightness` is a plain variable written
+     by `state/domSync.ts` (plan D108), not a theme token: it scales the night palette below. */
+  :root {
+    color-scheme: dark;
+    --night-brightness: 1;
+  }
+
+  /* Night mode (UX-3, plan D108): red monochrome tokens, dimmed towards black by the brightness
+     slider through `color-mix`. No CSS `filter` anywhere: the sky is tinted by the shaders. The
+     light-scheme rule below never applies here. Contrast at brightness 1 on black: foreground
+     5.9:1, muted 5.6:1 (WCAG AA). */
+  [data-mode='night'] {
+    color-scheme: dark;
+    --color-sky-bg: #000000;
+    --color-sky-fg: color-mix(in srgb, #ff3b30 calc(var(--night-brightness) * 100%), black);
+    --color-sky-warn: color-mix(in srgb, #ff8a7a calc(var(--night-brightness) * 100%), black);
+    --color-sky-focus: color-mix(in srgb, #ff6b5b calc(var(--night-brightness) * 100%), black);
+    --color-panel-bg: rgb(24 0 0 / 0.85);
+    --color-panel-fg: color-mix(in srgb, #ff3b30 calc(var(--night-brightness) * 100%), black);
+    --color-field-bg: rgb(0 0 0 / 0.6);
+    --color-muted: color-mix(in srgb, #e0554b calc(var(--night-brightness) * 100%), black);
+    --color-accent: color-mix(in srgb, #ff6b5b calc(var(--night-brightness) * 100%), black);
+    --color-on-accent: #000000;
+    --color-warn: color-mix(in srgb, #ff8a7a calc(var(--night-brightness) * 100%), black);
+    --color-danger: color-mix(in srgb, #ff2419 calc(var(--night-brightness) * 100%), black);
+    --color-focus: color-mix(in srgb, #ff6b5b calc(var(--night-brightness) * 100%), black);
+  }
+
+  /* `prefers-color-scheme: light` lightens the panel family only (brief l.289, backlog B-68):
+     the `sky-*` tokens stay dark by nature, and night mode wins. Contrast on the light panel:
+     foreground 14:1, muted 5.7:1, warn 4.5:1, danger 5.0:1, field text 17:1, on-accent 6.3:1. */
+  @media (prefers-color-scheme: light) {
+    :root:not([data-mode='night']) {
+      --color-panel-bg: rgb(240 243 250 / 0.92);
+      --color-panel-fg: #10131c;
+      --color-field-bg: rgb(255 255 255 / 0.75);
+      --color-muted: #4b5468;
+      --color-accent: #1a5fb4;
+      --color-on-accent: #ffffff;
+      --color-warn: #8a5a00;
+      --color-danger: #b3261e;
+      --color-focus: #1a5fb4;
+    }
+  }
+
   /* The page is the sky: the body carries the canvas colour so nothing flashes white before the
      first rendered frame, and the viewport never scrolls around the fixed canvas (plan D87). */
   body {
@@ -25,5 +99,35 @@
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;
+  }
+
+  /* Visible focus for every keyboard user (UX-4), one token so night mode keeps it red; the
+     canvas sits on the sky, so its ring uses the sky family (light scheme leaves it alone). */
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
+  canvas:focus-visible {
+    outline-color: var(--color-sky-focus);
+  }
+
+  /* Modal dialogs sit in the top layer, outside the panel's stacking context: they carry the
+     panel tokens themselves and dim the sky behind them. */
+  dialog::backdrop {
+    background-color: rgb(0 0 0 / 0.6);
+  }
+
+  /* `prefers-reduced-motion` (UX-4): no animation or transition anywhere, beside the
+     `motion-reduce:` utilities the components use for their own cases. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }

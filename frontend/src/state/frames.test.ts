@@ -266,6 +266,8 @@ describe('windowFromResponse', () => {
     expect(window.bodyKinds[bodyIndex(window, 'pluto')]).toBe('dwarf_planet');
     expect(window.lst).toBeNull();
     expect(window.minor).toEqual([]);
+    expect(window.minorIds).toEqual([]);
+    expect(window.minorKinds).toEqual([]);
     expect(window.warnings).toEqual({ observer: [], time: [] });
 
     const b = bodyIndex(window, 'moon');
@@ -322,6 +324,8 @@ describe('windowFromResponse', () => {
     expect(window.warnings.observer[0]).not.toHaveProperty('params');
 
     expect(window.minor).toHaveLength(2);
+    expect(window.minorIds).toEqual(['a:1', 'c:1P']);
+    expect(window.minorKinds).toEqual(['asteroid', 'comet']);
     const [ceres, halley] = window.minor;
     expect(ceres).toMatchObject({
       id: 'a:1',
@@ -615,6 +619,120 @@ describe('evaluate', () => {
     expect(() => {
       evaluate(full, greenwich.tt0, createFrameEval(10));
     }).not.toThrow();
+  });
+
+  it('reports no minor body for a window without any', () => {
+    evaluate(full, greenwich.tt0, out);
+    expect(out.minorCount).toBe(0);
+    expect(out.minorIds).toBe(full.minorIds);
+    expect(out.minorIds).toEqual([]);
+    expect(out.minorKinds).toEqual([]);
+  });
+
+  describe('minor bodies (plan D102)', () => {
+    // Two minor bodies: Ceres without samples (`mpc_unreliable`), a comet whose samples are the
+    // fixture's first body (Jupiter), so the minor kernels are judged against the body kernels.
+    const withMinor = windowFromResponse(
+      responseFrom(greenwich, { minor: true }),
+      requestFor(greenwich, 32, 300),
+      1,
+    );
+    const jupiter = bodyIndex(withMinor, 'jupiter');
+    const minorOut = createFrameEval(16, 2);
+
+    /** The comet's channels (slot 1) against Jupiter's body channels in the same evaluation. */
+    function expectCometMatchesJupiter(): void {
+      expect(minorOut.minorCount).toBe(2);
+      expect(minorOut.minorIds).toBe(withMinor.minorIds);
+      expect(minorOut.minorKinds).toBe(withMinor.minorKinds);
+      expect(minorOut.minorIds).toEqual(['a:1', 'c:1P']);
+      expect(minorOut.minorKinds).toEqual(['asteroid', 'comet']);
+      expect(Array.from(minorOut.minorDrawn)).toEqual([0, 1]);
+      // Ceres: nothing drawn, every channel unknown.
+      expect(load3(vec3(), minorOut.minorDir, 0).every(Number.isNaN)).toBe(true);
+      expect(at(minorOut.minorDistAu, 0)).toBeNaN();
+      expect(at(minorOut.minorMag, 0)).toBeNaN();
+      expect(at(minorOut.minorPhase, 0)).toBeNaN();
+      expect(at(minorOut.minorDiamDeg, 0)).toBeNaN();
+      // The comet: the very numbers the body path produced for Jupiter.
+      expect(load3(vec3(), minorOut.minorDir, 3)).toEqual(load3(vec3(), minorOut.dir, 3 * jupiter));
+      expect(at(minorOut.minorDistAu, 1)).toBe(at(minorOut.distAu, jupiter));
+      expect(at(minorOut.minorMag, 1)).toBe(at(minorOut.mag, jupiter));
+      expect(at(minorOut.minorPhase, 1)).toBe(at(minorOut.phase, jupiter));
+      expect(at(minorOut.minorDiamDeg, 1)).toBe(at(minorOut.diamDeg, jupiter));
+    }
+
+    it('interpolates the minor block with the body kernels inside the window', () => {
+      for (const tt of [greenwich.tt0, greenwich.tt0 + 7.3 * withMinor.stepD, withMinor.ttEnd]) {
+        evaluate(withMinor, tt, minorOut);
+        expect(minorOut.extrapolating).toBe(false);
+        expectCometMatchesJupiter();
+      }
+      // At a sample time the comet reproduces the fixture directly.
+      evaluate(withMinor, at(greenwich.tt, 5), minorOut);
+      expect(
+        arcsecBetween3(load3(vec3(), minorOut.minorDir, 3), fixtureDir(greenwich, 'jupiter', 5)),
+      ).toBeLessThan(1e-3);
+      expect(at(minorOut.minorDistAu, 1)).toBeCloseTo(
+        fixtureScalar(greenwich, 'jupiter', 'dist_au', 5),
+        10,
+      );
+    });
+
+    it('extrapolates the minor block beyond both ends like the bodies', () => {
+      for (const tt of [
+        withMinor.ttEnd + 2 * withMinor.stepD,
+        withMinor.tt0 - 0.5 * withMinor.stepD,
+      ]) {
+        evaluate(withMinor, tt, minorOut);
+        expect(minorOut.extrapolating).toBe(true);
+        expectCometMatchesJupiter();
+        const series = withMinor.dir.subarray(
+          3 * jupiter * withMinor.n,
+          3 * (jupiter + 1) * withMinor.n,
+        );
+        const expected = extrapolateDir(
+          vec3(),
+          series,
+          withMinor.n,
+          withMinor.stepD,
+          withMinor.tt0,
+          tt,
+        );
+        expect(arcsecBetween3(load3(vec3(), minorOut.minorDir, 3), expected)).toBeLessThan(1e-6);
+      }
+    });
+
+    it('clears a slot left by a body without samples on a later window', () => {
+      // A slot written by a drawn body, then evaluated for a window whose body there has none.
+      evaluate(withMinor, greenwich.tt0, minorOut);
+      expect(at(minorOut.minorDrawn, 1)).toBe(1);
+      const swapped = windowFromResponse(
+        responseFrom(greenwich, { minor: true }),
+        requestFor(greenwich, 32, 300),
+        1,
+      );
+      swapped.minor.reverse();
+      swapped.minorIds.reverse();
+      swapped.minorKinds.reverse();
+      evaluate(swapped, greenwich.tt0, minorOut);
+      expect(minorOut.minorIds).toEqual(['c:1P', 'a:1']);
+      expect(Array.from(minorOut.minorDrawn)).toEqual([1, 0]);
+      expect(at(minorOut.minorDistAu, 1)).toBeNaN();
+      expect(at(minorOut.minorDistAu, 0)).toBe(at(minorOut.distAu, jupiter));
+    });
+
+    it('throws RangeError naming both counts when the minor block is too small', () => {
+      expect(() => {
+        evaluate(withMinor, greenwich.tt0, createFrameEval(16));
+      }).toThrow(RangeError);
+      expect(() => {
+        evaluate(withMinor, greenwich.tt0, createFrameEval(16, 1));
+      }).toThrow(/holds 1 minor bodies, the window has 2/);
+      expect(() => {
+        evaluate(withMinor, greenwich.tt0, createFrameEval(16, 2));
+      }).not.toThrow();
+    });
   });
 });
 

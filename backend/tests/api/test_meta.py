@@ -75,7 +75,7 @@ def test_meta_is_json_versioned_and_not_cached(api_client: TestClient) -> None:
     # Brief api_contract/conventions l.105.
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["content-type"].startswith("application/json")
-    assert response.json()["api_version"] == "1.0.0"
+    assert response.json()["api_version"] == "1.1.0"  # 1.1.0: additive `constellation` on altaz
 
 
 def test_ephemeris_and_coverage(meta: dict[str, Any]) -> None:

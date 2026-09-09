@@ -21,6 +21,8 @@ htmlcov/
 # Node / frontend
 node_modules/
 dist/
+# Private e2e-mode builds of parallel agents (`vite build --outDir dist-<x>`).
+dist-*/
 coverage/
 playwright-report/
 test-results/

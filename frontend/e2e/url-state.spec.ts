@@ -100,3 +100,81 @@ test('every M3 parameter round-trips through the store, the URL and a reload', a
   }));
   expect(storage).toEqual({ cookie: '', local: 0, session: 0, databases: 0 });
 });
+
+// M4 additions (UX-1, UX-2, UX-3; plan D108-D110): the copy-link button writes the serialised
+// state (origin + path + query, never the dev/e2e hash) to the clipboard on Chromium and falls
+// back to a selectable field elsewhere; the language toggle writes `lang=fr` and `<html lang>`;
+// `night=0.6` round-trips through a view change.
+const PAUSED =
+  '/?body=earth&lat=51.48&lon=0&elev=0&t=2460409.25&speed=0&az=0&alt=45&fov=60&atm=0&refr=0&night=0.6#engine=webgl2';
+
+test('copy link, language toggle and night level round trip', async ({
+  page,
+  context,
+  browserName,
+}) => {
+  await page.goto(PAUSED);
+  await waitReady(page);
+  // The URL is rewritten on the first change only, so the loaded query stands as typed; the share
+  // link is the canonical serialisation of the store, which omits `speed` while paused (plan
+  // D79) and never carries the hash.
+  const current = new URL(page.url());
+  expect(current.searchParams.get('night')).toBe('0.6');
+  expect(current.hash).toBe('#engine=webgl2');
+  const canonical = new URLSearchParams(current.search);
+  canonical.delete('speed');
+  const expected = `${current.origin}${current.pathname}?${canonical.toString()}`;
+
+  await test.step('copy link -> the serialised state without the hash', async () => {
+    const copy = page.getByRole('button', { name: 'Copy a link to this view' });
+    if (browserName === 'chromium') {
+      await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+      await copy.click();
+      await expect(page.getByRole('status', { name: 'Notifications' })).toContainText(
+        'Link copied',
+      );
+      const text = await page.evaluate(() => navigator.clipboard.readText());
+      expect(text).toBe(expected);
+      expect(text).not.toContain('#');
+    } else {
+      // No clipboard permission model: the read-only field carries the same link.
+      await copy.click();
+      await expect(page.getByRole('textbox', { name: 'Shareable link' })).toHaveValue(expected);
+    }
+  });
+
+  await test.step('language toggle -> lang=fr in the URL and on the document', async () => {
+    expect(await page.evaluate(() => document.documentElement.lang)).toBe('en');
+    await page.getByRole('button', { name: 'Français' }).click();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('lang'), { timeout: 3000 })
+      .toBe('fr');
+    expect(await page.evaluate(() => document.documentElement.lang)).toBe('fr');
+    // The top bar is visible in both layouts (the tabs sit inside the collapsed sheet on phones).
+    await expect(page.getByRole('button', { name: 'Copier un lien vers cette vue' })).toBeVisible();
+    await page.getByRole('button', { name: 'English' }).click();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('lang'), { timeout: 3000 })
+      .toBeNull();
+    expect(await page.evaluate(() => document.documentElement.lang)).toBe('en');
+  });
+
+  await test.step('night=0.6 survives a view change and a reload', async () => {
+    const state = await debugState(page);
+    expect(state.night).toBe(true);
+    expect(state.nightLevel).toBeCloseTo(0.6, 6);
+    await page.evaluate(() => {
+      window.__sky?.setView(120, 30, 45);
+    });
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('az'), { timeout: 3000 })
+      .toBe('120');
+    expect(new URL(page.url()).searchParams.get('night')).toBe('0.6');
+    await page.reload();
+    await waitReady(page);
+    const restored = await debugState(page);
+    expect(restored.night).toBe(true);
+    expect(restored.nightLevel).toBeCloseTo(0.6, 6);
+    expect(await page.evaluate(() => document.documentElement.dataset.mode ?? null)).toBe('night');
+  });
+});

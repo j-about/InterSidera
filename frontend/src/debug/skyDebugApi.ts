@@ -6,8 +6,13 @@ import type {
   AdapterInfo,
   Backend,
   ClockMode,
+  DialogId,
   FrameWindowInfo,
+  GeoStatus,
+  LabelKind,
+  LayerFlags,
   Observer,
+  PanelId,
   ViewState,
 } from '../state/types.ts';
 
@@ -15,14 +20,38 @@ export interface SkyDebugState {
   tt: number;
   mode: ClockMode;
   speed: number;
+  /** Rendered local apparent sidereal time in hours, `NaN` off Earth or before the first frame. */
+  lstHours: number;
   observer: Observer;
   view: ViewState;
   frame: FrameWindowInfo | null;
+  /** The coverage range the clock was stopped at (TIME-4), `null` when running freely. */
+  coverageStop: readonly [number, number] | null;
   /** Client-side refraction toggle (Earth only). */
   refr: boolean;
   catalogs: { stars: number; index: number; dso: number; constellations: number };
   /** SKYS fetch, parse and HIP-index time in milliseconds (`StarCatalogInput.parseMs`), `null` before the catalog arrived. */
   parseMs: number | null;
+  geo: GeoStatus;
+  /** The selection (`sel`). */
+  sel: string | null;
+  night: boolean;
+  nightLevel: number;
+  layers: LayerFlags;
+  /** `prefers-reduced-motion` as the page sees it. */
+  reducedMotion: boolean;
+  ui: { panel: PanelId | null; sheet: 'collapsed' | 'expanded'; dialog: DialogId | null };
+}
+
+/** A label on screen: its CSS-pixel box relative to the canvas. */
+export interface SkyDebugLabel {
+  id: string;
+  kind: LabelKind;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 /** Degrees. `alt` is what the engine renders (refracted when refraction applies), `altTrue` the geometric altitude. */
@@ -80,7 +109,25 @@ export interface SkyDebugApi {
   setRefraction(on: boolean): void;
   /** Resolves once a frame window covering the current time has been rendered. */
   waitForFrame(): Promise<void>;
-  stats(): { stars: number; frameMs: number };
+  stats(): {
+    stars: number;
+    frameMs: number;
+    /** Deep-sky objects drawn. */
+    dso: number;
+    /** Constellation line segments drawn. */
+    clinesSegments: number;
+    /** Minor bodies of the current window with samples (drawn). */
+    minorDrawn: number;
+  };
+  /** The object under a CSS-pixel position of the canvas, `null` when none. */
+  pick(x: number, y: number): string | null;
+  /** The labels currently drawn, with their boxes. */
+  labels(): SkyDebugLabel[];
+  /** IAU abbreviation of the constellation holding `id`, `null` when unknown. */
+  constellationOf(id: string): string | null;
+  /** Sky background brightness in `[0, 1]` (0 = night sky, 1 = full daylight). */
+  skyBrightness(): number;
+  setFollow(on: boolean): void;
   /**
    * The M3 sanity checks run inside the page (for real-browser runs, docs/testing.md): waits
    * `seconds` (default 10) of rendering after `ready`, then reports the frame rate, Polaris and

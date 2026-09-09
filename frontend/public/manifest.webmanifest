@@ -1,0 +1,10 @@
+{
+  "name": "InterSidera",
+  "short_name": "InterSidera",
+  "description": "The sky as seen from anywhere in the Solar System, at any time.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#05070f",
+  "theme_color": "#05070f",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

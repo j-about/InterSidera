@@ -17,6 +17,7 @@ from skyfield.vectorlib import VectorFunction
 
 from skyapi.astro.observers import Observer, ensure_coverage
 from skyapi.astro.quaternions import make_sign_continuous, matrix_to_quaternion, neu_to_enu
+from skyapi.astro.state import ConstellationMap
 from skyapi.astro.time import FloatOrArray
 
 Float64Array = NDArray[np.float64]
@@ -73,6 +74,8 @@ class AltAz:
     ra_date_hours: FloatOrArray
     dec_date_deg: FloatOrArray
     distance_au: FloatOrArray
+    constellation: str | None = None
+    """IAU abbreviation of the containing constellation; set only with a `constellation_map`."""
 
 
 def _plain(value: object) -> FloatOrArray:
@@ -81,12 +84,19 @@ def _plain(value: object) -> FloatOrArray:
 
 
 def altaz_reference(
-    observer: Observer, target: VectorFunction | Star, t: Time, *, refraction: bool
+    observer: Observer,
+    target: VectorFunction | Star,
+    t: Time,
+    *,
+    refraction: bool,
+    constellation_map: ConstellationMap | None = None,
 ) -> AltAz:
     """Apparent alt/az, ICRS and of-date RA/Dec and distance of `target` seen by `observer`.
 
     Refraction uses Skyfield's standard atmosphere and exists for Earth observers only
-    (`altaz(temperature_C=...)` needs `GeographicPosition.refract`, brief l.525).
+    (`altaz(temperature_C=...)` needs `GeographicPosition.refract`, brief l.525). With a
+    `constellation_map` (scalar `t` only) the row also names the constellation containing the
+    apparent position (D114: `/sky/altaz` answers it so no client precesses anything, brief l.62).
     """
     if refraction and not isinstance(observer.topos, GeographicPosition):
         raise ValueError("refraction is available for Earth observers only")
@@ -98,6 +108,7 @@ def altaz_reference(
         alt, az, distance = apparent.altaz()
     ra_icrs, dec_icrs, _ = apparent.radec()
     ra_date, dec_date, _ = apparent.radec(epoch=t)
+    constellation = None if constellation_map is None else str(constellation_map(apparent))
     return AltAz(
         alt_deg=_plain(alt.degrees),
         az_deg=_plain(az.degrees),
@@ -106,4 +117,5 @@ def altaz_reference(
         ra_date_hours=_plain(ra_date.hours),
         dec_date_deg=_plain(dec_date.degrees),
         distance_au=_plain(distance.au),
+        constellation=constellation,
     )

@@ -33,8 +33,8 @@ function clamp01(x: number): number {
   return Math.max(0, Math.min(1, x));
 }
 
-/** 0 at (or beyond) 90 degrees, 1 at (or below) 1 degree, logarithmic in between. */
-function zoomFraction(fovDeg: number): number {
+/** 0 at (or beyond) 90 degrees, 1 at (or below) 1 degree, logarithmic in between (shared with `dso.ts`). */
+export function zoomFraction(fovDeg: number): number {
   return clamp01(Math.log(WIDE_FIELD_FOV_DEG / fovDeg) / Math.log(WIDE_FIELD_FOV_DEG));
 }
 

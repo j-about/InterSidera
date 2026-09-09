@@ -224,6 +224,12 @@ export interface components {
              */
             az_deg: number;
             /**
+             * Constellation
+             * @description IAU abbreviation of the constellation containing the apparent position, resolved by Skyfield on the B1875 boundary grid (additive, api_version 1.1.0).
+             * @example CMa
+             */
+            constellation?: string | null;
+            /**
              * Dec Date Deg
              * @description Declination of date, degrees.
              */

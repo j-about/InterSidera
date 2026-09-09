@@ -33,6 +33,7 @@ EXPECTED_KEYS = {
     "skyfield_tables",
     "nominatim",
     "lucide",
+    "gazetteer",
 }
 PINNED = {"de440s", "pck00011", "pck00010", "moon_tf", "moon_bpc", "hipparcos", "hyg"}
 PENDING = {"de440", "de441"}

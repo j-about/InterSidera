@@ -186,6 +186,30 @@ describe('parseUrlState', () => {
     expect(parseUrlState('labels=')).toEqual({});
   });
 
+  it('reads night as a flag or as a brightness in [0.3, 1] (plan D108)', () => {
+    expect(parseUrlState('night=1')).toEqual({ night: true });
+    expect(parseUrlState('night=true')).toEqual({ night: true });
+    expect(parseUrlState('night=0')).toEqual({ night: false });
+    expect(parseUrlState('night=false')).toEqual({ night: false });
+    expect(parseUrlState('night=0.6')).toEqual({ night: true, nightLevel: 0.6 });
+    expect(parseUrlState('night=0.3')).toEqual({ night: true, nightLevel: 0.3 });
+    expect(parseUrlState('night=0.456')).toEqual({ night: true, nightLevel: 0.46 });
+    // Rounds up to full brightness: on, without a level (the canonical form of `night=1`).
+    expect(parseUrlState('night=0.995')).toEqual({ night: true });
+    expect(parseUrlState('night=0.994')).toEqual({ night: true, nightLevel: 0.99 });
+    // 1 is the maximum, not out of range: a hand-written `1.0` or `1.00` is on, like `1`.
+    expect(parseUrlState('night=1.0')).toEqual({ night: true });
+    expect(parseUrlState('night=1.00')).toEqual({ night: true });
+    // Below the dimmest level, at or above full brightness, or not a number: absent.
+    expect(parseUrlState('night=0.2')).toEqual({});
+    expect(parseUrlState('night=0.29')).toEqual({});
+    expect(parseUrlState('night=1.01')).toEqual({});
+    expect(parseUrlState('night=1.5')).toEqual({});
+    expect(parseUrlState('night=-0.5')).toEqual({});
+    expect(parseUrlState('night=abc')).toEqual({});
+    expect(parseUrlState('night=')).toEqual({});
+  });
+
   it('filters, deduplicates and caps the minor-body ids at 100', () => {
     expect(parseUrlState('minor=')).toEqual({ minor: [] });
     expect(parseUrlState('minor=a:433,c:1P,a:433,x:1,a:,a:K24Y01R,c:C/2023_A3')).toEqual({
@@ -244,6 +268,8 @@ describe('roundUrlValue', () => {
     expect(roundUrlValue('speed', 0.26)).toBe(0.3);
     expect(roundUrlValue('speed', 0.1 * 3)).toBe(0.3);
     expect(roundUrlValue('maglim', 6.55)).toBe(6.6);
+    expect(roundUrlValue('nightLevel', 0.456)).toBe(0.46);
+    expect(roundUrlValue('nightLevel', 0.7)).toBe(0.7);
     expect(roundUrlValue('labels', 2.5)).toBe(2.5);
     expect(roundUrlValue('layers', 1.23456)).toBe(1.23456);
   });
@@ -330,6 +356,23 @@ describe('serializeUrlState', () => {
     expect(serializeUrlState({ sel: 'a b&c' }, defaults)).toBe('sel=a%20b%26c');
   });
 
+  it('writes night as its brightness below 1 and as 1 otherwise, never while off', () => {
+    expect(serializeUrlState({ night: true }, defaults)).toBe('night=1');
+    expect(serializeUrlState({ night: true, nightLevel: 1 }, defaults)).toBe('night=1');
+    expect(serializeUrlState({ night: true, nightLevel: 0.6 }, defaults)).toBe('night=0.6');
+    expect(serializeUrlState({ night: true, nightLevel: 0.456 }, defaults)).toBe('night=0.46');
+    expect(serializeUrlState({ night: true, nightLevel: 0.999 }, defaults)).toBe('night=1');
+    // Off is the default and the level is not written while off (plan D108).
+    expect(serializeUrlState({ night: false, nightLevel: 0.6 }, defaults)).toBe('');
+    expect(serializeUrlState({ nightLevel: 0.6 }, defaults)).toBe('');
+    // Against defaults that have night on, off is written as the plain flag.
+    expect(serializeUrlState({ night: false }, { ...defaults, night: true })).toBe('night=0');
+    // The other flags keep the plain `1`/`0` form.
+    expect(serializeUrlState({ atm: true, refr: false }, { ...defaults, atm: false })).toBe(
+      'atm=1&refr=0',
+    );
+  });
+
   it('round-trips through parseUrlState', () => {
     const state: UrlState = {
       body: 'moon',
@@ -354,6 +397,8 @@ describe('serializeUrlState', () => {
       sel: 'dso:NGC224',
     };
     expect(parseUrlState(serializeUrlState(state, defaults))).toEqual(state);
+    const dimmed: UrlState = { ...state, nightLevel: 0.45 };
+    expect(parseUrlState(serializeUrlState(dimmed, defaults))).toEqual(dimmed);
   });
 });
 
@@ -367,5 +412,13 @@ describe('urlStatesEqual', () => {
     expect(urlStatesEqual({ layers: ['stars'] }, {})).toBe(false);
     expect(urlStatesEqual({ t: 'live' }, { t: 2460409.5 })).toBe(false);
     expect(urlStatesEqual({ atm: true }, { atm: false })).toBe(false);
+    // `nightLevel` travels inside `night` but still tells two states apart.
+    expect(urlStatesEqual({ night: true, nightLevel: 0.6 }, { night: true, nightLevel: 0.6 })).toBe(
+      true,
+    );
+    expect(urlStatesEqual({ night: true, nightLevel: 0.6 }, { night: true, nightLevel: 0.7 })).toBe(
+      false,
+    );
+    expect(urlStatesEqual({ night: true, nightLevel: 0.6 }, { night: true })).toBe(false);
   });
 });

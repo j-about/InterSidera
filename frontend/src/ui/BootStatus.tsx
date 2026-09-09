@@ -126,6 +126,7 @@ export default function BootStatus({ store }: BootStatusProps) {
     <div
       role="status"
       aria-live="polite"
+      aria-label={t('boot.label')}
       className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-8 bg-sky-bg/90 px-6 text-center text-sky-fg"
     >
       <div>
@@ -147,7 +148,7 @@ export default function BootStatus({ store }: BootStatusProps) {
           );
         })}
       </ol>
-      {failure !== null && <p className="max-w-prose text-amber-300">{failure}</p>}
+      {failure !== null && <p className="max-w-prose text-sky-warn">{failure}</p>}
     </div>
   );
 }

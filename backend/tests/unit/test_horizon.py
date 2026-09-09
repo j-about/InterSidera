@@ -150,6 +150,15 @@ def test_altaz_reference(
     assert plain.distance_au == refracted.distance_au
     assert plain.alt_deg > 20.0
     assert refracted.alt_deg > plain.alt_deg
+    assert plain.constellation is None  # only with a map (D114)
+    named = altaz_reference(
+        greenwich,
+        astro_state.eph["sun"],
+        t,
+        refraction=False,
+        constellation_map=astro_state.constellation_at,
+    )
+    assert named.constellation == "Aqr"  # the Sun on 2023-02-25 (TT0 + 0.5) stands in Aquarius
     assert 0.0 <= plain.ra_icrs_hours < 24.0
     assert -90.0 <= plain.dec_icrs_deg <= 90.0
     assert abs(plain.ra_date_hours - plain.ra_icrs_hours) < 0.1  # precession since J2000

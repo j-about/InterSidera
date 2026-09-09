@@ -8,11 +8,11 @@
 import { ApiProblem, backoffDelayMs, getFrame } from '../api/client';
 import type { FrameResponse } from '../api/client';
 import type { FrameSource } from '../sky/engine/types';
+import { composeMinorRequest } from '../sky/math/minorBodies';
 import { DAY_S } from '../sky/math/time';
 import {
   boundedRequest,
   buildRequest,
-  clampInsideCoverage,
   decide,
   evaluate as evaluateWindow,
   requestKey,
@@ -22,8 +22,8 @@ import {
   windowFromResponse,
 } from './frames';
 import type { FetchReason, FetchState, FrameQuery, FrameWindow, SimInput } from './frames';
-import type { MetaResponse, SkyStore } from './storeTypes';
-import type { FrameEval, FramesState, SkyWarning } from './types';
+import type { MetaResponse, MinorBodySummary, SkyState, SkyStore } from './storeTypes';
+import type { FrameEval, FramesState, MinorStatus, SkyWarning } from './types';
 
 export type FrameFetcher = (query: FrameQuery, signal: AbortSignal) => Promise<FrameResponse>;
 
@@ -113,6 +113,13 @@ export function createFrameController(deps: FrameControllerDeps): FrameControlle
   let lastDecideMs = -Infinity;
   let lastObserver = store.getState().observer;
   let lastClock = store.getState().clock;
+  // The inputs of the composed `minor` list (plan D102), compared by identity on every run.
+  let lastLayers = store.getState().layers;
+  let lastPins = store.getState().minor;
+  let lastMinorBodies = store.getState().minorBodies;
+  let lastMinorMeta: MetaResponse | null = null;
+  let defaultIds: string[] | null = null;
+  let defaultsFor: readonly MinorBodySummary[] | null = null;
   let settledSinceDecide = false;
   // Backoff after a retryable failure applies to that request shape only (plan D76): `failures`
   // counts consecutive failures of `retryShape`. The shape, not the key: the aligned `tt0` moves
@@ -121,6 +128,8 @@ export function createFrameController(deps: FrameControllerDeps): FrameControlle
   let failures = 0;
   let retryShape: string | null = null;
   let retryNotBeforeMs = -Infinity;
+  // `boot.retrySeq` as last seen: a change (the user's "retry now") ends the backoff at once.
+  let retrySeqSeen = store.getState().boot.retrySeq;
   const waiters: Waiter[] = [];
   let published: FramesState = store.getState().frames;
 
@@ -138,6 +147,24 @@ export function createFrameController(deps: FrameControllerDeps): FrameControlle
     }
   }
 
+  /** The `MinorStatus` list of a window (plan D102), allocated once per window change. */
+  function minorStatusOf(window: FrameWindow): MinorStatus[] {
+    return window.minor.map((series) => {
+      const status: MinorStatus = {
+        id: series.id,
+        kind: series.kind,
+        elementsEpochTt: series.elementsEpochTt,
+        extrapolationYears: series.extrapolationYears,
+        warnings: series.warnings,
+        drawn: series.samples !== null,
+      };
+      if (series.name !== undefined) {
+        status.name = series.name;
+      }
+      return status;
+    });
+  }
+
   function currentChanged(window: FrameWindow): void {
     actions.setTtMinusUtc(window.ttMinusUtc);
     const warnings: SkyWarning[] = [...window.warnings.observer, ...window.warnings.time];
@@ -152,6 +179,7 @@ export function createFrameController(deps: FrameControllerDeps): FrameControlle
       },
       snapshot: window.n < 2,
       warnings,
+      minor: minorStatusOf(window),
     });
   }
 
@@ -192,6 +220,44 @@ export function createFrameController(deps: FrameControllerDeps): FrameControlle
     }
   }
 
+  /**
+   * `sim.minor` (plan D102): the pins and the shown defaults composed and capped, or the empty
+   * list when the layer is off or `/meta` announces no MPC tables (a `minor=` request would then
+   * answer 503 `Retry-After 60`, which `fail` blocks as a shape and the boot reports as an error).
+   * Recomputed only when one of its inputs changed; a new list changes the request's `minor`
+   * and `decide` treats it like a body-set change.
+   */
+  function refreshMinor(s: SkyState, meta: MetaResponse): void {
+    if (
+      s.layers === lastLayers &&
+      s.minor === lastPins &&
+      s.minorBodies === lastMinorBodies &&
+      meta === lastMinorMeta
+    ) {
+      return;
+    }
+    lastLayers = s.layers;
+    lastPins = s.minor;
+    lastMinorBodies = s.minorBodies;
+    lastMinorMeta = meta;
+    const available =
+      meta.catalogs.minor_bodies !== undefined && meta.catalogs.minor_bodies !== null;
+    if (!s.layers.minor || !available) {
+      sim.minor = NO_MINOR;
+      return;
+    }
+    if (s.minorBodies.defaults !== defaultsFor) {
+      defaultsFor = s.minorBodies.defaults;
+      defaultIds = defaultsFor === null ? null : defaultsFor.map((summary) => summary.id);
+    }
+    sim.minor = composeMinorRequest(
+      s.minor,
+      defaultIds,
+      s.minorBodies.shown,
+      meta.limits.max_minor_bodies,
+    );
+  }
+
   /** The key the paused simulation now produces, blocked after a 422 so it is not re-issued. */
   function blockCurrentShape(): void {
     const s = store.getState();
@@ -224,7 +290,7 @@ export function createFrameController(deps: FrameControllerDeps): FrameControlle
     retryShape = null;
     state.failedKey = null;
     state.failedShape = null;
-    publish({ lastError: null });
+    publish({ lastError: null, failing: null });
     if (window.n < 2) {
       state.lastSnapshotDoneMs = now();
     }
@@ -268,22 +334,21 @@ export function createFrameController(deps: FrameControllerDeps): FrameControlle
           deps.onError?.(error);
           return;
         }
-        // Hard coverage limit (brief l.169; plan D76 "pause at `range_tt`"): stop the clock one
-        // guard inside the bound when the time itself lies outside `range_tt`, else where it is
-        // (the window, not `tt`, left the coverage), and refetch the same shape flush with the
-        // bound so the sky at the bound renders (a cold start there would otherwise end in an
-        // error). Only when that refetch is refused too, or `range_tt` is missing, is the paused
-        // shape blocked so the same 422 is not requested again; the picture stays valid while a
-        // window exists.
+        // Hard coverage limit (brief l.169; plan D76 "pause at `range_tt`", TIME-4): stop the
+        // clock one guard inside the bound when the time itself lies outside `range_tt`, else
+        // where it is (the window, not `tt`, left the coverage), with `frames.coverageStop` set
+        // for the banner, and refetch the same shape flush with the bound so the sky at the
+        // bound renders (a cold start there would otherwise end in an error). Only when that
+        // refetch is refused too, or `range_tt` is missing, is the paused shape blocked so the
+        // same 422 is not requested again; the picture stays valid while a window exists.
         const nowMs = now();
-        actions.pause(nowMs);
+        if (error.rangeTt === undefined) {
+          actions.pause(nowMs);
+        } else {
+          actions.stopAtBound(error.rangeTt, nowMs);
+        }
         deps.onError?.(error);
         if (error.rangeTt !== undefined) {
-          const paused = store.getState().clock.tt;
-          const clamped = clampInsideCoverage(paused, error.rangeTt);
-          if (clamped !== paused) {
-            actions.setTime(clamped, nowMs);
-          }
           const bounded = reason === 'bound' ? null : boundedRequest(request, error.rangeTt);
           if (bounded !== null) {
             start(bounded, 'bound', speed, nowMs);
@@ -326,12 +391,14 @@ export function createFrameController(deps: FrameControllerDeps): FrameControlle
         error instanceof ApiProblem ? error.retryAfterS : undefined,
         random,
       );
-    if (state.current === null) {
-      publish({
-        status: 'error',
-        lastError: { status: error instanceof ApiProblem ? error.status : 0, blocked: false },
-      });
-    }
+    const status = error instanceof ApiProblem ? error.status : 0;
+    // The banner (UX-6) sees every retried failure, with or without a picture behind it.
+    publish({
+      failing: { status, attempts: failures, nextRetryMs: retryNotBeforeMs },
+      ...(state.current === null
+        ? { status: 'error' as const, lastError: { status, blocked: false } }
+        : {}),
+    });
     deps.onError?.(error);
   }
 
@@ -362,8 +429,22 @@ export function createFrameController(deps: FrameControllerDeps): FrameControlle
       return;
     }
     lastTt = tt;
+    const retryRequested = s.boot.retrySeq !== retrySeqSeen;
+    if (retryRequested) {
+      // "Retry now" (plan D92): the ladder is forgotten and the next decision may issue at once.
+      retrySeqSeen = s.boot.retrySeq;
+      retryNotBeforeMs = -Infinity;
+      retryShape = null;
+      failures = 0;
+    }
     const storeChanged =
-      s.observer !== lastObserver || s.clock !== lastClock || s.meta !== metaSeen;
+      s.observer !== lastObserver ||
+      s.clock !== lastClock ||
+      s.meta !== metaSeen ||
+      s.layers !== lastLayers ||
+      s.minor !== lastPins ||
+      s.minorBodies !== lastMinorBodies ||
+      retryRequested;
     if (!storeChanged && !settledSinceDecide && nowMs - lastDecideMs < DECIDE_INTERVAL_MS) {
       checkWaiters();
       return;
@@ -373,6 +454,7 @@ export function createFrameController(deps: FrameControllerDeps): FrameControlle
     lastDecideMs = nowMs;
     settledSinceDecide = false;
     refreshMeta(s.meta, s.observer.body);
+    refreshMinor(s, s.meta);
     sim.observer = s.observer;
     sim.tt = tt;
     sim.speed = s.clock.speed;

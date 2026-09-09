@@ -22,6 +22,7 @@
   "dependencies": {
     "@babylonjs/core": "^9.25.0",
     "i18next": "^26.4.1",
+    "lucide-react": "^1.43.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-i18next": "^17.0.13",

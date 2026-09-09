@@ -6,7 +6,7 @@
 ## Context
 
 The brief's repository layout (l.354) puts the small factual files authored for this project
-(`data_files.toml`, `constellation_names.csv`, later `planetary_sites.csv`) under `backend/data/`,
+(`data_files.toml`, `constellation_names.csv`, and the planetary site presets) under `backend/data/`,
 next to `pyproject.toml` and outside the `src/` tree. `uv_build` packages only the module under
 `module-root` (plus an optional `data` directory copied into the wheel's `.data`), so files under
 `backend/data/` would not ship in the wheel: the Docker image (M7) would need a second `COPY` and
@@ -28,8 +28,10 @@ module root alongside the source code."
 ## Decision
 
 `backend/src/skyapi/data/` holds the registry `data_files.toml`, the license texts rendered into
-`THIRD_PARTY_NOTICES.md` (`licenses/*.txt`) and `constellation_names.csv` (M4 adds
-`planetary_sites.csv`). They ship in the wheel automatically; `sky-data` and the API read them
+`THIRD_PARTY_NOTICES.md` (`licenses/*.txt`) and `constellation_names.csv`. The OBS-6 site presets
+of M4 are frontend data (`frontend/src/state/presets.ts`, Gazetteer citations in code, registry
+key `gazetteer` with the repository path as `filename`, backlog B-57), not a packaged CSV. The
+packaged files ship in the wheel automatically; `sky-data` and the API read them
 through `importlib.resources`, never through a filesystem path. The root `/data/` directory keeps
 its role as the gitignored `DATA_DIR` of downloaded files and caches.
 

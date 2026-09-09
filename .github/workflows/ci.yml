@@ -78,9 +78,10 @@ jobs:
       # Contract drift gate, backend half: the committed OpenAPI document must match the code.
       - run: uv run python -m skyapi.tools.dump_openapi --out ../docs/openapi.json
       - run: git ls-files --error-unmatch -- ../docs/openapi.json && git diff --exit-code -- ../docs/openapi.json
-      # Notices drift gate: THIRD_PARTY_NOTICES.md is rendered from the data registry, never hand-edited.
-      - run: uv run python -m skyapi.tools.render_notices --out ../THIRD_PARTY_NOTICES.md
-      - run: git ls-files --error-unmatch -- ../THIRD_PARTY_NOTICES.md && git diff --exit-code -- ../THIRD_PARTY_NOTICES.md
+      # Notices drift gate: THIRD_PARTY_NOTICES.md and the About-screen credits are rendered from
+      # the data registry, never hand-edited.
+      - run: uv run python -m skyapi.tools.render_notices --out ../THIRD_PARTY_NOTICES.md --json ../frontend/src/data/credits.json
+      - run: git ls-files --error-unmatch -- ../THIRD_PARTY_NOTICES.md ../frontend/src/data/credits.json && git diff --exit-code -- ../THIRD_PARTY_NOTICES.md ../frontend/src/data/credits.json
 
   frontend:
     runs-on: ubuntu-latest

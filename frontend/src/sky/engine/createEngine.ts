@@ -109,6 +109,9 @@ async function tryWebGpu(
   const engineOptions: WebGPUEngineOptions = {
     antialias: true,
     powerPreference: 'high-performance',
+    // Babylon's default tab index is 1: a positive value that would jump ahead of the skip link
+    // and every control in the Tab order (UX-4). 0 keeps the canvas focusable in DOM order.
+    canvasTabIndex: 0,
   };
   if (options.xrCompatible !== undefined) {
     engineOptions.xrCompatible = options.xrCompatible;
@@ -142,6 +145,8 @@ function createWebGl2(canvas: HTMLCanvasElement): AbstractEngine {
       powerPreference: 'high-performance',
       preserveDrawingBuffer: false,
       loseContextOnDispose: true,
+      // Same reason as the WebGPU options: the canvas joins the Tab order in DOM position.
+      canvasTabIndex: 0,
     });
   } catch (error: unknown) {
     // Babylon throws "WebGL not supported" when no context of any version can be created.

@@ -7,7 +7,14 @@ import tseslint from 'typescript-eslint';
 
 export default defineConfig([
   // Generated and output directories; `schema.d.ts` is produced by openapi-typescript (brief l.103).
-  globalIgnores(['dist', 'coverage', 'playwright-report', 'test-results', 'src/api/schema.d.ts']),
+  globalIgnores([
+    'dist',
+    'dist-*',
+    'coverage',
+    'playwright-report',
+    'test-results',
+    'src/api/schema.d.ts',
+  ]),
 
   // A. Plain JavaScript (this file, Node scripts).
   {

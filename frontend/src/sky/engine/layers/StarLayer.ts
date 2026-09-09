@@ -44,7 +44,12 @@ const STAR_UNIFORMS: readonly string[] = [
   'uFovV',
   'uMagLimit',
   'uMagScale',
+  'uAtmosphere',
+  'uNight',
 ];
+
+/** Transparent-queue order inside rendering group 0: sky quad 0, stars 1, deep-sky objects 2. */
+export const STAR_ALPHA_INDEX = 1;
 
 /**
  * Stars this many magnitudes brighter than the limit reach full brightness; the ones at the
@@ -72,6 +77,8 @@ export interface StarUniforms {
   magLimit: number;
   /** Device pixels per CSS pixel (the size constants are in CSS pixels). */
   pixelScale: number;
+  /** Sky brightness B (SKY-7): the limit drops by 8 B, the brightness by 85 % B; 0 under a manual limit. */
+  atmosphere: number;
 }
 
 export class StarLayer {
@@ -87,6 +94,7 @@ export class StarLayer {
   private readonly refraction = new Vector2();
   private readonly viewport = new Vector2();
   private readonly magScale = new Vector4();
+  private readonly night = new Vector2(0, 1);
 
   constructor(scene: Scene, backend: Backend, worldMatrix: Matrix) {
     this.scene = scene;
@@ -115,6 +123,8 @@ export class StarLayer {
     this.material.setVector2('uRefraction', this.refraction);
     this.material.setVector2('uViewport', this.viewport);
     this.material.setVector4('uMagScale', this.magScale);
+    this.material.setVector2('uNight', this.night);
+    this.material.setFloat('uAtmosphere', 0);
     this.material.setFloat('uYears', 0);
     this.material.setFloat('uFovV', 1);
     this.material.setFloat('uMagLimit', 6.5);
@@ -190,6 +200,7 @@ export class StarLayer {
     mesh.doNotSyncBoundingInfo = true;
     mesh.isPickable = false;
     mesh.renderingGroupId = 0;
+    mesh.alphaIndex = STAR_ALPHA_INDEX;
     // Own copy of P: `freezeWorldMatrix` keeps the reference and a dirtied node recomputes into
     // it in place (Babylon 9.25), so sharing one instance across meshes is unsafe.
     mesh.freezeWorldMatrix(this.worldMatrix.clone());
@@ -210,6 +221,12 @@ export class StarLayer {
     this.material.setFloat('uYears', u.years);
     this.material.setFloat('uFovV', u.fovRad);
     this.material.setFloat('uMagLimit', u.magLimit);
+    this.material.setFloat('uAtmosphere', u.atmosphere);
+  }
+
+  /** Night mode (plan D108): `uNight = (on, level)`. */
+  setNight(on: boolean, level: number): void {
+    this.night.set(on ? 1 : 0, level);
   }
 
   setVisible(on: boolean): void {

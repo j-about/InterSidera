@@ -3,6 +3,8 @@
 // the `uniforms` buffer and `varying` into vertexOutputs.name; `vertexInputs.vertexIndex` is the
 // vertex_index built-in. The processor injects code before the last `}` of the file, so `main`
 // is the last function and returns nowhere early. Same rule and constants as the GLSL twin.
+// Daylight (SKY-7, plan D104): uAtmosphere = the sky brightness B of sky/math/atmosphere.ts lowers
+// the magnitude limit by 8 B and the brightness by 85 % B (0 under a manual magnitude limit).
 attribute position : vec3<f32>;
 attribute starPm : vec3<f32>;
 attribute starPhot : vec2<f32>;
@@ -16,6 +18,7 @@ uniform uViewport : vec2<f32>;
 uniform uFovV : f32;
 uniform uMagLimit : f32;
 uniform uMagScale : vec4<f32>;
+uniform uAtmosphere : f32;
 
 varying vCorner : vec2<f32>;
 varying vColor : vec4<f32>;
@@ -41,6 +44,9 @@ const WIDE_FIELD_FOV_DEG : f32 = 90.0;
 const ARCMIN_TO_DEG : f32 = 0.016666666666666666;
 const MIN_REFRACTED_ALT_DEG : f32 = -1.0;
 const MAX_REFRACTED_ALT_DEG : f32 = 89.9;
+// sky/math/atmosphere.ts: STAR_FADE_MAGNITUDES, STAR_FADE_BRIGHTNESS.
+const STAR_FADE_MAGNITUDES : f32 = 8.0;
+const STAR_FADE_BRIGHTNESS : f32 = 0.85;
 
 // Hamilton rotation by a unit quaternion (sky/math/quaternion.ts `rotate`).
 fn rotateByQuat(q : vec4<f32>, v : vec3<f32>) -> vec3<f32> {
@@ -106,7 +112,9 @@ fn main(input : VertexInputs) -> FragmentInputs {
   let c = vec2<f32>(select(-1.0, 1.0, (bit0 ^ bit1) == 1u), select(-1.0, 1.0, bit1 == 1u));
   let mag = vertexInputs.starPhot.x * SNORM_TO_MAG;
   vertexOutputs.vCorner = c;
-  if (mag > uniforms.uMagLimit) {
+  // atmosphere.ts `effectiveMagLimit`: the daylight sky hides the faint stars first.
+  let magLimitEff = uniforms.uMagLimit - STAR_FADE_MAGNITUDES * uniforms.uAtmosphere;
+  if (mag > magLimitEff) {
     // Fainter than the limit: a degenerate quad outside the clip volume.
     vertexOutputs.position = vec4<f32>(0.0, 0.0, 2.0, 1.0);
     vertexOutputs.vColor = vec4<f32>(0.0);
@@ -132,8 +140,9 @@ fn main(input : VertexInputs) -> FragmentInputs {
     vertexOutputs.position = clip;
     let bvRaw = vertexInputs.starPhot.y;
     let bv = select(bvRaw * SNORM_TO_MAG, BV_DEFAULT, bvRaw > BV_UNKNOWN_THRESHOLD);
-    // stars.ts `starBrightness(mag, uMagScale.x)`.
-    let brightness = clamp(pow(10.0, -0.4 * (mag - uniforms.uMagScale.x)), 0.0, 1.0);
+    // stars.ts `starBrightness(mag, uMagScale.x)`, faded by the daylight.
+    var brightness = clamp(pow(10.0, -0.4 * (mag - uniforms.uMagScale.x)), 0.0, 1.0);
+    brightness *= 1.0 - STAR_FADE_BRIGHTNESS * uniforms.uAtmosphere;
     vertexOutputs.vColor = vec4<f32>(bvToRgb(bv), brightness);
   }
 }

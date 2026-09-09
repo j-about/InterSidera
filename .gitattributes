@@ -16,3 +16,4 @@ frontend/src/api/schema.d.ts linguist-generated=true
 frontend/package-lock.json linguist-generated=true
 backend/uv.lock linguist-generated=true
 THIRD_PARTY_NOTICES.md linguist-generated=true
+frontend/src/data/credits.json linguist-generated=true

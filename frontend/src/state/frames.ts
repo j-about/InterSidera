@@ -30,7 +30,7 @@ import {
 } from '../sky/math/time';
 import { quat, store3, store4, vec3 } from '../sky/math/typed';
 import { normalize3 } from '../sky/math/vec3';
-import type { ClockMode, FrameEval, Observer, SkyWarning } from './types';
+import type { ClockMode, FrameEval, Observer, SkyWarning, WarningCode } from './types';
 
 /** The generated query of `GET /api/v1/sky/frame` (brief l.103: types come from the contract). */
 export type FrameQuery = paths['/api/v1/sky/frame']['get']['parameters']['query'];
@@ -39,6 +39,18 @@ type WarningModel = components['schemas']['WarningModel'];
 type SamplesModel = components['schemas']['SamplesModel'];
 type BodyMeta = components['schemas']['BodyMeta'];
 type LimitsMeta = components['schemas']['LimitsMeta'];
+
+/** `true` only when `A` and `B` are assignable to each other (the same union, spelled twice). */
+type MutuallyAssignable<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type Assert<T extends true> = T;
+/**
+ * The hand-written `WarningCode` of the import-free leaf against the contract's closed list
+ * (plan D92): `tsc` fails here as soon as either side gains or loses a code, in both directions,
+ * and `toSkyWarning` below then compiles without a cast.
+ */
+export type WarningCodesMatchContract = Assert<
+  MutuallyAssignable<WarningCode, WarningModel['code']>
+>;
 
 /** `/sky/frame` defaults (docs/api.md), used only to read a hand-built query without `n`/`step_s`. */
 const API_DEFAULT_STEP_S = 60;
@@ -116,6 +128,9 @@ export interface FrameWindow {
   phase: Float64Array;
   diamDeg: Float64Array;
   minor: MinorSeries[];
+  /** `minor[m].id` and `minor[m].kind`, built once so `evaluate` hands them over by reference. */
+  minorIds: string[];
+  minorKinds: string[];
   warnings: { observer: SkyWarning[]; time: SkyWarning[] };
 }
 
@@ -132,7 +147,7 @@ export interface SimInput {
   stepClassOf: ReadonlyMap<string, string>;
   /** `/meta.limits.max_step_s`. */
   maxStepS: Readonly<Record<string, number>>;
-  /** Pinned minor-body ids (always empty at M3). */
+  /** The composed minor-body request list (pins and shown defaults, plan D102); empty when off. */
   minor: readonly string[];
 }
 
@@ -458,6 +473,8 @@ export function windowFromResponse(
     phase: bodies.phase,
     diamDeg: bodies.diamDeg,
     minor,
+    minorIds: minor.map((series) => series.id),
+    minorKinds: minor.map((series) => series.kind),
     warnings: {
       observer: response.observer.warnings.map(toSkyWarning),
       time: time.warnings.map(toSkyWarning),
@@ -693,11 +710,76 @@ export function decide(state: FetchState, sim: SimInput, nowMs: number): Decisio
   return decision;
 }
 
+/** Hermite-interpolate body `b` of a body-major sample block into slot `slot` of the channels. */
+function interpolateBodyInto(
+  dir: Float64Array,
+  distAu: Float64Array,
+  mag: Float64Array,
+  phase: Float64Array,
+  diamDeg: Float64Array,
+  slot: number,
+  samples: MinorSamples,
+  n: number,
+  b: number,
+  i: number,
+  u: number,
+): void {
+  const base = 3 * b * n;
+  scratchV[0] = interpolateScalar(samples.dir, n, i, u, 3, base);
+  scratchV[1] = interpolateScalar(samples.dir, n, i, u, 3, base + 1);
+  scratchV[2] = interpolateScalar(samples.dir, n, i, u, 3, base + 2);
+  store3(dir, 3 * slot, normalize3(scratchV, scratchV));
+  distAu[slot] = interpolateScalar(samples.distAu, n, i, u, 1, b * n);
+  mag[slot] = interpolateScalar(samples.mag, n, i, u, 1, b * n);
+  phase[slot] = interpolateScalar(samples.phase, n, i, u, 1, b * n);
+  diamDeg[slot] = interpolateScalar(samples.diamDeg, n, i, u, 1, b * n);
+}
+
+/** Linear continuation of body `b` beyond the window into slot `slot` (brief l.69). */
+function extrapolateBodyInto(
+  dir: Float64Array,
+  distAu: Float64Array,
+  mag: Float64Array,
+  phase: Float64Array,
+  diamDeg: Float64Array,
+  slot: number,
+  samples: MinorSamples,
+  n: number,
+  b: number,
+  stepD: number,
+  tt0: number,
+  tt: number,
+): void {
+  const base = 3 * b * n;
+  scratchV[0] = extrapolateScalar(samples.dir, n, stepD, tt0, tt, 3, base);
+  scratchV[1] = extrapolateScalar(samples.dir, n, stepD, tt0, tt, 3, base + 1);
+  scratchV[2] = extrapolateScalar(samples.dir, n, stepD, tt0, tt, 3, base + 2);
+  store3(dir, 3 * slot, normalize3(scratchV, scratchV));
+  distAu[slot] = extrapolateScalar(samples.distAu, n, stepD, tt0, tt, 1, b * n);
+  mag[slot] = extrapolateScalar(samples.mag, n, stepD, tt0, tt, 1, b * n);
+  phase[slot] = extrapolateScalar(samples.phase, n, stepD, tt0, tt, 1, b * n);
+  diamDeg[slot] = extrapolateScalar(samples.diamDeg, n, stepD, tt0, tt, 1, b * n);
+}
+
+/** Slot `slot` of the minor channels as "not drawn": no direction, every scalar unknown. */
+function clearMinorSlot(out: FrameEval, slot: number): void {
+  out.minorDrawn[slot] = 0;
+  out.minorDir[3 * slot] = NaN;
+  out.minorDir[3 * slot + 1] = NaN;
+  out.minorDir[3 * slot + 2] = NaN;
+  out.minorDistAu[slot] = NaN;
+  out.minorMag[slot] = NaN;
+  out.minorPhase[slot] = NaN;
+  out.minorDiamDeg[slot] = NaN;
+}
+
 /**
  * Evaluate a window at `tt` into `out` (plan D74): inside the window the interpolation kernels,
  * outside the linear continuation of the boundary samples (brief l.69); a snapshot (`n = 1`)
- * holds sample 0 everywhere. `out` must have room for every body (`RangeError` otherwise) and
- * nothing is allocated here.
+ * holds sample 0 everywhere. The minor bodies (plan D102) go through the same kernels into the
+ * minor block, a body without samples (`mpc_unreliable`) leaving `minorDrawn` at 0 and its
+ * channels `NaN`. `out` must have room for every body and minor body (`RangeError` otherwise)
+ * and nothing is allocated here.
  */
 export function evaluate(window: FrameWindow, tt: number, out: FrameEval): void {
   const bodyCount = window.bodyIds.length;
@@ -712,6 +794,12 @@ export function evaluate(window: FrameWindow, tt: number, out: FrameEval): void 
       `FrameEval holds ${String(out.distAu.length)} bodies, the window has ${String(bodyCount)}`,
     );
   }
+  const minorCount = window.minor.length;
+  if (out.minorDir.length < 3 * minorCount) {
+    throw new RangeError(
+      `FrameEval holds ${String(out.minorDir.length / 3)} minor bodies, the window has ${String(minorCount)}`,
+    );
+  }
   const { n, tt0, stepD } = window;
   const inside = n < 2 || windowCovers(window, tt);
   out.valid = true;
@@ -722,6 +810,9 @@ export function evaluate(window: FrameWindow, tt: number, out: FrameEval): void 
   out.bodyCount = bodyCount;
   out.bodyIds = window.bodyIds;
   out.bodyKinds = window.bodyKinds;
+  out.minorCount = minorCount;
+  out.minorIds = window.minorIds;
+  out.minorKinds = window.minorKinds;
 
   if (inside) {
     const i = segmentIndex(tt0, stepD, n, tt);
@@ -732,15 +823,40 @@ export function evaluate(window: FrameWindow, tt: number, out: FrameEval): void 
     interpolateVec3(out.observerVelocity, window.observerVelocity, n, i, u, false);
     out.lstHours = window.lst === null ? NaN : interpolateLstHours(window.lst, n, i, u);
     for (let b = 0; b < bodyCount; b += 1) {
-      const base = 3 * b * n;
-      scratchV[0] = interpolateScalar(window.dir, n, i, u, 3, base);
-      scratchV[1] = interpolateScalar(window.dir, n, i, u, 3, base + 1);
-      scratchV[2] = interpolateScalar(window.dir, n, i, u, 3, base + 2);
-      store3(out.dir, 3 * b, normalize3(scratchV, scratchV));
-      out.distAu[b] = interpolateScalar(window.distAu, n, i, u, 1, b * n);
-      out.mag[b] = interpolateScalar(window.mag, n, i, u, 1, b * n);
-      out.phase[b] = interpolateScalar(window.phase, n, i, u, 1, b * n);
-      out.diamDeg[b] = interpolateScalar(window.diamDeg, n, i, u, 1, b * n);
+      interpolateBodyInto(
+        out.dir,
+        out.distAu,
+        out.mag,
+        out.phase,
+        out.diamDeg,
+        b,
+        window,
+        n,
+        b,
+        i,
+        u,
+      );
+    }
+    for (let m = 0; m < minorCount; m += 1) {
+      const samples = window.minor[m]?.samples ?? null;
+      if (samples === null) {
+        clearMinorSlot(out, m);
+      } else {
+        out.minorDrawn[m] = 1;
+        interpolateBodyInto(
+          out.minorDir,
+          out.minorDistAu,
+          out.minorMag,
+          out.minorPhase,
+          out.minorDiamDeg,
+          m,
+          samples,
+          n,
+          0,
+          i,
+          u,
+        );
+      }
     }
     return;
   }
@@ -763,14 +879,41 @@ export function evaluate(window: FrameWindow, tt: number, out: FrameEval): void 
     out.lstHours = interpolateLstHours(window.lst, n, i, segmentFraction(tt0, stepD, i, tt));
   }
   for (let b = 0; b < bodyCount; b += 1) {
-    const base = 3 * b * n;
-    scratchV[0] = extrapolateScalar(window.dir, n, stepD, tt0, tt, 3, base);
-    scratchV[1] = extrapolateScalar(window.dir, n, stepD, tt0, tt, 3, base + 1);
-    scratchV[2] = extrapolateScalar(window.dir, n, stepD, tt0, tt, 3, base + 2);
-    store3(out.dir, 3 * b, normalize3(scratchV, scratchV));
-    out.distAu[b] = extrapolateScalar(window.distAu, n, stepD, tt0, tt, 1, b * n);
-    out.mag[b] = extrapolateScalar(window.mag, n, stepD, tt0, tt, 1, b * n);
-    out.phase[b] = extrapolateScalar(window.phase, n, stepD, tt0, tt, 1, b * n);
-    out.diamDeg[b] = extrapolateScalar(window.diamDeg, n, stepD, tt0, tt, 1, b * n);
+    extrapolateBodyInto(
+      out.dir,
+      out.distAu,
+      out.mag,
+      out.phase,
+      out.diamDeg,
+      b,
+      window,
+      n,
+      b,
+      stepD,
+      tt0,
+      tt,
+    );
+  }
+  for (let m = 0; m < minorCount; m += 1) {
+    const samples = window.minor[m]?.samples ?? null;
+    if (samples === null) {
+      clearMinorSlot(out, m);
+    } else {
+      out.minorDrawn[m] = 1;
+      extrapolateBodyInto(
+        out.minorDir,
+        out.minorDistAu,
+        out.minorMag,
+        out.minorPhase,
+        out.minorDiamDeg,
+        m,
+        samples,
+        n,
+        0,
+        stepD,
+        tt0,
+        tt,
+      );
+    }
   }
 }

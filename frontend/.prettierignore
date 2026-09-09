@@ -1,7 +1,9 @@
 dist
+dist-*
 coverage
 playwright-report
 test-results
 src/api/schema.d.ts
+src/data/credits.json
 package-lock.json
 node_modules

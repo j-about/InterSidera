@@ -1,15 +1,19 @@
-// The single simulation store (plan D80, brief l.85): a zustand vanilla store with
+// The single simulation store (plan D80, D92, brief l.85): a zustand vanilla store with
 // `subscribeWithSelector`, shared by React (`useStore`) and the framework-agnostic engine
 // (selector subscriptions). The engine owns time: it derives `tt` from `clock`'s control block on
 // every frame and publishes the mirror through `publishTt` at most twice per second; the store
-// itself never ticks. Every per-user value here round-trips through the URL (OBS-8).
+// itself never ticks. Every per-user value here round-trips through the URL (OBS-8); the `ui`,
+// `geo`, `geocoder`, `details`, `readout`, `labels` and `minorBodies` slices are session-only.
 
 import { subscribeWithSelector } from 'zustand/middleware';
 import { createStore } from 'zustand/vanilla';
 
 import { clampCameraAltDeg, clampFovDeg, wrapAzimuthDeg } from '../sky/math/frames';
+import { DAY_S } from '../sky/math/time';
 import { anchored, liveControl, pausedAt, ttAt } from './clock';
+import { clampInsideCoverage } from './frames';
 import type { SkyActions, SkyState, SkyStore } from './storeTypes';
+import { shiftYears } from './timeDisplay';
 import { LAYER_IDS } from './types';
 import type {
   ClockControl,
@@ -22,16 +26,16 @@ import type {
   ViewState,
 } from './types';
 
-/** Default observer when the URL names none (OBS-2, brief l.191; geolocation arrives at M4). */
+/** Default observer when the URL names none (OBS-2, brief l.191; geolocation replaces it). */
 export const GREENWICH: Observer = { body: 'earth', lat: 51.48, lon: 0, elev: 0 };
 
-/** Layers on by default at M3 (plan Q30): `dso` and `clines` join the defaults at M4. */
+/** Layers on by default (plan Q30): stars, planets, deep-sky objects, constellation lines, horizon. */
 export const DEFAULT_LAYERS: LayerFlags = {
   stars: true,
   planets: true,
-  dso: false,
+  dso: true,
   minor: false,
-  clines: false,
+  clines: true,
   cnames: false,
   cbounds: false,
   azgrid: false,
@@ -48,8 +52,13 @@ export const DEFAULT_OPTIONS: Options = {
   maglim: null,
   labels: 2,
   night: false,
+  nightLevel: 1,
   lang: 'en',
 };
+
+/** Night-mode brightness range (plan D108). */
+export const NIGHT_LEVEL_MIN = 0.3;
+export const NIGHT_LEVEL_MAX = 1;
 
 /** Looking north, 20 degrees up, with a 60 degree vertical field of view. */
 export const DEFAULT_VIEW: ViewState = { az: 0, alt: 20, fov: 60 };
@@ -59,6 +68,11 @@ export const DEFAULT_VIEW: ViewState = { az: 0, alt: 20, fov: 60 };
  * the value is replaced by `/meta.server_time.tt_minus_utc_seconds`, then by each frame window).
  */
 export const TT_MINUS_UTC_SEED_S = 69.184;
+
+/** Default minor bodies requested before "show more" (plan D102). */
+export const MINOR_DEFAULTS_SHOWN = 20;
+/** The pin cap before `/meta` announces `limits.max_minor_bodies` (brief l.164). */
+const MAX_MINOR_FALLBACK = 100;
 
 /** The URL semantics of `t` and `speed` (plan D79) as a control block anchored at `nowMs`. */
 function controlFromUrl(url: UrlState, nowMs: number): ClockControl | null {
@@ -75,8 +89,13 @@ function controlFromUrl(url: UrlState, nowMs: number): ClockControl | null {
   return { mode: 'playing', speed, ttAnchor: url.t, wallAnchorMs: nowMs };
 }
 
-function clockFrom(control: ClockControl, nowMs: number, ttMinusUtc: number): ClockState {
-  return { ...control, tt: ttAt(control, nowMs, ttMinusUtc), ttMinusUtc };
+function clockFrom(
+  control: ClockControl,
+  nowMs: number,
+  ttMinusUtc: number,
+  lstHours: number,
+): ClockState {
+  return { ...control, tt: ttAt(control, nowMs, ttMinusUtc), ttMinusUtc, lstHours };
 }
 
 function layersFromList(list: readonly LayerId[]): LayerFlags {
@@ -95,8 +114,20 @@ const OPTION_KEYS: readonly (keyof Options & keyof UrlState)[] = [
   'maglim',
   'labels',
   'night',
+  'nightLevel',
   'lang',
 ];
+
+/**
+ * `night=1` means night at full brightness and `night=0.6` night at that brightness (plan D108);
+ * `night=0` and an absent `night` leave the brightness alone (it is not written while off).
+ */
+function nightLevelFromUrl(url: UrlState, base: Options): number {
+  if (url.nightLevel !== undefined) {
+    return url.nightLevel;
+  }
+  return url.night === true ? NIGHT_LEVEL_MAX : base.nightLevel;
+}
 
 function optionsFromUrl(url: UrlState, base: Options): Options {
   return {
@@ -106,6 +137,7 @@ function optionsFromUrl(url: UrlState, base: Options): Options {
     maglim: url.maglim ?? base.maglim,
     labels: url.labels ?? base.labels,
     night: url.night ?? base.night,
+    nightLevel: nightLevelFromUrl(url, base),
     lang: url.lang ?? base.lang,
   };
 }
@@ -116,6 +148,18 @@ function canonicalView(view: ViewState): ViewState {
     alt: clampCameraAltDeg(view.alt),
     fov: clampFovDeg(view.fov),
   };
+}
+
+/** The speed a control block runs at: 0 paused, 1 live, else the playing speed (TIME-3). */
+function runningSpeed(control: ClockControl): number {
+  switch (control.mode) {
+    case 'live':
+      return 1;
+    case 'paused':
+      return 0;
+    case 'playing':
+      return control.speed;
+  }
 }
 
 /** The store as a fresh page load sees it: URL values over the defaults (plan D87). */
@@ -130,23 +174,52 @@ export function createSkyStore(initial: UrlState = {}, nowMs: number = Date.now(
     controlFromUrl(initial, nowMs) ?? liveControl(nowMs),
     nowMs,
     TT_MINUS_UTC_SEED_S,
+    NaN,
   );
   const view = canonicalView({
     az: initial.az ?? DEFAULT_VIEW.az,
     alt: initial.alt ?? DEFAULT_VIEW.alt,
     fov: initial.fov ?? DEFAULT_VIEW.fov,
   });
+  // Monotonic counters: a toast or a centre request is told from the previous one by its `seq`
+  // even after the slot was cleared in between.
+  let toastSeq = 0;
+  let centreSeq = 0;
 
   const store = createStore<SkyState>()(
     subscribeWithSelector((set, get) => {
+      /**
+       * A user time change: the new control block, and the coverage stop lifted (TIME-4: the
+       * banner goes as soon as the clock moves). One `set`, so subscribers see both at once.
+       */
       const setClock = (control: ClockControl, nowMs: number): void => {
-        const { ttMinusUtc } = get().clock;
-        set({ clock: clockFrom(control, nowMs, ttMinusUtc) });
+        const { clock, frames, ui } = get();
+        const patch: Partial<SkyState> = {
+          clock: clockFrom(control, nowMs, clock.ttMinusUtc, clock.lstHours),
+        };
+        if (frames.coverageStop !== null) {
+          patch.frames = { ...frames, coverageStop: null };
+        }
+        // The one memory of the last running speed, so the Play button and Space resume alike.
+        const running = runningSpeed(control);
+        if (running !== 0 && running !== ui.lastSpeed) {
+          patch.ui = { ...ui, lastSpeed: running };
+        }
+        set(patch);
+      };
+
+      /** The observer moved by the user: a pending geolocation prompt no longer applies. */
+      const geoAfterObserverChange = (patch: Partial<SkyState>): void => {
+        if (get().geo.status === 'prompting') {
+          patch.geo = { status: 'idle' };
+        }
       };
 
       const actions: SkyActions = {
         setObserver(next) {
-          set({ observer: next });
+          const patch: Partial<SkyState> = { observer: next };
+          geoAfterObserverChange(patch);
+          set(patch);
         },
         setView(patch) {
           set({ view: canonicalView({ ...get().view, ...patch }) });
@@ -164,7 +237,11 @@ export function createSkyStore(initial: UrlState = {}, nowMs: number = Date.now(
           set({ minor: ids });
         },
         select(id) {
-          set({ selection: id });
+          const patch: Partial<SkyState> = { selection: id };
+          if (id === null) {
+            patch.follow = false;
+          }
+          set(patch);
         },
         pause(nowMs = Date.now()) {
           const { clock } = get();
@@ -183,12 +260,50 @@ export function createSkyStore(initial: UrlState = {}, nowMs: number = Date.now(
         setTime(tt, nowMs = Date.now()) {
           setClock(pausedAt(tt, nowMs), nowMs);
         },
-        publishTt(tt) {
+        stopAtBound(rangeTt, nowMs = Date.now()) {
+          const { clock, frames } = get();
+          const tt = clampInsideCoverage(ttAt(clock, nowMs, clock.ttMinusUtc), rangeTt);
+          set({
+            clock: clockFrom(pausedAt(tt, nowMs), nowMs, clock.ttMinusUtc, clock.lstHours),
+            frames: { ...frames, coverageStop: { rangeTt } },
+          });
+        },
+        stepTime(delta, nowMs = Date.now()) {
           const { clock } = get();
-          // Written NaN-safe: a NaN mirror must be replaced by the first real value.
-          if (!(Math.abs(tt - clock.tt) <= 1e-6)) {
-            set({ clock: { ...clock, tt } });
+          // From the time the engine renders now, never from the <= 2 Hz mirror.
+          const base = ttAt(clock, nowMs, clock.ttMinusUtc);
+          const tt =
+            typeof delta === 'number'
+              ? base + delta / DAY_S
+              : shiftYears(base, delta.years, clock.ttMinusUtc);
+          let control: ClockControl;
+          switch (clock.mode) {
+            case 'paused':
+              control = pausedAt(tt, nowMs);
+              break;
+            case 'playing':
+              control = { mode: 'playing', speed: clock.speed, ttAnchor: tt, wallAnchorMs: nowMs };
+              break;
+            case 'live':
+              // A step away from the wall clock cannot stay live: it plays on at 1x from there.
+              control = { mode: 'playing', speed: 1, ttAnchor: tt, wallAnchorMs: nowMs };
+              break;
           }
+          setClock(control, nowMs);
+        },
+        publishTt(tt, lstHours) {
+          const { clock } = get();
+          // Written NaN-safe: a NaN mirror must be replaced by the first real value, and the
+          // sidereal time compares with `Object.is` so NaN -> NaN stays quiet.
+          if (!(Math.abs(tt - clock.tt) <= 1e-6) || !Object.is(lstHours, clock.lstHours)) {
+            set({ clock: { ...clock, tt, lstHours } });
+          }
+        },
+        publishReadout(readout) {
+          set({ readout });
+        },
+        setVisibleLabels(list) {
+          set({ labels: { visible: list } });
         },
         setTtMinusUtc(seconds) {
           set({ clock: { ...get().clock, ttMinusUtc: seconds } });
@@ -211,6 +326,90 @@ export function createSkyStore(initial: UrlState = {}, nowMs: number = Date.now(
         setEngine(patch) {
           set({ engine: { ...get().engine, ...patch } });
         },
+        setGeo(status) {
+          set({ geo: { status } });
+        },
+        setGeocoder(patch) {
+          set({ geocoder: { ...get().geocoder, ...patch } });
+        },
+        setUi(patch) {
+          set({ ui: { ...get().ui, ...patch } });
+        },
+        openPanel(id) {
+          set({ ui: { ...get().ui, panel: id, sheet: 'expanded' } });
+        },
+        closePanel() {
+          set({ ui: { ...get().ui, panel: null, sheet: 'collapsed' } });
+        },
+        openDialog(id) {
+          set({ ui: { ...get().ui, dialog: id } });
+        },
+        closeDialog() {
+          set({ ui: { ...get().ui, dialog: null } });
+        },
+        showToast(key) {
+          toastSeq += 1;
+          set({ ui: { ...get().ui, toast: { seq: toastSeq, key } } });
+        },
+        dismissHint() {
+          set({ ui: { ...get().ui, hintDismissed: true } });
+        },
+        setNightLevel(level) {
+          if (!Number.isFinite(level)) {
+            return;
+          }
+          const nightLevel = Math.min(NIGHT_LEVEL_MAX, Math.max(NIGHT_LEVEL_MIN, level));
+          set({ options: { ...get().options, nightLevel } });
+        },
+        setFollow(on) {
+          set({ follow: on });
+        },
+        pinMinor(id) {
+          const { minor, meta } = get();
+          if (minor.includes(id)) {
+            return true;
+          }
+          const cap = meta?.limits.max_minor_bodies ?? MAX_MINOR_FALLBACK;
+          if (minor.length >= cap) {
+            return false;
+          }
+          set({ minor: [...minor, id] });
+          return true;
+        },
+        unpinMinor(id) {
+          const { minor } = get();
+          if (minor.includes(id)) {
+            set({ minor: minor.filter((pinned) => pinned !== id) });
+          }
+        },
+        setMinorDefaults(list, status) {
+          set({ minorBodies: { ...get().minorBodies, defaults: list, status } });
+        },
+        showMoreMinor() {
+          const { minorBodies } = get();
+          if (minorBodies.defaults !== null) {
+            set({ minorBodies: { ...minorBodies, shown: minorBodies.defaults.length } });
+          }
+        },
+        setDetails(patch) {
+          set({ details: { ...get().details, ...patch } });
+        },
+        setBundle(bundle) {
+          set({ bundle });
+        },
+        requestCentre(id) {
+          centreSeq += 1;
+          set({ centreRequest: { id, seq: centreSeq } });
+        },
+        clearCentre(seq) {
+          if (get().centreRequest?.seq === seq) {
+            set({ centreRequest: null });
+          }
+        },
+        retryNow() {
+          const { boot } = get();
+          set({ boot: { ...boot, retrySeq: boot.retrySeq + 1 } });
+        },
         applyUrl(url, nowMs = Date.now()) {
           const state = get();
           const patch: Partial<SkyState> = {};
@@ -226,11 +425,21 @@ export function createSkyStore(initial: UrlState = {}, nowMs: number = Date.now(
               lon: url.lon ?? state.observer.lon,
               elev: url.elev ?? state.observer.elev,
             };
+            geoAfterObserverChange(patch);
           }
           // `speed` without `t` is not a complete clock statement and is ignored (plan D79).
           const control = controlFromUrl(url, nowMs);
           if (control !== null) {
-            patch.clock = clockFrom(control, nowMs, state.clock.ttMinusUtc);
+            patch.clock = clockFrom(control, nowMs, state.clock.ttMinusUtc, state.clock.lstHours);
+            // A time carried by the URL (Back to an instant inside coverage) lifts the TIME-4
+            // stop like every other user time change.
+            if (state.frames.coverageStop !== null) {
+              patch.frames = { ...state.frames, coverageStop: null };
+            }
+            const running = runningSpeed(control);
+            if (running !== 0 && running !== state.ui.lastSpeed) {
+              patch.ui = { ...state.ui, lastSpeed: running };
+            }
           }
           if (url.az !== undefined || url.alt !== undefined || url.fov !== undefined) {
             patch.view = canonicalView({
@@ -271,7 +480,14 @@ export function createSkyStore(initial: UrlState = {}, nowMs: number = Date.now(
         selection: initial.sel ?? null,
         meta: null,
         health: null,
-        boot: { phase: 'health', attempt: 0, retryAtMs: null, progress: null, error: null },
+        boot: {
+          phase: 'health',
+          attempt: 0,
+          retryAtMs: null,
+          progress: null,
+          error: null,
+          retrySeq: 0,
+        },
         catalogs: { stars: 'idle', index: 'idle', dso: 'idle', constellations: 'idle' },
         frames: {
           status: 'idle',
@@ -280,8 +496,44 @@ export function createSkyStore(initial: UrlState = {}, nowMs: number = Date.now(
           extrapolating: false,
           warnings: [],
           lastError: null,
+          failing: null,
+          coverageStop: null,
+          minor: [],
         },
         engine: { kind: null, status: 'idle' },
+        geo: { status: 'idle' },
+        geocoder: {
+          enabled: true,
+          busy: false,
+          lastRequestMs: -Infinity,
+          results: [],
+          error: null,
+        },
+        ui: {
+          panel: null,
+          sheet: 'collapsed',
+          dialog: null,
+          stepUnit: 'hour',
+          shortcuts: true,
+          hintDismissed: false,
+          toast: null,
+          lastSpeed: runningSpeed(clock) === 0 ? 1 : runningSpeed(clock),
+        },
+        follow: false,
+        labels: { visible: [] },
+        readout: null,
+        details: {
+          id: null,
+          status: 'idle',
+          entry: null,
+          tt: NaN,
+          refraction: false,
+          con: null,
+          error: null,
+        },
+        minorBodies: { defaults: null, status: 'idle', shown: MINOR_DEFAULTS_SHOWN },
+        bundle: null,
+        centreRequest: null,
         actions,
       };
     }),
@@ -289,13 +541,13 @@ export function createSkyStore(initial: UrlState = {}, nowMs: number = Date.now(
   return store;
 }
 
-/** The URL view of a state (plan D79): `t` is `live` in live mode, `speed` only while playing. */
+/**
+ * The URL view of a state (plan D79): `t` is `live` in live mode, `speed` only while playing,
+ * `nightLevel` only while night is on below full brightness (plan D108), and no observer while
+ * a geolocation prompt is up (OBS-1: the position is written once the user has answered).
+ */
 export function urlStateOf(state: SkyState): UrlState {
   const url: UrlState = {
-    body: state.observer.body,
-    lat: state.observer.lat,
-    lon: state.observer.lon,
-    elev: state.observer.elev,
     t: state.clock.mode === 'live' ? 'live' : state.clock.tt,
     az: state.view.az,
     alt: state.view.alt,
@@ -309,6 +561,12 @@ export function urlStateOf(state: SkyState): UrlState {
     lang: state.options.lang,
     night: state.options.night,
   };
+  if (state.geo.status !== 'prompting') {
+    url.body = state.observer.body;
+    url.lat = state.observer.lat;
+    url.lon = state.observer.lon;
+    url.elev = state.observer.elev;
+  }
   if (state.clock.mode === 'playing') {
     url.speed = state.clock.speed;
   }
@@ -317,6 +575,9 @@ export function urlStateOf(state: SkyState): UrlState {
   }
   if (state.dsoTypes !== null) {
     url.dso = state.dsoTypes;
+  }
+  if (state.options.night && state.options.nightLevel < NIGHT_LEVEL_MAX) {
+    url.nightLevel = state.options.nightLevel;
   }
   if (state.selection !== null) {
     url.sel = state.selection;

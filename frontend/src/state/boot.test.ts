@@ -186,6 +186,14 @@ function fakeEngine(): { engine: SkyEngineApi; setCatalog: ReturnType<typeof vi.
       fps: () => 60,
       frameMs: () => 1,
       starCount: () => 0,
+      directionOf: () => false,
+      readoutOf: () => false,
+      pick: () => null,
+      snapshot: () => Promise.reject(new Error('no snapshot in tests')),
+      labelBoxes: () => [],
+      skyBrightness: () => 0,
+      layerStats: () => ({ dso: 0, clinesSegments: 0 }),
+      reducedMotion: () => false,
       resize: () => undefined,
       dispose: () => undefined,
     },
@@ -259,6 +267,7 @@ describe('startBoot', () => {
       retryAtMs: null,
       progress: null,
       error: null,
+      retrySeq: 0,
     });
     expect(state.health).toEqual(degraded);
     expect(state.meta?.server_time.tt_minus_utc_seconds).toBe(69.3);
@@ -274,6 +283,8 @@ describe('startBoot', () => {
     const bundle = handle.bundle();
     expect(bundle?.dso).toBeNull();
     expect(bundle?.constellations?.data).toEqual([]);
+    // The bundle is published to the store before the engine step (plan D92).
+    expect(state.bundle).toBe(bundle);
     expect(setCatalog).toHaveBeenCalledTimes(1);
     expect(setCatalog).toHaveBeenCalledWith(bundle?.stars);
     expect(handle.catalog()).toBe(bundle?.stars);
@@ -354,6 +365,7 @@ describe('startBoot', () => {
       retryAtMs: null,
       progress: null,
       error: null,
+      retrySeq: 0,
     });
   });
 

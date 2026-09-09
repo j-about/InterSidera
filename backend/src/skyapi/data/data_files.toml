@@ -315,6 +315,22 @@ attribution = "Constellation names and genitives after the IAU list of the 88 co
 version_or_date = "authored 2026-09-03 from the IAU constellation list (archived at iauarchive.eso.org)"
 notes = "Committed at backend/src/skyapi/data/constellation_names.csv (88 rows `abbr,latin,genitive,english`, brief l.314); cross-checked against d3-celestial `constellations.json`. Translated names live in the frontend resource files keyed by IAU abbreviation."
 
+[[files]]
+key = "gazetteer"
+kind = "committed"
+filename = "frontend/src/state/presets.ts"
+url = "https://planetarynames.wr.usgs.gov/"
+size_bytes = 0
+group = "sites"
+required = false
+optional = false
+refresh = "never"
+license = "Public domain (US Government work)"
+copyright = "US Geological Survey, Astrogeology Science Center (not subject to copyright)"
+attribution = "Planetary site presets: coordinates from the USGS Gazetteer of Planetary Nomenclature"
+version_or_date = "feature pages read 2026-09-09 (Statio Tranquillitatis 5684, Tycho 6163, Shackleton 5450, Jezero 14300, Gale 2071, Olympus Mons 4453, Caloris Planitia 979, Maxwell Montes 3766)"
+notes = "OBS-6 [S] presets (brief l.195, l.319): about ten named sites copied into the frontend module with one citation per site (planetocentric east longitudes; Caloris converted from the Gazetteer's planetographic +West values with the pck00011 radii). No API route serves them, so the module replaces the brief's `planetary_sites.csv` (backlog B-57)."
+
 # ------------------------------------------------------------------------------------ mpc
 
 [[files]]

@@ -1,24 +1,27 @@
 // `window.__sky`, the debug hook of dev and e2e builds (brief l.410, plan D86). Installed only
 // through a dynamic `import()` guarded by `import.meta.env.DEV || import.meta.env.MODE === 'e2e'`
 // in the React shell, so production bundles carry neither this module nor the `__sky` string
-// (`make build` greps for it). `altAzOf` recomputes on the CPU exactly what the shaders draw:
-// bodies from the interpolated direction the engine uploaded, stars through the CPU twin of the
-// star shader (proper motion, aberration, horizon rotation, the D73 refraction).
+// (`make build` greps for it). `altAzOf` and `screenOf` read what the engine renders through
+// `SkyEngineApi.readoutOf` / `directionOf` (the CPU twin of the shaders: bodies from the
+// interpolated direction the engine uploaded, stars through proper motion, aberration, the
+// horizon rotation and the D73 refraction), so the hook and the picture cannot disagree.
 
 import { observerQuery } from '../api/client';
 import type { SkyDebugDeps } from '../sky/engine/types';
 import { altAzToEnu, directionToScreen, enuToAltAz } from '../sky/math/frames';
 import type { AltAz, ScreenPoint } from '../sky/math/frames';
-import { apparentStarAt } from '../sky/math/properMotion';
-import { rotate } from '../sky/math/quaternion';
-import { apparentAltitudeDeg, refractionFactor } from '../sky/math/refraction';
-import { yearsSinceEpoch } from '../sky/math/time';
-import { load3, vec3 } from '../sky/math/typed';
+import { vec3 } from '../sky/math/typed';
 import { arcsecBetween3 } from '../sky/math/vec3';
+import { createSelectionReadout } from '../state/types';
 import type { ViewState } from '../state/types';
-import type { SkyDebugAltAz, SkyDebugApi, SkyDebugReport, SkyDebugState } from './skyDebugApi';
+import type {
+  SkyDebugAltAz,
+  SkyDebugApi,
+  SkyDebugLabel,
+  SkyDebugReport,
+  SkyDebugState,
+} from './skyDebugApi';
 
-const HIP_PREFIX = 'hip:';
 const POLARIS = 'hip:11767';
 const SELF_TEST_SECONDS = 10;
 
@@ -55,57 +58,22 @@ export function installSkyDebug(deps: SkyDebugDeps): SkyDebugApi {
   const ready = engine.whenReady().then(() => {
     isReady = true;
   });
-  const dir = vec3();
   const enu = vec3();
   const altAz: AltAz = { alt: 0, az: 0 };
   const screen: ScreenPoint = { x: 0, y: 0 };
+  const readout = createSelectionReadout();
 
-  /** The ENU direction the engine renders for `id`, into `enu`; `false` when unknown. */
-  function enuOf(id: string): boolean {
-    const current = engine.current;
-    if (!current.valid) {
-      return false;
-    }
-    if (id.startsWith(HIP_PREFIX)) {
-      const cat = catalog();
-      if (cat === null) {
-        return false;
-      }
-      const hip = Number.parseInt(id.slice(HIP_PREFIX.length), 10);
-      const row = cat.hipIndex.get(hip);
-      if (row === undefined) {
-        return false;
-      }
-      const years = yearsSinceEpoch(current.tt, cat.columns.epochTt);
-      apparentStarAt(dir, cat.columns.dir, cat.columns.pm, row, years, current.observerVelocity);
-    } else {
-      const index = current.bodyIds.indexOf(id);
-      if (index < 0 || index >= current.bodyCount) {
-        return false;
-      }
-      load3(dir, current.dir, 3 * index);
-    }
-    rotate(enu, current.horizonQ, dir);
-    return true;
-  }
-
+  /** The rendered altitudes and azimuth of `id`, through the engine's own readout. */
   function altAzOf(id: string): SkyDebugAltAz | null {
-    if (!enuOf(id)) {
+    if (!engine.readoutOf(id, readout)) {
       return null;
     }
-    enuToAltAz(altAz, enu[0], enu[1], enu[2]);
-    const { observer, options } = store.getState();
-    const altTrue = altAz.alt;
-    const alt =
-      options.refr && observer.body === 'earth'
-        ? apparentAltitudeDeg(altTrue, refractionFactor(observer.elev))
-        : altTrue;
-    return { alt, altTrue, az: altAz.az };
+    return { alt: readout.alt, altTrue: readout.altTrue, az: readout.az };
   }
 
+  /** The rendered (refracted) direction of `id` projected with the pure twin of the camera. */
   function screenOf(id: string): { x: number; y: number } | null {
-    const target = altAzOf(id);
-    if (target === null) {
+    if (!engine.directionOf(id, enu)) {
       return null;
     }
     const { view } = store.getState();
@@ -114,10 +82,11 @@ export function installSkyDebug(deps: SkyDebugDeps): SkyDebugApi {
     if (width <= 0 || height <= 0) {
       return null;
     }
+    enuToAltAz(altAz, enu[0], enu[1], enu[2]);
     const inFront = directionToScreen(
       screen,
-      target.alt,
-      target.az,
+      altAz.alt,
+      altAz.az,
       width,
       height,
       view.fov,
@@ -127,6 +96,18 @@ export function installSkyDebug(deps: SkyDebugDeps): SkyDebugApi {
     return inFront ? { x: screen.x, y: screen.y } : null;
   }
 
+  /** Minor bodies of the last evaluation that carry samples (`minorDrawn[m] === 1`). */
+  function minorDrawnCount(): number {
+    const current = engine.current;
+    let drawn = 0;
+    for (let m = 0; m < current.minorCount; m += 1) {
+      if (current.minorDrawn[m] === 1) {
+        drawn += 1;
+      }
+    }
+    return drawn;
+  }
+
   function state(): SkyDebugState {
     const s = store.getState();
     const cat = catalog();
@@ -134,9 +115,11 @@ export function installSkyDebug(deps: SkyDebugDeps): SkyDebugApi {
       tt: engine.currentTt(),
       mode: s.clock.mode,
       speed: s.clock.speed,
+      lstHours: engine.current.valid ? engine.current.lstHours : NaN,
       observer: s.observer,
       view: s.view,
       frame: s.frames.window,
+      coverageStop: s.frames.coverageStop?.rangeTt ?? null,
       refr: s.options.refr,
       catalogs: {
         stars: cat?.columns.count ?? 0,
@@ -146,7 +129,25 @@ export function installSkyDebug(deps: SkyDebugDeps): SkyDebugApi {
           s.catalogs.constellations === 'ready' ? (s.meta?.catalogs.constellations?.count ?? 0) : 0,
       },
       parseMs: cat?.parseMs ?? null,
+      geo: s.geo.status,
+      sel: s.selection,
+      night: s.options.night,
+      nightLevel: s.options.nightLevel,
+      layers: s.layers,
+      reducedMotion: engine.reducedMotion(),
+      ui: { panel: s.ui.panel, sheet: s.ui.sheet, dialog: s.ui.dialog },
     };
+  }
+
+  /** The labels the engine draws, with the boxes of its own layout (plan D105). */
+  function labels(): SkyDebugLabel[] {
+    return engine.labelBoxes();
+  }
+
+  /** The constellation is known for the selection alone, from the `/sky/altaz` details row. */
+  function constellationOf(id: string): string | null {
+    const s = store.getState();
+    return id === s.selection ? s.details.con : null;
   }
 
   /** Rendered direction of `id` (as `altAzOf`) against an authoritative row, arcminutes. */
@@ -262,7 +263,20 @@ export function installSkyDebug(deps: SkyDebugDeps): SkyDebugApi {
       store.getState().actions.setOptions({ refr: on });
     },
     waitForFrame: () => frames.whenCovering(),
-    stats: () => ({ stars: engine.starCount(), frameMs: engine.frameMs() }),
+    stats: () => ({
+      stars: engine.starCount(),
+      frameMs: engine.frameMs(),
+      dso: engine.layerStats().dso,
+      clinesSegments: engine.layerStats().clinesSegments,
+      minorDrawn: minorDrawnCount(),
+    }),
+    pick: (x, y) => engine.pick(x, y),
+    labels,
+    constellationOf,
+    skyBrightness: () => engine.skyBrightness(),
+    setFollow: (on) => {
+      store.getState().actions.setFollow(on);
+    },
     selfTest,
   };
   window.__sky = api;

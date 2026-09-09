@@ -2,8 +2,9 @@ import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { isAbortError } from '../api/client';
+import { labelText } from '../i18n/labelText';
 import { WebGL2UnavailableError } from '../sky/engine/types';
-import type { SkyEngineApi, SkyEngineFactory } from '../sky/engine/types';
+import type { EngineTicker, SkyEngineApi, SkyEngineFactory } from '../sky/engine/types';
 import { startBoot } from '../state/boot';
 import type { FrameController } from '../state/frameController';
 import type { SkyStore } from '../state/storeTypes';
@@ -15,13 +16,21 @@ import type { Backend } from '../state/types';
 // fake, so Babylon never runs under jsdom) and disposes everything on unmount. No astronomy here:
 // the engine reads the store through subscriptions and React never drives the canvas (l.409).
 // Resizing is the engine's business as well: `SkyEngine` observes its own canvas (plan D85), so
-// the component keeps no `ResizeObserver` of its own.
+// the component keeps no `ResizeObserver` of its own. The labels host is an `aria-hidden` sibling
+// of the canvas handed to the engine with the text resolver (plan D93); React reaches the engine
+// API only through `onEngine`, for event handlers such as the snapshot.
 
 export interface SkyCanvasProps {
   store: SkyStore;
   frames: FrameController;
   createEngine: SkyEngineFactory;
+  /** Pulled by the engine on every frame after the frame source (plan D93). */
+  tickers?: readonly EngineTicker[] | undefined;
+  /** The created engine, then `null` when it is torn down. */
+  onEngine?: ((api: SkyEngineApi | null) => void) | undefined;
 }
+
+const NO_TICKERS: readonly EngineTicker[] = [];
 
 /**
  * Dev and e2e builds only: `#engine=webgl2|webgpu` in the hash forces a backend so Playwright can
@@ -53,13 +62,34 @@ function abortError(): DOMException {
   return new DOMException('The operation was aborted.', 'AbortError');
 }
 
-export default function SkyCanvas({ store, frames, createEngine }: SkyCanvasProps) {
+export default function SkyCanvas({
+  store,
+  frames,
+  createEngine,
+  tickers = NO_TICKERS,
+  onEngine,
+}: SkyCanvasProps) {
   const { t } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const labelRootRef = useRef<HTMLDivElement>(null);
+  // The latest callback, read by the engine effect without being one of its dependencies: a new
+  // function identity on a parent re-render must not tear the GPU context down.
+  const onEngineRef = useRef<SkyCanvasProps['onEngine']>(undefined);
+  useEffect(() => {
+    onEngineRef.current = onEngine;
+  }, [onEngine]);
+  // Same pattern for the tickers: the engine copies the list at construction, so a new array
+  // identity (a parent writing `tickers={[x]}` inline) can never be honoured by re-creating it;
+  // it would only abort the boot and tear the GPU context down.
+  const tickersRef = useRef<readonly EngineTicker[]>(tickers);
+  useEffect(() => {
+    tickersRef.current = tickers;
+  }, [tickers]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (canvas === null) {
+    const labelRoot = labelRootRef.current;
+    if (canvas === null || labelRoot === null) {
       return;
     }
     const controller = new AbortController();
@@ -84,6 +114,9 @@ export default function SkyCanvas({ store, frames, createEngine }: SkyCanvasProp
           canvas,
           store,
           frames,
+          labelRoot,
+          labelText,
+          tickers: tickersRef.current,
           signal,
           preferBackend: debugBuild ? backendOverride(location.hash) : 'auto',
           debug: debugBuild,
@@ -97,6 +130,7 @@ export default function SkyCanvas({ store, frames, createEngine }: SkyCanvasProp
         engine = created;
         actions.setEngine({ kind: created.backend, status: 'running' });
         engineReady.resolve(created);
+        onEngineRef.current?.(created);
         if (import.meta.env.DEV || import.meta.env.MODE === 'e2e') {
           // Same literal condition as above on purpose: a dynamic import under a folded `false`
           // is dropped by the bundler together with the module (brief l.410).
@@ -133,12 +167,19 @@ export default function SkyCanvas({ store, frames, createEngine }: SkyCanvasProp
       // already called when the factory threw `WebGL2UnavailableError`).
       controller.abort();
       engine?.dispose();
+      onEngineRef.current?.(null);
     };
   }, [store, frames, createEngine]);
 
   return (
     <div className="absolute inset-0 overflow-hidden">
       <canvas ref={canvasRef} aria-label={t('canvas.label')} className="block h-full w-full" />
+      <div
+        aria-hidden="true"
+        data-sky-labels
+        className="pointer-events-none absolute inset-0 overflow-hidden [contain:strict]"
+        ref={labelRootRef}
+      />
     </div>
   );
 }

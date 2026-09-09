@@ -15,6 +15,21 @@
             "title": "Az Deg",
             "type": "number"
           },
+          "constellation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "IAU abbreviation of the constellation containing the apparent position, resolved by Skyfield on the B1875 boundary grid (additive, api_version 1.1.0).",
+            "examples": [
+              "CMa"
+            ],
+            "title": "Constellation"
+          },
           "dec_date_deg": {
             "description": "Declination of date, degrees.",
             "title": "Dec Date Deg",

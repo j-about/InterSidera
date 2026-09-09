@@ -278,6 +278,17 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 - Attribution: Constellation names and genitives after the IAU list of the 88 constellations
 - Notes: Committed at backend/src/skyapi/data/constellation_names.csv (88 rows `abbr,latin,genitive,english`, brief l.314); cross-checked against d3-celestial `constellations.json`. Translated names live in the frontend resource files keyed by IAU abbreviation.
 
+## frontend/src/state/presets.ts (`gazetteer`)
+
+- Kind: committed (factual data authored for this project and committed)
+- Location: `frontend/src/state/presets.ts`
+- Source: <https://planetarynames.wr.usgs.gov/>
+- Version or date: feature pages read 2026-09-09 (Statio Tranquillitatis 5684, Tycho 6163, Shackleton 5450, Jezero 14300, Gale 2071, Olympus Mons 4453, Caloris Planitia 979, Maxwell Montes 3766)
+- License: Public domain (US Government work)
+- Copyright: US Geological Survey, Astrogeology Science Center (not subject to copyright)
+- Attribution: Planetary site presets: coordinates from the USGS Gazetteer of Planetary Nomenclature
+- Notes: OBS-6 [S] presets (brief l.195, l.319): about ten named sites copied into the frontend module with one citation per site (planetocentric east longitudes; Caloris converted from the Gazetteer's planetographic +West values with the pck00011 radii). No API route serves them, so the module replaces the brief's `planetary_sites.csv` (backlog B-57).
+
 ## MPCORB.DAT (`mpcorb`)
 
 - Kind: download (downloaded by `sky-data fetch` into `DATA_DIR`)

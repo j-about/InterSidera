@@ -108,7 +108,7 @@ describe('startUrlSync', () => {
     const store = createSkyStore({ t: 2460409.25 }, T0);
     const env = fakeEnvironment(search);
     const stop = startUrlSync(store, { history: env.history, location: env.location });
-    store.getState().actions.publishTt(2460409.25 + 1e-7);
+    store.getState().actions.publishTt(2460409.25 + 1e-7, NaN);
     store.getState().actions.setBoot({ phase: 'ready' });
     vi.advanceTimersByTime(1000);
     expect(env.replaceState).not.toHaveBeenCalled();

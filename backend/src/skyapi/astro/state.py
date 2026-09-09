@@ -5,17 +5,24 @@ composes them at M2. Every `astro/` function receives this object explicitly; no
 mutable and nothing is module-level.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import BinaryIO
 
+import numpy as np
 from skyfield.jpllib import SpiceKernel
 from skyfield.planetarylib import PlanetaryConstants
+from skyfield.positionlib import ICRF
 from skyfield.timelib import Timescale
 
 from skyapi.astro.bodies import BodySpec
 from skyapi.astro.frames import IauRotationFrame, SegmentedFrame
 from skyapi.astro.observers import ObserverSpec
+
+# Skyfield's bundled constellation lookup (`constellationlib.load_constellation_map`): the IAU
+# abbreviation of the constellation containing an ICRF position, resolved on the B1875 grid the
+# boundaries were defined on (D114). A scalar position yields one abbreviation.
+type ConstellationMap = Callable[[ICRF], np.str_]
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +46,7 @@ class AstroState:
     iau_frames: Mapping[str, IauRotationFrame]
     observers: Mapping[str, ObserverSpec]
     bodies: Mapping[str, BodySpec]
+    constellation_at: ConstellationMap
     bpc_files: tuple[BinaryIO, ...] = ()
 
     def close(self) -> None:

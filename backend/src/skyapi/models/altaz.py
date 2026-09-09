@@ -30,3 +30,11 @@ class AltAzEntry(BaseModel):
     diam_deg: float | None = Field(
         default=None, description="Apparent angular diameter, degrees (bodies only)."
     )
+    constellation: str | None = Field(
+        default=None,
+        description=(
+            "IAU abbreviation of the constellation containing the apparent position, resolved by "
+            "Skyfield on the B1875 boundary grid (additive, api_version 1.1.0)."
+        ),
+        examples=["CMa"],
+    )

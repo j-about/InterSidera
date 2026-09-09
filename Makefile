@@ -22,7 +22,7 @@ PY := $(UV) run --directory backend
 PYRUN := $(UV) run --directory backend $(UV_ENV)
 # pyright (PyPI) is a Node wrapper and needs node on PATH.
 PYNODE := $(NODE_EXEC) $(UV) run --directory backend
-GENERATED := docs/openapi.json frontend/src/api/schema.d.ts THIRD_PARTY_NOTICES.md
+GENERATED := docs/openapi.json frontend/src/api/schema.d.ts THIRD_PARTY_NOTICES.md frontend/src/data/credits.json
 # scripts/ lies outside the frontend ESLint base path (ESLint 10 refuses such files), so it is
 # gated by `node --check` and prettier. Config-free flags: the frontend .prettierrc names the
 # Tailwind plugin, which prettier resolves from the working directory (the repo root here).
@@ -91,8 +91,8 @@ types: ## Regenerate docs/openapi.json and frontend/src/api/schema.d.ts
 	$(PY) python -m skyapi.tools.dump_openapi --out $(CURDIR)/docs/openapi.json
 	$(NPM) run gen:types
 
-notices: ## Regenerate THIRD_PARTY_NOTICES.md from the data registry
-	$(PY) python -m skyapi.tools.render_notices --out $(CURDIR)/THIRD_PARTY_NOTICES.md
+notices: ## Regenerate THIRD_PARTY_NOTICES.md and frontend/src/data/credits.json from the data registry
+	$(PY) python -m skyapi.tools.render_notices --out $(CURDIR)/THIRD_PARTY_NOTICES.md --json $(CURDIR)/frontend/src/data/credits.json
 
 test: ## Full test suites (pytest including slow and conformance, vitest)
 	$(PY) pytest

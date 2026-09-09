@@ -185,16 +185,29 @@ const camRight: Vec3 = [0, 0, 0];
 const camUp: Vec3 = [0, 0, 0];
 const camTarget: Vec3 = [0, 0, 0];
 
-function cameraBasis(viewAz: number, viewAlt: number): void {
-  altAzToEnu(camForward, viewAlt, viewAz);
+/**
+ * The camera axes in ENU for a view (az, alt) in degrees, into `outForward`, `outRight` and
+ * `outUp`: forward is the view direction, right the horizontal unit vector 90 degrees clockwise
+ * from the view azimuth (the camera never rolls), up their cross product. Shared by the
+ * projections below, the billboard bases of the body and DSO layers and the background shader
+ * (plan D104), so there is exactly one camera basis in the client.
+ */
+export function cameraBasis(
+  outForward: Vec3,
+  outRight: Vec3,
+  outUp: Vec3,
+  viewAz: number,
+  viewAlt: number,
+): void {
+  altAzToEnu(outForward, viewAlt, viewAz);
   const az = viewAz * DEG;
-  camRight[0] = Math.cos(az);
-  camRight[1] = -Math.sin(az);
-  camRight[2] = 0;
+  outRight[0] = Math.cos(az);
+  outRight[1] = -Math.sin(az);
+  outRight[2] = 0;
   // up = right x forward
-  camUp[0] = camRight[1] * camForward[2] - camRight[2] * camForward[1];
-  camUp[1] = camRight[2] * camForward[0] - camRight[0] * camForward[2];
-  camUp[2] = camRight[0] * camForward[1] - camRight[1] * camForward[0];
+  outUp[0] = outRight[1] * outForward[2] - outRight[2] * outForward[1];
+  outUp[1] = outRight[2] * outForward[0] - outRight[0] * outForward[2];
+  outUp[2] = outRight[0] * outForward[1] - outRight[1] * outForward[0];
 }
 
 /** The sky direction under the screen point (`px`, `py`) for the given view. */
@@ -208,7 +221,7 @@ export function screenToDirection(
   viewAz: number,
   viewAlt: number,
 ): AltAz {
-  cameraBasis(viewAz, viewAlt);
+  cameraBasis(camForward, camRight, camUp, viewAz, viewAlt);
   const t = Math.tan((fovDeg / 2) * DEG);
   const xNdc = (2 * px) / width - 1;
   const yNdc = 1 - (2 * py) / height;
@@ -234,7 +247,7 @@ export function directionToScreen(
   viewAz: number,
   viewAlt: number,
 ): boolean {
-  cameraBasis(viewAz, viewAlt);
+  cameraBasis(camForward, camRight, camUp, viewAz, viewAlt);
   altAzToEnu(camTarget, altDeg, azDeg);
   const zCam =
     camTarget[0] * camForward[0] + camTarget[1] * camForward[1] + camTarget[2] * camForward[2];

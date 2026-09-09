@@ -3,6 +3,8 @@ import basicSsl from '@vitejs/plugin-basic-ssl';
 import react from '@vitejs/plugin-react';
 import { configDefaults, defineConfig } from 'vitest/config';
 
+import pkg from './package.json' with { type: 'json' };
+
 // https://vite.dev/config/ — Vitest reads its `test` block from this same file (plan D14), so
 // `defineConfig` comes from 'vitest/config' to type both halves.
 export default defineConfig(({ command, mode, isPreview }) => {
@@ -12,6 +14,7 @@ export default defineConfig(({ command, mode, isPreview }) => {
   const interactiveDev = command === 'serve' && mode === 'development' && !isPreview;
 
   return {
+    define: { __APP_VERSION__: JSON.stringify(pkg.version) },
     plugins: [react(), tailwindcss(), ...(interactiveDev ? [basicSsl()] : [])],
     server: {
       port: 5173,

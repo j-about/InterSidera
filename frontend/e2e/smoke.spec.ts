@@ -53,6 +53,8 @@ test('the shell loads, the API is proxied and the sky reaches its first frame', 
     () => window.__sky?.backend ?? null,
   );
   expect(backend).toMatch(/^(webgl2|webgpu)$/);
-  await expect(page.getByRole('status')).toHaveCount(0);
+  // The splash (the status region named "Loading the sky") is gone; the M4 chrome keeps other
+  // status regions (hint, toasts), whose naming rule lives in a11y.spec.ts.
+  await expect(page.getByRole('status', { name: 'Loading the sky' })).toHaveCount(0);
   expect(errors).toEqual([]);
 });

@@ -13,8 +13,8 @@
 // `state/clock.ts` (`ttAnchor + speed * elapsed`) to Infinity.
 
 import { wrapAzimuthDeg } from '../sky/math/frames';
-import { DSO_TYPES, LAYER_IDS } from './types';
-import type { DsoType, Ground, LabelDensity, Lang, LayerId, UrlState } from './types';
+import { DSO_TYPES, LANGS, LAYER_IDS } from './types';
+import type { DsoType, Ground, LabelDensity, LayerId, UrlState } from './types';
 
 /** Every UX-2 parameter, in the order they are serialized. */
 export const URL_KEYS: readonly (keyof UrlState)[] = [
@@ -63,7 +63,11 @@ const ROUNDING_INVERSE: Readonly<Partial<Record<keyof UrlState, number>>> = {
   t: 1e6,
   speed: 10,
   maglim: 10,
+  nightLevel: 100,
 };
+
+/** Dimmest night-mode brightness (plan D108): `night=0.3`; below it the value is invalid. */
+const NIGHT_LEVEL_MIN = 0.3;
 
 /** Maximum number of pinned minor bodies, the `/meta.limits.max_minor_bodies` cap (brief l.164). */
 const MAX_MINOR = 100;
@@ -90,7 +94,6 @@ const MINOR_ID_RE = /^[ac]:[A-Za-z0-9/_.-]+$/;
 // shared link silently loses its selection (UX-2, brief l.246: "a reload restores everything").
 const SEL_RE = /^(hip:\d+|dso:[A-Za-z0-9_-]+|[a-z]+|[ac]:[A-Za-z0-9/_.-]+)$/;
 const GROUNDS: readonly Ground[] = ['opaque', 'dim', 'off'];
-const LANGS: readonly Lang[] = ['en', 'fr'];
 const LABEL_DENSITIES: readonly LabelDensity[] = [0, 1, 2, 3];
 
 /**
@@ -143,6 +146,30 @@ function parseFlag(text: string | null): boolean | undefined {
       return false;
     default:
       return undefined;
+  }
+}
+
+/**
+ * `night` (plan D108): `0`/`false` off, `1`/`true` on at full brightness, a decimal in
+ * `[0.3, 1]` on at that brightness (two decimals; `1.0` and `0.995` are full brightness, the
+ * canonical `night=1`); anything else, above 1 included, is absent like any out-of-range value.
+ */
+function parseNight(text: string | null, out: UrlState): void {
+  const flag = parseFlag(text);
+  if (flag !== undefined) {
+    out.night = flag;
+    return;
+  }
+  const level = parseNumber(text);
+  if (level === undefined || level < NIGHT_LEVEL_MIN || level > 1) {
+    return;
+  }
+  // Rounded first: `0.995` is on at full brightness, which `serialize` writes as `night=1`, so
+  // the parse must not carry a `nightLevel` of 1 (the round trip would differ from itself).
+  const rounded = roundUrlValue('nightLevel', level);
+  out.night = true;
+  if (rounded < 1) {
+    out.nightLevel = rounded;
   }
 }
 
@@ -255,10 +282,7 @@ export function parseUrlState(search: string): UrlState {
   if (lang !== undefined) {
     out.lang = lang;
   }
-  const night = parseFlag(params.get('night'));
-  if (night !== undefined) {
-    out.night = night;
-  }
+  parseNight(params.get('night'), out);
   const sel = params.get('sel');
   if (sel !== null && SEL_RE.test(sel)) {
     out.sel = sel;
@@ -278,9 +302,18 @@ function sameValue(a: UrlValue, b: UrlValue): boolean {
   return a === b;
 }
 
-/** `true` when both states carry the same keys with the same (unrounded) values. */
+/**
+ * `true` when both states carry the same keys with the same (unrounded) values. `nightLevel` is
+ * not a query key of its own (it travels inside `night`) and is compared explicitly.
+ */
 export function urlStatesEqual(a: UrlState, b: UrlState): boolean {
-  return URL_KEYS.every((key) => sameValue(a[key], b[key]));
+  return a.nightLevel === b.nightLevel && URL_KEYS.every((key) => sameValue(a[key], b[key]));
+}
+
+/** `night` on: `1` at full brightness, the two-decimal level below it (`night=0.6`, plan D108). */
+function formatNight(nightLevel: number | undefined): string {
+  const level = nightLevel === undefined ? 1 : roundUrlValue('nightLevel', nightLevel);
+  return level < 1 ? String(level) : '1';
 }
 
 /** The textual form of one present value. */
@@ -325,7 +358,9 @@ export function serializeUrlState(state: UrlState, defaults: UrlState): string {
     if (!ALWAYS_WRITTEN.has(key) && sameValue(value, defaults[key])) {
       continue;
     }
-    parts.push(`${key}=${encodeReadable(formatValue(key, value))}`);
+    const text =
+      key === 'night' && value === true ? formatNight(state.nightLevel) : formatValue(key, value);
+    parts.push(`${key}=${encodeReadable(text)}`);
   }
   return parts.join('&');
 }

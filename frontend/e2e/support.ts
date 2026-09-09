@@ -4,7 +4,7 @@
 // The only import from `src/` is the hook's type, with an explicit extension (tsconfig.node.json).
 
 import { expect } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import type { SkyDebugApi } from '../src/debug/skyDebugApi.ts';
 
 export type Engine = 'webgl2' | 'webgpu';
@@ -66,9 +66,12 @@ export function separationDeg(a: AltAz, b: AltAz): number {
   return Math.atan2(Math.hypot(cx, cy, cz), ax * bx + ay * by + az * bz) / DEG;
 }
 
-/** Greenwich, paused at `TT_FIXED`, looking north at 45 degrees; the backend forced by the hash. */
+/**
+ * Greenwich, paused at `TT_FIXED`, looking north at 45 degrees; the backend forced by the hash.
+ * The atmosphere is off: the Sun is up at `TT_FIXED` and daylight would cull the probe stars.
+ */
 export function appUrl(engine: Engine, refraction: boolean): string {
-  return `/?body=earth&lat=${String(LAT)}&lon=0&elev=0&t=${String(TT_FIXED)}&speed=0&az=0&alt=45&fov=60&refr=${refraction ? '1' : '0'}#engine=${engine}`;
+  return `/?body=earth&lat=${String(LAT)}&lon=0&elev=0&t=${String(TT_FIXED)}&speed=0&az=0&alt=45&fov=60&atm=0&refr=${refraction ? '1' : '0'}#engine=${engine}`;
 }
 
 /** `null` from the page means the hook is absent or the target unknown: both fail the test. */
@@ -95,17 +98,28 @@ export function collectErrors(page: Page): string[] {
 
 /**
  * HTTP(S) requests to any host other than the app's own (OBS-7, brief l.196: the position leaves
- * the browser toward the API alone).
+ * the browser toward the API alone) and the hostnames in `allow` (the geocoder a test stubs).
  */
-export function collectForeignRequests(page: Page): string[] {
+export function collectForeignRequests(
+  page: Page,
+  options: { allow?: readonly string[] } = {},
+): string[] {
+  const allowed = new Set(['127.0.0.1', ...(options.allow ?? [])]);
   const foreign: string[] = [];
   page.on('request', (request) => {
     const url = new URL(request.url());
-    if ((url.protocol === 'http:' || url.protocol === 'https:') && url.hostname !== '127.0.0.1') {
+    if ((url.protocol === 'http:' || url.protocol === 'https:') && !allowed.has(url.hostname)) {
       foreign.push(request.url());
     }
   });
   return foreign;
+}
+
+/** `/api/v1/meta` as the API serves it; callers validate the shape they read. */
+export async function metaOf(page: Page): Promise<unknown> {
+  const res = await page.request.get('/api/v1/meta');
+  expect(res.ok()).toBeTruthy();
+  return res.json() as Promise<unknown>;
 }
 
 export async function waitReady(page: Page, timeout = 120_000): Promise<void> {
@@ -187,12 +201,24 @@ export async function canvasBox(page: Page): Promise<{ width: number; height: nu
   return box;
 }
 
+export interface CentrePatch {
+  /** Brightest pixel, max over r, g, b. */
+  max: number;
+  /** Darkest pixel, max over r, g, b. */
+  min: number;
+  /** Per-channel maxima (night mode keeps red alone, plan D108). */
+  maxR: number;
+  maxG: number;
+  maxB: number;
+}
+
 /**
- * Brightest and darkest pixels (max over r, g, b) of a `PATCH_PX` square around the canvas centre,
- * read from a screenshot decoded inside the page (a 2D canvas, so no PNG library; plan D89 pixel
- * probe). Works on both backends, which `screenOf` alone cannot prove: it is a pure projection.
+ * Brightest and darkest pixels (max over r, g, b) and the per-channel maxima of a `PATCH_PX`
+ * square around the canvas centre, read from a screenshot decoded inside the page (a 2D canvas,
+ * so no PNG library; plan D89 pixel probe). Works on both backends, which `screenOf` alone cannot
+ * prove: it is a pure projection.
  */
-export async function centrePatch(page: Page): Promise<{ max: number; min: number }> {
+export async function centrePatch(page: Page): Promise<CentrePatch> {
   const box = await page.getByLabel('Sky view').boundingBox();
   if (box === null) {
     throw new Error('the canvas has no bounding box');
@@ -220,12 +246,21 @@ export async function centrePatch(page: Page): Promise<{ max: number; min: numbe
     const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
     let max = 0;
     let min = 255;
+    let maxR = 0;
+    let maxG = 0;
+    let maxB = 0;
     for (let i = 0; i < data.length; i += 4) {
-      const value = Math.max(...data.subarray(i, i + 3));
+      const r = data[i] ?? 0;
+      const g = data[i + 1] ?? 0;
+      const b = data[i + 2] ?? 0;
+      const value = Math.max(r, g, b);
       max = Math.max(max, value);
       min = Math.min(min, value);
+      maxR = Math.max(maxR, r);
+      maxG = Math.max(maxG, g);
+      maxB = Math.max(maxB, b);
     }
-    return { max, min };
+    return { max, min, maxR, maxG, maxB };
   }, png.toString('base64'));
 }
 
@@ -304,4 +339,54 @@ export async function runSanityChecks(page: Page, refraction: boolean): Promise<
   // planet lit (every outer planet is at least 99 % illuminated from Earth, brief SKY-2).
   await expectRendered(page, BRIGHT_STAR);
   await expectRendered(page, target.id);
+}
+
+/**
+ * Select a tab of the control panel (VIEW-5): on the phone the bottom sheet is expanded first
+ * through its handle (the tabs live in the collapsed body), on the desktop the column is always
+ * open; the tab panel is visible afterwards. Same as `openPanelTab` without the returned panel.
+ */
+export async function openTab(page: Page, name: string): Promise<void> {
+  await openPanelTab(page, name);
+}
+
+/** Move the focus off any control so the single-key shortcuts reach the window. */
+export async function blurActiveElement(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) {
+      active.blur();
+    }
+  });
+}
+
+/**
+ * Open a control-panel tab and return its (visible) panel: on the phone layout the bottom sheet
+ * is collapsed until its handle is tapped (VIEW-5, plan D112), on the desktop the tabs are
+ * visible.
+ */
+export async function openPanelTab(page: Page, name: string | RegExp): Promise<Locator> {
+  const handle = page.getByRole('button', { name: /Expand the control panel|Déployer le panneau/ });
+  if (await handle.isVisible()) {
+    await handle.click();
+  }
+  await page.getByRole('tab', { name }).click();
+  const panel = page.getByRole('tabpanel', { name });
+  await expect(panel).toBeVisible();
+  return panel;
+}
+
+/** The `dd` text next to a `dt` label inside a description list (the details panel rows). */
+export function definitionOf(panel: Locator, label: string): Locator {
+  return panel.locator('dt', { hasText: label }).locator('xpath=following-sibling::dd[1]');
+}
+
+/** `21.63°` or `21,63°` (French) -> 21.63; throws on anything else. */
+export function parseDegrees(text: string): number {
+  const match = /(-?\d+(?:[.,]\d+)?)\s*°/.exec(text);
+  const degrees = match?.[1];
+  if (degrees === undefined) {
+    throw new Error(`no degrees in ${JSON.stringify(text)}`);
+  }
+  return Number(degrees.replace(',', '.'));
 }

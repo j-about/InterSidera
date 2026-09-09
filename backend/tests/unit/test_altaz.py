@@ -88,7 +88,7 @@ def test_dso_star_sits_at_the_catalog_position(catalog_state: CatalogState) -> N
 
 
 def test_compute_altaz_mixed_targets(sky_state: SkyState) -> None:
-    targets = ("a:1", "c:1P", "dso:M31", "hip:11767", "hip:32349", "moon", "sun")
+    targets = ("a:1", "c:1P", "dso:M31", "hip:11767", "hip:32349", "hip:77070", "moon", "sun")
     rows = compute_altaz(sky_state, _query(targets))
     assert [row.id for row in rows] == list(targets)
     by_id = {row.id: row for row in rows}
@@ -101,6 +101,15 @@ def test_compute_altaz_mixed_targets(sky_state: SkyState) -> None:
         assert -90.0 <= row.dec_date_deg <= 90.0
     polaris = by_id["hip:11767"]
     assert polaris.alt_deg == pytest.approx(51.48, abs=1.0)
+    # D114: the containing constellation from Skyfield's bundled B1875 map, for every kind.
+    assert polaris.constellation == "UMi"
+    assert by_id["hip:32349"].constellation == "CMa"
+    assert by_id["dso:M31"].constellation == "And"
+    # Unukalhai (alpha Ser) lies in Serpens Caput: the two-ring constellation resolves like any.
+    assert by_id["hip:77070"].constellation == "Ser"
+    for row in rows:
+        assert row.constellation is not None
+        assert len(row.constellation) == 3
     assert polaris.dist_au is None
     assert polaris.phase is None
     assert polaris.diam_deg is None

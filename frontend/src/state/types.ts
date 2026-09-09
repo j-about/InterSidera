@@ -41,6 +41,8 @@ export interface ClockState extends ClockControl {
   tt: number;
   /** TT - UTC (or TT - UT1 before 1972) in seconds, from `/meta` then from each frame window. */
   ttMinusUtc: number;
+  /** Mirror of the rendered local apparent sidereal time in hours, `NaN` off Earth or unknown. */
+  lstHours: number;
 }
 
 /** View direction and vertical field of view, degrees. */
@@ -80,6 +82,13 @@ export type DsoType = (typeof DSO_TYPES)[number];
 export type Ground = 'opaque' | 'dim' | 'off';
 export type LabelDensity = 0 | 1 | 2 | 3;
 export type Lang = 'en' | 'fr';
+/**
+ * The supported languages (UX-1): the URL codec, the browser detection, the toggle and the
+ * i18next `supportedLngs` all read this list; `i18n/index.ts` registers one resource file per
+ * entry (a missing one fails to compile), so a new language touches `Lang`, this list and that
+ * map, plus its JSON file (backlog B-72).
+ */
+export const LANGS: readonly Lang[] = ['en', 'fr'];
 
 export interface Options {
   ground: Ground;
@@ -89,6 +98,8 @@ export interface Options {
   maglim: number | null;
   labels: LabelDensity;
   night: boolean;
+  /** Night-mode brightness in `[0.3, 1]` (plan D108); only meaningful while `night` is on. */
+  nightLevel: number;
   lang: Lang;
 }
 
@@ -117,6 +128,8 @@ export interface UrlState {
   labels?: LabelDensity;
   lang?: Lang;
   night?: boolean;
+  /** The decimal form of `night` (`night=0.6`): present only with `night: true` (plan D108). */
+  nightLevel?: number;
   sel?: string;
 }
 
@@ -141,6 +154,8 @@ export interface BootState {
   retryAtMs: number | null;
   progress: DownloadProgress | null;
   error: BootError | null;
+  /** Incremented by `retryNow`: the boot's sleep and the frame controller's backoff end early. */
+  retrySeq: number;
 }
 
 export type CatalogName = 'stars' | 'index' | 'dso' | 'constellations';
@@ -153,11 +168,35 @@ export interface FrameWindowInfo {
   bodies: readonly string[];
 }
 
+/**
+ * The closed list of warning codes (brief l.168). Hand-written so this leaf stays import-free;
+ * `state/frames.ts` asserts at type level that it equals the contract's `WarningModel.code`.
+ */
+export type WarningCode =
+  | 'iau_rotation_approximate'
+  | 'pluto_barycenter'
+  | 'delta_t_approximate'
+  | 'proper_motion_extrapolated'
+  | 'mpc_extrapolation'
+  | 'mpc_unreliable';
+
 /** A warning of the closed contract list (brief l.168), kept for the M4 badges. */
 export interface SkyWarning {
-  code: string;
+  code: WarningCode;
   params?: Readonly<Record<string, number | string>>;
   rangeTt?: readonly [number, number];
+}
+
+/** One requested minor body of the current frame window (SKY-4, plan D102). */
+export interface MinorStatus {
+  id: string;
+  name?: string;
+  kind: string;
+  elementsEpochTt: number;
+  extrapolationYears: number;
+  warnings: readonly SkyWarning[];
+  /** `false` when the API sent `samples: null` (`mpc_unreliable`): nothing is rendered for it. */
+  drawn: boolean;
 }
 
 export interface FramesState {
@@ -172,11 +211,145 @@ export interface FramesState {
    * stops waiting for a first frame (plan D87). Cleared by the next successful window.
    */
   lastError: { status: number; blocked: boolean } | null;
+  /**
+   * A transient frame failure being retried (network, 429, 5xx), whatever the loaded window:
+   * `attempts` consecutive failures of the shape, the next attempt not before `nextRetryMs`.
+   * Cleared by the next successful response (UX-6 banner, plan D92).
+   */
+  failing: { status: number; attempts: number; nextRetryMs: number } | null;
+  /** The clock was stopped at a coverage bound (TIME-4); cleared by the next user time change. */
+  coverageStop: { rangeTt: readonly [number, number] } | null;
+  /** The minor bodies of the current window (plan D102), rebuilt when the window changes. */
+  minor: readonly MinorStatus[];
 }
 
 export interface EngineState {
   kind: Backend | null;
   status: 'idle' | 'creating' | 'running' | 'failed';
+}
+
+/** Geolocation (OBS-1): `prompting` while the permission dialog is up, the outcome afterwards. */
+export type GeoStatus =
+  | 'idle'
+  | 'unsupported'
+  | 'insecure'
+  | 'prompting'
+  | 'granted'
+  | 'denied'
+  | 'unavailable'
+  | 'timeout';
+
+export interface GeoState {
+  status: GeoStatus;
+}
+
+/** Why the last geocoder query produced nothing (OBS-4). */
+export type GeocoderError = 'blocked' | 'unavailable' | 'invalid' | 'no_results';
+
+export interface GeocoderResult {
+  placeId: number;
+  displayName: string;
+  lat: number;
+  lon: number;
+  category: string;
+  type: string;
+}
+
+export interface GeocoderState {
+  /** `/meta.geocoder.enabled`, `true` until `/meta` says otherwise. */
+  enabled: boolean;
+  busy: boolean;
+  /** Wall time of the last request, `-Infinity` before the first (>= 1 s apart, OBS-4). */
+  lastRequestMs: number;
+  results: readonly GeocoderResult[];
+  error: GeocoderError | null;
+}
+
+export type PanelId = 'observer' | 'time' | 'layers' | 'details';
+export type DialogId = 'about' | 'timeEditor';
+export type StepUnit = 'minute' | 'hour' | 'day' | 'siderealDay' | 'year';
+export type ToastKey =
+  'share.copied' | 'share.failed' | 'export.failed' | 'details.unknown' | 'search.minorCapReached';
+
+/** Session-only chrome state (plan D92): none of it is carried by the URL. */
+export interface UiState {
+  panel: PanelId | null;
+  /** The mobile bottom sheet (VIEW-5). */
+  sheet: 'collapsed' | 'expanded';
+  dialog: DialogId | null;
+  stepUnit: StepUnit;
+  /**
+   * The last running speed (1 for live), what Play and Space resume after a pause: recorded by
+   * the store on every clock write that runs, so the button and the shortcut agree (TIME-3).
+   */
+  lastSpeed: number;
+  /**
+   * Single-key shortcuts enabled: the user's own switch (WCAG 2.2 SC 2.1.4); the listener itself
+   * skips interactive targets and open dialogs regardless.
+   */
+  shortcuts: boolean;
+  hintDismissed: boolean;
+  /** `seq` increases with every toast so an identical key shows again. */
+  toast: { seq: number; key: ToastKey } | null;
+}
+
+export type LabelKind =
+  'selected' | 'cardinal' | 'body' | 'star' | 'dso' | 'constellation' | 'minor';
+
+/** A label the engine currently draws (published at <= 1 Hz for the debug hook and tests). */
+export interface VisibleLabel {
+  id: string;
+  kind: LabelKind;
+  text: string;
+}
+
+/**
+ * The engine's readout of the selected object (plan D93), published at <= 2 Hz: apparent
+ * horizontal coordinates (`alt` refracted when refraction applies, `altTrue` geometric),
+ * equatorial coordinates in ICRS and of date, and the body channels. `NaN` = unknown.
+ */
+export interface SelectionReadout {
+  id: string;
+  tt: number;
+  /** `false` until the engine has found the object. */
+  valid: boolean;
+  alt: number;
+  altTrue: number;
+  az: number;
+  raIcrs: number;
+  decIcrs: number;
+  raDate: number;
+  decDate: number;
+  distAu: number;
+  mag: number;
+  phase: number;
+  diamDeg: number;
+}
+
+/** An empty readout: every channel unknown, `valid` false, no id. */
+export function createSelectionReadout(): SelectionReadout {
+  return {
+    id: '',
+    tt: NaN,
+    valid: false,
+    alt: NaN,
+    altTrue: NaN,
+    az: NaN,
+    raIcrs: NaN,
+    decIcrs: NaN,
+    raDate: NaN,
+    decDate: NaN,
+    distAu: NaN,
+    mag: NaN,
+    phase: NaN,
+    diamDeg: NaN,
+  };
+}
+
+/** A request to centre the view on an object; `seq` tells a fresh request from a served one. */
+export interface CentreRequest {
+  id: string;
+  seq: number;
 }
 
 /** The SKYS columns as zero-copy typed-array views (docs/api.md "SKYS v1"). */
@@ -229,10 +402,23 @@ export interface FrameEval {
   mag: Float64Array;
   phase: Float64Array;
   diamDeg: Float64Array;
+  /**
+   * The minor bodies of the window (plan D102), laid out like the bodies: `minorDir[3 m ..]` for
+   * `minorIds[m]`; `minorDrawn[m]` is 0 when the API sent no samples (channels left `NaN`).
+   */
+  minorCount: number;
+  minorIds: string[];
+  minorKinds: string[];
+  minorDir: Float64Array;
+  minorDistAu: Float64Array;
+  minorMag: Float64Array;
+  minorPhase: Float64Array;
+  minorDiamDeg: Float64Array;
+  minorDrawn: Uint8Array;
 }
 
-/** Preallocate a `FrameEval` able to hold `capacity` bodies. */
-export function createFrameEval(capacity: number): FrameEval {
+/** Preallocate a `FrameEval` able to hold `capacity` bodies and `minorCapacity` minor bodies. */
+export function createFrameEval(capacity: number, minorCapacity = 0): FrameEval {
   return {
     valid: false,
     extrapolating: false,
@@ -252,5 +438,14 @@ export function createFrameEval(capacity: number): FrameEval {
     mag: new Float64Array(capacity),
     phase: new Float64Array(capacity),
     diamDeg: new Float64Array(capacity),
+    minorCount: 0,
+    minorIds: [],
+    minorKinds: [],
+    minorDir: new Float64Array(3 * minorCapacity),
+    minorDistAu: new Float64Array(minorCapacity),
+    minorMag: new Float64Array(minorCapacity),
+    minorPhase: new Float64Array(minorCapacity),
+    minorDiamDeg: new Float64Array(minorCapacity),
+    minorDrawn: new Uint8Array(minorCapacity),
   };
 }

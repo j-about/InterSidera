@@ -356,6 +356,7 @@ def altaz_entry(result: AltAzResult) -> AltAzEntry:
         mag=_optional(result.mag, MAGNITUDE_DECIMALS),
         phase=_optional(result.phase, ANGLE_DECIMALS),
         diam_deg=_optional(result.diam_deg, ANGLE_DECIMALS),
+        constellation=result.constellation,
     )
 
 

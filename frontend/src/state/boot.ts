@@ -13,6 +13,7 @@ import { WebGL2UnavailableError } from '../sky/engine/types';
 import type { SkyEngineApi, StarCatalogInput } from '../sky/engine/types';
 import type { FrameController } from './frameController';
 import { stepClassesOf } from './frames';
+import { startMinorBodies } from './minorBodies';
 import type { SkyStore } from './storeTypes';
 import type { FramesState } from './types';
 
@@ -125,6 +126,9 @@ export function startBoot(deps: BootDeps): BootHandle {
   if (deps.sleep !== undefined) {
     requestOptions.sleep = deps.sleep;
   }
+  // The minor-body defaults follow the `minor` layer for the whole session (plan D102); the
+  // subscription lives with the boot's signal, like everything the shell creates.
+  startMinorBodies(store, { requestOptions, signal });
 
   /** A `503 starting` body: download progress, or the bootstrap's fatal reason (ADR-0008). */
   function onHealthUpdate(health: HealthResponse): void {
@@ -225,6 +229,9 @@ export function startBoot(deps: BootDeps): BootHandle {
       if (aborted() || bundle === null) {
         return;
       }
+      // The catalogs reach the engine (DSO, constellations, labels) and the search index through
+      // the store (plan D92); the star catalog is handed over directly below.
+      actions.setBundle(bundle);
       // The factory disposes on abort itself (SkyEngineOptions.signal); racing keeps `done`
       // settling even when a factory ignores it.
       const engine = await raceAbort(deps.engine, signal);

@@ -16,6 +16,7 @@ from typing import BinaryIO
 
 from jplephem.pck import Segment as PckSegment
 from skyfield.api import load
+from skyfield.constellationlib import load_constellation_map
 from skyfield.jpllib import SpiceKernel
 from skyfield.planetarylib import PlanetaryConstants
 from skyfield.timelib import Timescale
@@ -259,6 +260,9 @@ def load_astro_state(paths: KernelPaths) -> AstroState:
             iau_frames=MappingProxyType(iau_frames),
             observers=build_observer_specs(pc.variables),
             bodies=build_body_specs(pc.variables),
+            # Bundled `constellations.npz` (46 KB grid), no download (brief l.41 keeps this
+            # server-side: the lookup precesses the position to B1875).
+            constellation_at=load_constellation_map(),
             bpc_files=tuple(bpc_files),
         )
     except Exception:

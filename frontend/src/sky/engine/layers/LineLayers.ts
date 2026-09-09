@@ -3,7 +3,8 @@
 // J2000 ecliptic regenerated at <= 10 Hz from the current rotations. Points come from the pure
 // generators of `sky/math/lines.ts` as unit vectors, are scaled to the sky radius and uploaded
 // into updatable LinesMesh buffers under the frozen world matrix P (ADR-0009). Cardinal letters
-// and the ground are M4.
+// are labels (LabelLayer) and the ground a background pass (BackgroundLayer). These meshes carry
+// no vertex colours, so night mode (plan D108) rewrites `mesh.color` at change time.
 
 import type { FrameEval, LayerFlags } from '../../../state/types';
 import { SKY_RADIUS, eclipticPoleIcrf } from '../../math/frames';
@@ -41,13 +42,20 @@ interface LineStyle {
   alpha: number;
 }
 
-const STYLES: Record<'horizon' | 'azgrid' | 'meridian' | 'eqgrid' | 'ecliptic', LineStyle> = {
+type LineName = 'horizon' | 'azgrid' | 'meridian' | 'eqgrid' | 'ecliptic';
+
+const STYLES: Record<LineName, LineStyle> = {
   horizon: { r: 0.85, g: 0.55, b: 0.25, alpha: 0.9 },
   azgrid: { r: 0.35, g: 0.55, b: 0.85, alpha: 0.35 },
   meridian: { r: 0.85, g: 0.35, b: 0.35, alpha: 0.6 },
   eqgrid: { r: 0.35, g: 0.8, b: 0.5, alpha: 0.35 },
   ecliptic: { r: 0.9, g: 0.8, b: 0.3, alpha: 0.7 },
 };
+const LINE_NAMES: readonly LineName[] = ['horizon', 'azgrid', 'meridian', 'eqgrid', 'ecliptic'];
+/** Rec. 709 luminance of the night palette (plan D108: red channel alone). */
+const LUMA_R = 0.2126;
+const LUMA_G = 0.7152;
+const LUMA_B = 0.0722;
 
 /** One LinesMesh with its point buffer and the polyline structure (point counts). */
 interface LineSet {
@@ -187,7 +195,7 @@ export class LineLayers {
   private static build(
     scene: Scene,
     worldMatrix: Matrix,
-    name: keyof typeof STYLES,
+    name: LineName,
     data: Float32Array,
     counts: readonly number[],
   ): LineSet {
@@ -211,6 +219,20 @@ export class LineLayers {
     // so one shared instance would let a single dirtied mesh overwrite the matrix of all others.
     mesh.freezeWorldMatrix(worldMatrix.clone());
     return { mesh, data, points: totalPoints(counts) };
+  }
+
+  /** Night mode (plan D108): the luminance of each style in the red channel, scaled by the level. */
+  setNight(on: boolean, level: number): void {
+    for (const name of LINE_NAMES) {
+      const style = STYLES[name];
+      const mesh = this[name].mesh;
+      if (on) {
+        const l = (style.r * LUMA_R + style.g * LUMA_G + style.b * LUMA_B) * level;
+        mesh.color.set(l, 0, 0);
+      } else {
+        mesh.color.set(style.r, style.g, style.b);
+      }
+    }
   }
 
   /**

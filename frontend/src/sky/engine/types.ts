@@ -3,7 +3,15 @@
 // implements them.
 
 import type { SkyStore } from '../../state/storeTypes';
-import type { AdapterInfo, Backend, FrameEval, StarColumns } from '../../state/types';
+import type {
+  AdapterInfo,
+  Backend,
+  FrameEval,
+  LabelKind,
+  SelectionReadout,
+  StarColumns,
+} from '../../state/types';
+import type { Vec3 } from '../math/typed';
 
 /** What the engine pulls from the frame buffer on every animation frame. */
 export interface FrameSource {
@@ -29,10 +37,29 @@ export interface StarCatalogInput {
   parseMs: number;
 }
 
+/**
+ * What a label says (plan D93): the engine imports no i18next, so the shell hands it a resolver
+ * (`i18n/labelText.ts`) keyed by kind. Star, DSO and minor-body labels carry their own text.
+ */
+export type LabelTextKey =
+  | { kind: 'constellation'; abbr: string }
+  | { kind: 'body'; id: string }
+  | { kind: 'cardinal'; letter: 'n' | 'e' | 's' | 'w' };
+
+/** Something the engine pulls on every animation frame after the frame source (plan D93). */
+export interface EngineTicker {
+  update(tt: number, nowMs: number): void;
+}
+
 export interface SkyEngineOptions {
   canvas: HTMLCanvasElement;
   store: SkyStore;
   frames: FrameSource;
+  /** The `aria-hidden` sibling of the canvas the labels are drawn into (plan D93). */
+  labelRoot: HTMLElement;
+  labelText: (key: LabelTextKey) => string;
+  /** Pulled by `tick` after `frames.update` (the details controller); none by default. */
+  tickers?: readonly EngineTicker[];
   /** Aborting disposes whatever was created (React StrictMode double effect, brief l.551). */
   signal: AbortSignal;
   /** `'auto'` = WebGPU when `WebGPUEngine.IsSupportedAsync` resolves true, else WebGL2. */
@@ -41,6 +68,25 @@ export interface SkyEngineOptions {
   xrCompatible?: boolean;
   /** Dev and e2e builds: Babylon's missing-side-effect warnings on. */
   debug?: boolean;
+}
+
+/** A label the engine draws, with its CSS-pixel box relative to the canvas (debug hook, e2e). */
+export interface LabelBox {
+  id: string;
+  kind: LabelKind;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Counts of the rendering layers after the last overlay tick (debug hook `stats()`). */
+export interface LayerStats {
+  /** Deep-sky objects passing the limits and the type filter. */
+  dso: number;
+  /** Constellation line segments with both ends in the star catalog. */
+  clinesSegments: number;
 }
 
 export interface SkyEngineApi {
@@ -57,6 +103,24 @@ export interface SkyEngineApi {
   /** Average CPU time of `tick + render` per frame in milliseconds. */
   frameMs(): number;
   starCount(): number;
+  /**
+   * The apparent ENU direction the engine renders for an object id (a body, `hip:<n>`), refracted
+   * when refraction applies, into `out`; `false` when the object is unknown or not yet evaluated.
+   */
+  directionOf(id: string, out: Vec3): boolean;
+  /** The full readout of an object into `out` (`out.valid` false when unknown). */
+  readoutOf(id: string, out: SelectionReadout): boolean;
+  /** The object under a CSS-pixel position of the canvas, `null` when none. */
+  pick(xCss: number, yCss: number): string | null;
+  /** A PNG of the current frame (rejects when disposed, failed or too slow). */
+  snapshot(): Promise<Blob>;
+  /** The labels currently drawn (a fresh array; dev and e2e hook). */
+  labelBoxes(): LabelBox[];
+  /** Sky background brightness B in `[0, 1]` of the last frame (0 with the atmosphere off). */
+  skyBrightness(): number;
+  layerStats(): LayerStats;
+  /** `prefers-reduced-motion` as the camera controller honours it (inertia off). */
+  reducedMotion(): boolean;
   resize(): void;
   dispose(): void;
 }

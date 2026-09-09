@@ -11,7 +11,7 @@
 ## Authoritative documents
 
 - `docs/brief.xml` is the specification. When sections conflict (brief l.11): legal and licensing > security and privacy > api_contract > architecture > [M] functional > non-functional budgets > [S] > style.
-- `docs/plan.md` is the durable memory across sessions: status, decisions D1-D90, milestones, risks, open questions, progress log. Read it first in every session; update it in every milestone commit.
+- `docs/plan.md` is the durable memory across sessions: status, decisions D1-D114, milestones, risks, open questions, progress log. Read it first in every session; update it in every milestone commit.
 - `docs/decisions/` holds one ADR per notable decision; `docs/backlog.md` records every deviation from the brief with its reason and the deferred [L] items.
 
 ## Commands (root `Makefile`)
@@ -22,7 +22,7 @@
 - `make check`: every gate, before each commit and in CI: `uv lock --check`, ruff format/check (backend and `scripts/*.py`), pyright (backend, then `scripts/*.py` as explicit files), `pytest -m "not slow"` with coverage (astro and catalogs >= 90 %, `quaternions.py` and `formats.py` 100 %), `tsc -b`, eslint + prettier, `npm run test` (vitest with coverage: 100 % on `sky/math/**` and `state/url.ts`), `node --check`, prettier and a run of `scripts/check_i18n.mjs`, `make types` + `make notices` + drift gate on the generated files.
 - `make test`: full pytest (slow and conformance included) + vitest.
 - `make e2e`: `make build-e2e` (`vite build --mode e2e`, the only build with `window.__sky`) then Playwright on `chromium-desktop` and `chromium-mobile` against a locally started stack; `webkit` and `chromium-webgpu` are manual projects.
-- `make types`: regenerate `docs/openapi.json` and `frontend/src/api/schema.d.ts`. `make notices`: regenerate `THIRD_PARTY_NOTICES.md` from the data registry.
+- `make types`: regenerate `docs/openapi.json` and `frontend/src/api/schema.d.ts`. `make notices`: regenerate `THIRD_PARTY_NOTICES.md` and `frontend/src/data/credits.json` (the About screen's credits) from the data registry.
 - `make build`: production frontend build, followed by a grep proving `dist/assets` contains no `__sky`.
 - `make up` / `make down`: docker compose (arrive in M7).
 - `make format`: ruff format + fix, prettier + eslint --fix.
@@ -37,7 +37,7 @@
 - `fastapi[standard-no-fastapi-cloud-cli]` and a lazily built module attribute `app` (PEP 562) under the factory (ADR-0003): fastapi-cli has no `--factory`; importing `skyapi.main` reads no environment.
 - Implied tooling dependencies (`@testing-library/dom`, `@eslint/js`, `globals`, `@types/*`, `httpx2`) are recorded in ADR-0004; nothing else without an ADR.
 - Committed factual data lives inside the package (`backend/src/skyapi/data/`, ADR-0005); pyright strict is kept over Skyfield/jplephem through hand-written stubs in `backend/typings/` plus `pandas-stubs` (ADR-0006); planetary observer frames are our own IAU rotation model from the text PCK because Skyfield 1.55 only builds frames from binary PCKs (ADR-0007); the data is loaded by a background bootstrap thread so `/health` can report `starting` with progress (ADR-0008); sky geometry stays in ENU under one frozen reflection world matrix (ADR-0009).
-- `vitest` and `@vitest/coverage-v8` are pinned exact (`4.1.11`) and move together; Vitest 5 waits for jest-dom #738 (ADR-0004 amendment). `@babylonjs/core ^9.25.0`, `zustand ^5.0.15`, `@playwright/test ^1.63.0`.
+- `vitest` and `@vitest/coverage-v8` are pinned exact (`4.1.11`) and move together; Vitest 5 waits for jest-dom #738 (ADR-0004 amendment). `@babylonjs/core ^9.25.0`, `zustand ^5.0.15`, `@playwright/test ^1.63.0`, `lucide-react ^1.43.0` (brief l.405; the accessible name goes on the button, never on the icon).
 - Do not bump TypeScript to 7, npm to 12 or Python to 3.15, and do not remove the overrides, until the ADR revisit trigger fires. Never pre-releases.
 
 ## Conventions that matter most
@@ -45,15 +45,18 @@
 - The API contract (`docs/brief.xml` api_contract) is binding. After any model or route change run `make types`; `docs/openapi.json` and `frontend/src/api/schema.d.ts` are generated and never hand-edited.
 - Astronomy math lives only in `backend/src/skyapi/astro` and `frontend/src/sky/math`. The ENU -> Babylon mapping (East +X, Up +Y, North +Z) exists only in `frontend/src/sky/math/frames.ts`: every sky mesh keeps ENU geometry and carries that permutation as its frozen world matrix (ADR-0009), so shaders contain no swizzle. UI components contain no astronomy math.
 - The engine owns the clock: `SkyEngine.tick` derives `tt` from the store's control block with `Date.now()` and publishes the mirror at <= 2 Hz; the store never ticks; the store notifies the engine through `subscribeWithSelector` subscriptions, React never drives the canvas.
-- Refraction is one shared formula (`sky/math/refraction.ts::apparentAltitudeDeg`, Saemundsson seed + two Bennett corrections) mirrored line by line by the GLSL and WGSL star shaders and called by the CPU body path and the debug hook.
+- One store (`state/store.ts`): chrome state is the `ui` slice, never a second store; the engine alone publishes `tt`, the readout and the visible labels; `stopAtBound` has exactly two callers, the engine's clamp branch and the frame controller's 422 branch; React reaches the engine API only through `SkyCanvas.onEngine` for event-time calls (the PNG snapshot); `state/domSync.ts` alone writes `<html>` attributes.
+- The label overlay (`labelRoot`, the `aria-hidden` sibling of the canvas) and the marker belong to the engine's `LabelLayer`; React never writes into it. Every CPU object direction (labels, lines, picking, follow, readout, debug hook) comes from `sky/engine/resolver.ts` on the kernels of `sky/math/apparent.ts`, the single twin of the shaders; aberration applies to catalog directions (stars and DSO).
+- Refraction is one shared formula (`sky/math/refraction.ts::apparentAltitudeDeg`, Saemundsson seed + two Bennett corrections) mirrored line by line by the GLSL and WGSL star and DSO shaders and reached on the CPU through `sky/math/apparent.ts`.
+- Night mode: `uNight` in every shader pair plus `data-mode="night"` tokens redefined with `color-mix` on `--night-brightness`; no CSS `filter`, no post-process. Nominatim lives only in `api/geocoder.ts` (one fetch, no retry, no cache, submit-only from the panel, >= 1 s apart). The constellation of an object is the `constellation` field of `/sky/altaz`, never a client-side polygon test.
 - `window.__sky` exists only in dev and e2e builds (dynamic import under `import.meta.env.DEV || import.meta.env.MODE === 'e2e'`); Playwright sanity checks go through it.
 - Routers never import Skyfield: they validate, canonicalize (`api/canonical.py`), call `astro/` and serialize; errors are `ApiError` subclasses from `middleware/problem.py` (RFC 9457). Lifespan state is reached through `api/deps.py` (`get_sky_state` answers 503 until the bootstrap thread has published the `SkyState`, ADR-0008), never `app.state` or `on_event`. `astro/` never imports `api/`.
 - Compute path operations are plain `def` (thread pool), never `async def`.
 - Conventional Commits with a scope (`feat`, `fix`, `chore`, `docs`, `test`, `build`, `ci`, `refactor`); `make check` green before every commit; never push, never rewrite history, never create branches unless asked.
-- No data files, secrets or generated caches in git (exceptions: the generated `docs/openapi.json`, `frontend/src/api/schema.d.ts` and `THIRD_PARTY_NOTICES.md`, and test fixtures). `data/` is gitignored; `.env` is never committed.
+- No data files, secrets or generated caches in git (exceptions: the generated `docs/openapi.json`, `frontend/src/api/schema.d.ts`, `THIRD_PARTY_NOTICES.md` and `frontend/src/data/credits.json`, and test fixtures). `data/` is gitignored; `.env` is never committed.
 - Privacy: latitude and longitude are rounded to 0.01 degrees before any API call (OBS-7); logs carry no query strings or coordinates.
 - No browser storage: no cookies, localStorage, sessionStorage or IndexedDB (OBS-8). The URL is the state.
-- Every UI string goes through `t()` with a key present in both `en.json` and `fr.json`; `scripts/check_i18n.mjs` fails on missing or unused keys.
+- Every UI string goes through `t()` with a key present in both `en.json` and `fr.json`; `scripts/check_i18n.mjs` fails on missing or unused keys and on a dynamic key without a literal prefix (`t(\`constellations.${abbr}\`)`; the dynamic keys are typed in `i18n/keys.ts`).
 - Documentation changes ship in the same commit as the code they describe.
 
 ## Do not
@@ -66,6 +69,7 @@
 - Let Skyfield download anything (`load(...)`, `Loader.open`): every data file comes from `sky-data`; touch a Skyfield private name outside `astro/loader.py` (implementing `VectorFunction._at` in a subclass is the sanctioned hook); hand-edit `THIRD_PARTY_NOTICES.md` or an excerpt's provenance header.
 - Import `@babylonjs/core` root or `@babylonjs/core/Legacy/legacy`; import `@babylonjs/*` outside `frontend/src/sky/engine/`; pass `glslangOptions` or `twgslOptions` (WGSL twins only, no CDN); serialize the `#engine` hash override into the URL; add `tailwind.config.js`; build Tailwind classes by concatenation.
 - Use `useEffect` for derived state or `forwardRef`; use `!` non-null assertions or leave floating promises anywhere in `frontend/src`.
+- Tint the UI with a CSS `filter` or a Babylon post-process for night mode; create a second store or write `<html>` attributes from React; hand-edit `frontend/src/data/credits.json`; route Nominatim through `api/client.ts`; test constellation membership client-side; import `sky/math` from `ui/**`.
 - Copy a `SKYAPI_*` value into a `VITE_*` variable.
 - Let pytest inherit `.env` or the CI environment (`--env-file` only on run targets; the autouse `clean_env` fixture stays).
 - Call Nominatim or JPL Horizons from tests or CI.

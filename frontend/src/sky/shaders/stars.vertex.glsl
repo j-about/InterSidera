@@ -7,6 +7,9 @@
 // rule with the same constants: d = normalize(dir + pm * years), d = normalize(d + v / c),
 // enu = q_h d, optional D73 refraction on the altitude (azimuth kept), corner expansion sized
 // by magnitude and field of view, colour from B-V (sky/math/stars.ts, sky/math/refraction.ts).
+// Daylight (SKY-7, plan D104): uAtmosphere = the sky brightness B of sky/math/atmosphere.ts lowers
+// the magnitude limit by 8 B and the brightness by 85 % B (the engine passes 0 under a manual
+// magnitude limit, which is absolute).
 precision highp float;
 precision highp int;
 
@@ -23,6 +26,7 @@ uniform vec2 uViewport;
 uniform float uFovV;
 uniform float uMagLimit;
 uniform vec4 uMagScale;
+uniform float uAtmosphere;
 
 varying vec2 vCorner;
 varying vec4 vColor;
@@ -48,6 +52,9 @@ const float WIDE_FIELD_FOV_DEG = 90.0;
 const float ARCMIN_TO_DEG = 0.016666666666666666;
 const float MIN_REFRACTED_ALT_DEG = -1.0;
 const float MAX_REFRACTED_ALT_DEG = 89.9;
+// sky/math/atmosphere.ts: STAR_FADE_MAGNITUDES, STAR_FADE_BRIGHTNESS.
+const float STAR_FADE_MAGNITUDES = 8.0;
+const float STAR_FADE_BRIGHTNESS = 0.85;
 
 // Hamilton rotation by a unit quaternion (sky/math/quaternion.ts `rotate`).
 vec3 rotateByQuat(vec4 q, vec3 v) {
@@ -112,7 +119,9 @@ void main(void) {
   vec2 c = vec2((bit0 ^ bit1) == 1 ? 1.0 : -1.0, bit1 == 1 ? 1.0 : -1.0);
   float mag = starPhot.x * SNORM_TO_MAG;
   vCorner = c;
-  if (mag > uMagLimit) {
+  // atmosphere.ts `effectiveMagLimit`: the daylight sky hides the faint stars first.
+  float magLimitEff = uMagLimit - STAR_FADE_MAGNITUDES * uAtmosphere;
+  if (mag > magLimitEff) {
     // Fainter than the limit: a degenerate quad outside the clip volume.
     gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
     vColor = vec4(0.0);
@@ -138,8 +147,9 @@ void main(void) {
     gl_Position = clip;
     float bvRaw = starPhot.y;
     float bv = bvRaw > BV_UNKNOWN_THRESHOLD ? BV_DEFAULT : bvRaw * SNORM_TO_MAG;
-    // stars.ts `starBrightness(mag, uMagScale.x)`.
+    // stars.ts `starBrightness(mag, uMagScale.x)`, faded by the daylight.
     float brightness = clamp(pow(10.0, -0.4 * (mag - uMagScale.x)), 0.0, 1.0);
+    brightness *= 1.0 - STAR_FADE_BRIGHTNESS * uAtmosphere;
     vColor = vec4(bvToRgb(bv), brightness);
   }
 }
