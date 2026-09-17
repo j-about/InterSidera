@@ -124,13 +124,19 @@ export class MinorLayer {
    * Refresh every slot from the current evaluation (no allocation): the disc at the apparent
    * direction with the CPU radius, the tail of a comet along the antisolar screen angle.
    */
-  update(frame: FrameEval, view: ViewState, refractionOn: boolean, refractionFactor: number): void {
+  update(
+    frame: FrameEval,
+    view: ViewState,
+    refractionOn: boolean,
+    refractionFactor: number,
+    rollDeg: number,
+  ): void {
     if (this.mesh === null || this.positionBuffer === null || this.paramsBuffer === null) {
       return;
     }
     const q = frame.horizonQ;
     rotate(this.sunEnu, q, frame.sunDir);
-    cameraBasis(this.camForward, this.camRight, this.camUp, view.az, view.alt);
+    cameraBasis(this.camForward, this.camRight, this.camUp, view.az, view.alt, rollDeg);
     const count = Math.min(frame.minorCount, this.capacity);
     let drawn = 0;
     for (let m = 0; m < this.capacity; m += 1) {

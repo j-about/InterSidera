@@ -27,6 +27,16 @@ Subcommands:
         uv run --directory backend python ../scripts/generate_fixtures.py skyfield \\
             --data-dir ../data --out-dir ../backend/tests/fixtures
 
+``orientation``
+    Writes ``device_orientation_cases.json`` (plan D133), the fixture of the frontend's
+    orientation-to-camera math (``sky/math/orientation.ts``): an independent plain-Python
+    implementation of the W3C Device Orientation rotation matrix (Appendix A), the screen fold,
+    the view rule and the compass correction, over the spec's worked examples, closed-form
+    geometric poses, 200 seeded round trips, compass-correction cases and gimbal rows. Offline,
+    seeded and deterministic apart from ``generated_at``; needs no data directory::
+
+        uv run --directory backend python ../scripts/generate_fixtures.py orientation
+
 Reference values: JPL Horizons, Solar System Dynamics Group, https://ssd.jpl.nasa.gov/horizons/
 (US Government work, public domain).
 """
@@ -37,6 +47,7 @@ import argparse
 import json
 import math
 import os
+import random
 import re
 import sys
 import time
@@ -1077,6 +1088,678 @@ def run_skyfield(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------------------------
+# The orientation subcommand (plan D133)
+# --------------------------------------------------------------------------------------------
+#
+# An independent, plain-Python implementation of the W3C Device Orientation rotation matrix
+# (Appendix A ``getRotationMatrix``: ``R = Rz(alpha) Rx(beta) Ry(gamma)``, intrinsic Z-X'-Y''),
+# the screen fold of the Screen Orientation API (``angle`` counter-clockwise from the natural
+# orientation, so the page frame is the device frame turned back by it) and the view rule the
+# frontend mirrors in ``sky/math/orientation.ts``: the rear camera looks along device ``-z``,
+# the page top is device ``+y``, ``alt = asin(f_U)``, ``az = atan2(f_E, f_N)``, ``roll =
+# atan2(u . right0, u . up0)`` with the no-roll basis of ``frames.ts`` (right-handed about the
+# view axis, positive when the screen top leans to the user's right); inside the gimbal band
+# ``|alt| >= 89.99`` the roll is 0 and the azimuth is the heading of the screen top (nadir) or
+# that heading plus 180 (zenith). Earth frame ``[E, N, U]`` (the spec's X East, Y North, Z Up).
+# The iOS compass correction rotates the DEVICE rotation about Up (its axes are device axes) and
+# the screen fold comes after it. Offline, seeded, no ``--data-dir``: the closed-form poses carry
+# hand-derived expectations that the generator re-checks against the matrix before writing
+# anything.
+
+ORIENTATION_GENERATOR = "scripts/generate_fixtures.py orientation"
+DEFAULT_ORIENTATION_OUT = DEFAULT_FIXTURES_DIR / "device_orientation_cases.json"
+ORIENTATION_SEED = 20260917
+ORIENTATION_ROUND_TRIPS = 200
+ORIENTATION_COMPASS_CASES = 40
+# frames.ts MAX_CAMERA_ALT_DEG: the store clamps the camera there, the view rule switches there.
+GIMBAL_ALT_DEG = 89.99
+CLOSED_FORM_TOLERANCE_DEG = 1e-9
+ROUND_TRIP_TOLERANCE_DEG = 1e-7
+# Generator self-checks (hand expectation vs matrix; recomposed Euler vs source matrix).
+SELF_CHECK_TOLERANCE = 1e-10
+# Decomposed Euler angles are rounded to this many decimals (readable fixtures, 1e-12 degrees).
+EULER_DECIMALS = 12
+# The screen top must have this much horizontal component for a compass case (the heading of a
+# nearly vertical axis is ill-conditioned, and CoreLocation's behaviour there is R74).
+COMPASS_MIN_HORIZONTAL = 0.1
+SQRT_HALF = math.sqrt(0.5)
+
+Vec = tuple[float, float, float]
+Mat = tuple[Vec, Vec, Vec]
+
+
+def _rot_x(deg: float) -> Mat:
+    c, s = math.cos(math.radians(deg)), math.sin(math.radians(deg))
+    return ((1.0, 0.0, 0.0), (0.0, c, -s), (0.0, s, c))
+
+
+def _rot_y(deg: float) -> Mat:
+    c, s = math.cos(math.radians(deg)), math.sin(math.radians(deg))
+    return ((c, 0.0, s), (0.0, 1.0, 0.0), (-s, 0.0, c))
+
+
+def _rot_z(deg: float) -> Mat:
+    c, s = math.cos(math.radians(deg)), math.sin(math.radians(deg))
+    return ((c, -s, 0.0), (s, c, 0.0), (0.0, 0.0, 1.0))
+
+
+def _mat_mul(a: Mat, b: Mat) -> Mat:
+    rows: list[Vec] = []
+    for i in range(3):
+        rows.append(
+            (
+                a[i][0] * b[0][0] + a[i][1] * b[1][0] + a[i][2] * b[2][0],
+                a[i][0] * b[0][1] + a[i][1] * b[1][1] + a[i][2] * b[2][1],
+                a[i][0] * b[0][2] + a[i][1] * b[1][2] + a[i][2] * b[2][2],
+            )
+        )
+    return (rows[0], rows[1], rows[2])
+
+
+def _mat_vec(m: Mat, v: Vec) -> Vec:
+    return (
+        m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
+        m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
+        m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2],
+    )
+
+
+def _columns(x: Vec, y: Vec, z: Vec) -> Mat:
+    """The matrix whose columns are the images of the device axes ``x``, ``y``, ``z``."""
+    return ((x[0], y[0], z[0]), (x[1], y[1], z[1]), (x[2], y[2], z[2]))
+
+
+def _cross(a: Vec, b: Vec) -> Vec:
+    return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
+
+
+def _dot(a: Vec, b: Vec) -> float:
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+
+def _wrap_360(deg: float) -> float:
+    wrapped = deg - 360.0 * math.floor(deg / 360.0)
+    return 0.0 if wrapped >= 360.0 or wrapped <= 0.0 else wrapped
+
+
+def _wrap_signed_upper(deg: float) -> float:
+    """Wrap into ``(-180, 180]`` (the roll and the yaw correction of ``orientation.ts``)."""
+    return 180.0 - _wrap_360(180.0 - deg)
+
+
+def _wrap_signed_lower(deg: float) -> float:
+    """Wrap into ``[-180, 180)`` (the W3C ``beta`` range)."""
+    return _wrap_360(deg + 180.0) - 180.0
+
+
+def _azimuth_deg(e: float, n: float) -> float:
+    return _wrap_360(math.degrees(math.atan2(e, n)))
+
+
+def w3c_rotation_matrix(alpha_deg: float, beta_deg: float, gamma_deg: float) -> Mat:
+    """Appendix A ``getRotationMatrix`` of the W3C Device Orientation spec, entry by entry."""
+    x, y, z = math.radians(beta_deg), math.radians(gamma_deg), math.radians(alpha_deg)
+    c_x, c_y, c_z = math.cos(x), math.cos(y), math.cos(z)
+    s_x, s_y, s_z = math.sin(x), math.sin(y), math.sin(z)
+    return (
+        (c_z * c_y - s_z * s_x * s_y, -c_x * s_z, c_y * s_z * s_x + c_z * s_y),
+        (c_y * s_z + c_z * s_x * s_y, c_z * c_x, s_z * s_y - c_z * c_y * s_x),
+        (-c_x * s_y, s_x, c_x * c_y),
+    )
+
+
+def page_matrix(
+    alpha_deg: float, beta_deg: float, gamma_deg: float, screen_angle_deg: float
+) -> Mat:
+    """Device rotation with the screen fold: ``R Rz(-angle)`` maps page axes to ENU."""
+    return _mat_mul(w3c_rotation_matrix(alpha_deg, beta_deg, gamma_deg), _rot_z(-screen_angle_deg))
+
+
+def euler_from_matrix(r: Mat) -> tuple[float, float, float]:
+    """The W3C triple (alpha [0, 360), beta [-180, 180), gamma [-90, 90)) of a rotation matrix.
+
+    From the spec matrix: ``R[2][1] = sin beta``, ``R[2][0] = -cos beta sin gamma``, ``R[2][2] =
+    cos beta cos gamma``, ``R[0][1] = -cos beta sin alpha``, ``R[1][1] = cos beta cos alpha``. The
+    sign of ``cos beta`` is chosen so that ``cos gamma >= 0``; on the ``cos gamma = 0`` seam
+    ``gamma = -90`` is taken (90 is outside the range). At ``cos beta = 0`` (the phone exactly
+    upright) only ``alpha + gamma`` (beta 90) or ``alpha - gamma`` (beta -90) is determined and
+    ``gamma = 0`` is written.
+    """
+    s_x = r[2][1]
+    norm = math.hypot(r[2][0], r[2][2])
+    if norm < 1e-12:
+        beta = 90.0 if s_x > 0 else -90.0
+        alpha = _wrap_360(math.degrees(math.atan2(r[1][0], r[0][0])))
+        return alpha, beta, 0.0
+    sign = 1.0 if r[2][2] > 1e-12 else (-1.0 if r[2][2] < -1e-12 else math.copysign(1.0, r[2][0]))
+    beta = math.degrees(math.atan2(s_x, sign * norm))
+    gamma = math.degrees(math.atan2(-r[2][0] * sign, r[2][2] * sign))
+    alpha = math.degrees(math.atan2(-r[0][1] * sign, r[1][1] * sign))
+    return _wrap_360(alpha), _wrap_signed_lower(beta), gamma
+
+
+def rounded_euler(r: Mat) -> tuple[float, float, float]:
+    """Decompose, round to ``EULER_DECIMALS`` and check that the triple recomposes to ``r``."""
+    alpha, beta, gamma = (round(v, EULER_DECIMALS) for v in euler_from_matrix(r))
+    if gamma >= 90.0:
+        raise FixtureError(f"gamma {gamma} left the W3C range after rounding")
+    back = w3c_rotation_matrix(alpha, beta, gamma)
+    error = max(abs(back[i][j] - r[i][j]) for i in range(3) for j in range(3))
+    if error > SELF_CHECK_TOLERANCE:
+        raise FixtureError(f"Euler decomposition does not recompose (error {error:.3e})")
+    return alpha, beta, gamma
+
+
+@dataclass(frozen=True)
+class ViewPose:
+    forward: Vec
+    up: Vec
+    az: float
+    alt: float
+    roll: float
+
+
+def view_from_page_matrix(m: Mat) -> ViewPose:
+    """The frontend's view rule on a page -> ENU matrix (``orientation.ts::viewFromPose``)."""
+    forward = _mat_vec(m, (0.0, 0.0, -1.0))
+    up = _mat_vec(m, (0.0, 1.0, 0.0))
+    alt = math.degrees(math.asin(max(-1.0, min(1.0, forward[2]))))
+    if abs(alt) >= GIMBAL_ALT_DEG:
+        top_az = _azimuth_deg(up[0], up[1])
+        az = _wrap_360(top_az + 180.0) if alt > 0 else top_az
+        return ViewPose(forward, up, az, alt, 0.0)
+    az = _azimuth_deg(forward[0], forward[1])
+    a = math.radians(az)
+    right0: Vec = (math.cos(a), -math.sin(a), 0.0)
+    up0 = _cross(right0, forward)
+    roll = _wrap_signed_upper(math.degrees(math.atan2(_dot(up, right0), _dot(up, up0))))
+    return ViewPose(forward, up, az, alt, roll)
+
+
+def page_basis(az_deg: float, alt_deg: float, roll_deg: float) -> Mat:
+    """The page -> ENU matrix of a camera pose: columns right, up, ``-forward`` (device z)."""
+    alt, az, roll = math.radians(alt_deg), math.radians(az_deg), math.radians(roll_deg)
+    forward: Vec = (math.cos(alt) * math.sin(az), math.cos(alt) * math.cos(az), math.sin(alt))
+    right0: Vec = (math.cos(az), -math.sin(az), 0.0)
+    up0 = _cross(right0, forward)
+    c, s = math.cos(roll), math.sin(roll)
+    right: Vec = (
+        right0[0] * c - up0[0] * s,
+        right0[1] * c - up0[1] * s,
+        right0[2] * c - up0[2] * s,
+    )
+    up: Vec = (up0[0] * c + right0[0] * s, up0[1] * c + right0[1] * s, up0[2] * c + right0[2] * s)
+    return _columns(right, up, (-forward[0], -forward[1], -forward[2]))
+
+
+def _angle_error(a: float, b: float) -> float:
+    """Distance between two angles in degrees, modulo 360."""
+    return abs(_wrap_signed_lower(a - b))
+
+
+def _check_pose(case_id: str, computed: ViewPose, expected: ViewPose) -> None:
+    errors = [abs(computed.forward[i] - expected.forward[i]) for i in range(3)] + [
+        abs(computed.up[i] - expected.up[i]) for i in range(3)
+    ]
+    errors += [
+        _angle_error(computed.az, expected.az),
+        abs(computed.alt - expected.alt),
+        _angle_error(computed.roll, expected.roll),
+    ]
+    worst = max(errors)
+    if worst > SELF_CHECK_TOLERANCE:
+        raise FixtureError(f"closed-form case {case_id}: hand expectation off by {worst:.3e}")
+
+
+def _case_document(
+    case_id: str,
+    euler: tuple[float, float, float],
+    screen_angle: float,
+    expected: ViewPose,
+    note: str,
+) -> dict[str, object]:
+    computed = view_from_page_matrix(page_matrix(*euler, screen_angle))
+    _check_pose(case_id, computed, expected)
+    return {
+        "id": case_id,
+        "alpha": euler[0],
+        "beta": euler[1],
+        "gamma": euler[2],
+        "screen_angle": screen_angle,
+        "forward_enu": list(expected.forward),
+        "up_enu": list(expected.up),
+        "az": expected.az,
+        "alt": expected.alt,
+        "roll": expected.roll,
+        "tolerance_deg": CLOSED_FORM_TOLERANCE_DEG,
+        "note": note,
+    }
+
+
+def case_from_euler(
+    case_id: str,
+    euler: tuple[float, float, float],
+    screen_angle: float,
+    expected: ViewPose,
+    note: str,
+) -> dict[str, object]:
+    return _case_document(case_id, euler, screen_angle, expected, note)
+
+
+def case_from_matrix(
+    case_id: str, device: Mat, screen_angle: float, expected: ViewPose, note: str
+) -> dict[str, object]:
+    """A pose built by composing elementary rotations; the W3C triple comes from decomposition."""
+    return _case_document(case_id, rounded_euler(device), screen_angle, expected, note)
+
+
+UP: Vec = (0.0, 0.0, 1.0)
+DOWN: Vec = (0.0, 0.0, -1.0)
+NORTH: Vec = (0.0, 1.0, 0.0)
+EAST: Vec = (1.0, 0.0, 0.0)
+SOUTH: Vec = (0.0, -1.0, 0.0)
+WEST: Vec = (-1.0, 0.0, 0.0)
+CARDINALS: tuple[tuple[str, float, Vec], ...] = (
+    ("north", 0.0, NORTH),
+    ("east", 90.0, EAST),
+    ("south", 180.0, SOUTH),
+    ("west", 270.0, WEST),
+)
+
+
+def closed_form_cases() -> list[dict[str, object]]:
+    cases: list[dict[str, object]] = []
+    # 1. The spec's worked examples (A.1, "held vertical" and "top of the screen to the right").
+    cases.append(
+        case_from_euler(
+            "spec-flat-top-west",
+            (90.0, 0.0, 0.0),
+            0.0,
+            ViewPose(DOWN, WEST, 270.0, -90.0, 0.0),
+            "W3C A.1: device flat, top pointing west, alpha 90 -> compass heading 270",
+        )
+    )
+    cases.append(
+        case_from_euler(
+            "spec-upright-north",
+            (0.0, 90.0, 0.0),
+            0.0,
+            ViewPose(NORTH, UP, 0.0, 0.0, 0.0),
+            "W3C: held vertical, top up, beta 90; the rear camera looks north",
+        )
+    )
+    cases.append(
+        case_from_euler(
+            "spec-upright-east",
+            (270.0, 90.0, 0.0),
+            0.0,
+            ViewPose(EAST, UP, 90.0, 0.0, 0.0),
+            "W3C alpha is counter-clockwise from above: 270 turns the camera to the east",
+        )
+    )
+    # "A user facing a compass heading of alpha degrees ... top of the screen pointing to their
+    # right": {270 - alpha, 0, 90}, read with screen.orientation.angle 270 (turned clockwise).
+    heading = 200.0
+    cases.append(
+        case_from_euler(
+            "spec-landscape-top-right-heading200",
+            (270.0 - heading, 0.0, 90.0),
+            270.0,
+            ViewPose(
+                (math.sin(math.radians(heading)), math.cos(math.radians(heading)), 0.0),
+                UP,
+                heading,
+                0.0,
+                0.0,
+            ),
+            "W3C: heading alpha with the screen top to the right is {270 - alpha, 0, 90}; the"
+            " fold (angle 270) brings the page top back up, az = heading",
+        )
+    )
+    # 2. Cardinal uprights (alpha = 360 - az, beta 90) and flat poses with the top at each point.
+    for name, az, direction in CARDINALS:
+        alpha = _wrap_360(360.0 - az)
+        cases.append(
+            case_from_euler(
+                f"upright-{name}",
+                (alpha, 90.0, 0.0),
+                0.0,
+                ViewPose(direction, UP, az, 0.0, 0.0),
+                "upright portrait, camera horizontal",
+            )
+        )
+        cases.append(
+            case_from_euler(
+                f"nadir-top-{name}",
+                (alpha, 0.0, 0.0),
+                0.0,
+                ViewPose(DOWN, direction, az, -90.0, 0.0),
+                "flat, screen up: the camera looks at the ground, az = heading of the screen top",
+            )
+        )
+        # Screen down = Rx(180), which sends the device top to the south; Rz(180 - az) then
+        # turns it toward `direction`.
+        alpha_zenith = _wrap_360(180.0 - az)
+        cases.append(
+            case_from_matrix(
+                f"zenith-top-{name}",
+                _mat_mul(_rot_z(alpha_zenith), _rot_x(180.0)),
+                0.0,
+                ViewPose(UP, direction, _wrap_360(az + 180.0), 90.0, 0.0),
+                "screen down: the camera looks at the zenith, az = heading of the top + 180",
+            )
+        )
+    # 3. Landscapes: device turned counter-clockwise (right edge up) or clockwise (left edge up),
+    #    read with the matching screen angle and with none (the roll then shows the raw turn).
+    ccw = w3c_rotation_matrix(90.0, 0.0, -90.0)
+    cw = _mat_mul(_rot_z(270.0), _rot_y(90.0))
+    cases.append(
+        case_from_euler(
+            "landscape-ccw-north-angle90",
+            (90.0, 0.0, -90.0),
+            90.0,
+            ViewPose(NORTH, UP, 0.0, 0.0, 0.0),
+            "turned counter-clockwise, screen.orientation.angle 90 folds the page top back up",
+        )
+    )
+    cases.append(
+        case_from_euler(
+            "landscape-ccw-north-angle0",
+            (90.0, 0.0, -90.0),
+            0.0,
+            ViewPose(NORTH, WEST, 0.0, 0.0, -90.0),
+            "the same device pose read without the screen fold: the device top points west",
+        )
+    )
+    cases.append(
+        case_from_matrix(
+            "landscape-cw-north-angle270",
+            cw,
+            270.0,
+            ViewPose(NORTH, UP, 0.0, 0.0, 0.0),
+            "turned clockwise (angle 270 counter-clockwise); W3C triple on the gamma = -90 seam",
+        )
+    )
+    cases.append(
+        case_from_matrix(
+            "landscape-cw-north-angle0",
+            cw,
+            0.0,
+            ViewPose(NORTH, EAST, 0.0, 0.0, 90.0),
+            "the same pose without the fold: the device top points east, roll +90",
+        )
+    )
+    cases.append(
+        case_from_euler(
+            "landscape-cw-north-raw-gamma90",
+            (270.0, 0.0, 90.0),
+            270.0,
+            ViewPose(NORTH, UP, 0.0, 0.0, 0.0),
+            "the out-of-range twin of landscape-cw-north-angle270 (gamma 90): same rotation",
+        )
+    )
+    cases.append(
+        case_from_euler(
+            "landscape-ccw-east-angle90",
+            (0.0, 0.0, -90.0),
+            90.0,
+            ViewPose(EAST, UP, 90.0, 0.0, 0.0),
+            "turned counter-clockwise facing east, the fold applied",
+        )
+    )
+    if view_from_page_matrix(ccw).roll != -90.0:
+        raise FixtureError("landscape sanity check failed")
+    # 4. Rolls about the view axis of the upright phone facing north: an intrinsic rotation about
+    #    device z by -roll (the view axis is -z), so Rx(90) Rz(-roll).
+    for roll in (30.0, -30.0, 90.0, -90.0):
+        r = math.radians(roll)
+        cases.append(
+            case_from_matrix(
+                f"upright-north-roll{roll:+.0f}",
+                _mat_mul(_rot_x(90.0), _rot_z(-roll)),
+                0.0,
+                ViewPose(NORTH, (math.sin(r), 0.0, math.cos(r)), 0.0, 0.0, roll),
+                "screen top leaning to the user's right for a positive roll",
+            )
+        )
+    # 5. 45 degree tilts.
+    cases.append(
+        case_from_euler(
+            "tilt-north-down45",
+            (0.0, 45.0, 0.0),
+            0.0,
+            ViewPose((0.0, SQRT_HALF, -SQRT_HALF), (0.0, SQRT_HALF, SQRT_HALF), 0.0, -45.0, 0.0),
+            "half way between flat and upright: the camera looks 45 degrees down",
+        )
+    )
+    cases.append(
+        case_from_euler(
+            "tilt-north-up45",
+            (0.0, 135.0, 0.0),
+            0.0,
+            ViewPose((0.0, SQRT_HALF, SQRT_HALF), (0.0, -SQRT_HALF, SQRT_HALF), 0.0, 45.0, 0.0),
+            "leaning back: the camera looks 45 degrees up",
+        )
+    )
+    cases.append(
+        case_from_euler(
+            "tilt-east-up45",
+            (270.0, 135.0, 0.0),
+            0.0,
+            ViewPose((SQRT_HALF, 0.0, SQRT_HALF), (-SQRT_HALF, 0.0, SQRT_HALF), 90.0, 45.0, 0.0),
+            "leaning back facing east",
+        )
+    )
+    cases.append(
+        case_from_euler(
+            "upright-gamma-yaw45",
+            (0.0, 90.0, 45.0),
+            0.0,
+            ViewPose((-SQRT_HALF, SQRT_HALF, 0.0), UP, 315.0, 0.0, 0.0),
+            "at beta 90 gamma turns about the vertical: Rx(90) Ry(g) = Rz(g) Rx(90)",
+        )
+    )
+    cos30, sin30 = math.cos(math.radians(30.0)), math.sin(math.radians(30.0))
+    cases.append(
+        case_from_matrix(
+            "tilt-north-up45-roll+30",
+            _mat_mul(_rot_x(135.0), _rot_z(-30.0)),
+            0.0,
+            ViewPose(
+                (0.0, SQRT_HALF, SQRT_HALF),
+                (sin30, -cos30 * SQRT_HALF, cos30 * SQRT_HALF),
+                0.0,
+                45.0,
+                30.0,
+            ),
+            "leaning back 45 degrees with the top leaning 30 degrees to the right",
+        )
+    )
+    return cases
+
+
+def round_trip_cases(rng: random.Random) -> list[dict[str, object]]:
+    """Random camera poses -> W3C triple -> the same pose (``|alt| <= 89``, every screen angle)."""
+    cases: list[dict[str, object]] = []
+    for index in range(ORIENTATION_ROUND_TRIPS):
+        az = 360.0 * rng.random()
+        alt = -89.0 + 178.0 * rng.random()
+        roll = -180.0 + 360.0 * rng.random()
+        screen_angle = 90.0 * float(int(4 * rng.random()) % 4)
+        device = _mat_mul(page_basis(az, alt, roll), _rot_z(screen_angle))
+        euler = rounded_euler(device)
+        computed = view_from_page_matrix(page_matrix(*euler, screen_angle))
+        worst = max(
+            _angle_error(computed.az, az),
+            abs(computed.alt - alt),
+            _angle_error(computed.roll, roll),
+        )
+        if worst > SELF_CHECK_TOLERANCE * 1e3:
+            raise FixtureError(f"round trip {index}: {worst:.3e} degrees")
+        cases.append(
+            {
+                "alpha": euler[0],
+                "beta": euler[1],
+                "gamma": euler[2],
+                "screen_angle": screen_angle,
+                "az": az,
+                "alt": alt,
+                "roll": roll,
+                "tolerance_deg": ROUND_TRIP_TOLERANCE_DEG,
+            }
+        )
+    return cases
+
+
+def compass_cases(rng: random.Random) -> list[dict[str, object]]:
+    """A true pose seen through an arbitrary yaw (iOS relative alpha) at a random screen angle,
+    plus the compass heading of the device top (CoreLocation's default axis) and of the rear
+    axis; the expected view is the true pose once the correction ``qz(heading(axis) - compass)``
+    is applied to the DEVICE rotation, before the screen fold: the compass axes are device axes,
+    so the headings come from the true device matrix and a correction applied after the fold
+    would be wrong whenever ``screen_angle != 0``."""
+    cases: list[dict[str, object]] = []
+    while len(cases) < ORIENTATION_COMPASS_CASES:
+        az = 360.0 * rng.random()
+        alt = -80.0 + 160.0 * rng.random()
+        roll = -180.0 + 360.0 * rng.random()
+        yaw_offset = 360.0 * rng.random()
+        screen_angle = 90.0 * float(int(4 * rng.random()) % 4)
+        true_device = _mat_mul(page_basis(az, alt, roll), _rot_z(screen_angle))
+        top = _mat_vec(true_device, (0.0, 1.0, 0.0))
+        back = _mat_vec(true_device, (0.0, 0.0, -1.0))
+        if math.hypot(top[0], top[1]) < COMPASS_MIN_HORIZONTAL:
+            continue
+        heading_top = _azimuth_deg(top[0], top[1])
+        heading_back = _azimuth_deg(back[0], back[1])
+        relative = _mat_mul(_rot_z(yaw_offset), true_device)
+        euler = rounded_euler(relative)
+        for axis, heading in (((0.0, 1.0, 0.0), heading_top), ((0.0, 0.0, -1.0), heading_back)):
+            rel = w3c_rotation_matrix(*euler)
+            rotated = _mat_vec(rel, axis)
+            correction = _azimuth_deg(rotated[0], rotated[1]) - heading
+            corrected_device = _mat_mul(_rot_z(correction), rel)
+            computed = view_from_page_matrix(_mat_mul(corrected_device, _rot_z(-screen_angle)))
+            worst = max(
+                _angle_error(computed.az, az),
+                abs(computed.alt - alt),
+                _angle_error(computed.roll, roll),
+            )
+            if worst > SELF_CHECK_TOLERANCE * 1e3:
+                raise FixtureError(f"compass case {len(cases)}: {worst:.3e} degrees")
+        cases.append(
+            {
+                "alpha_rel": euler[0],
+                "beta": euler[1],
+                "gamma": euler[2],
+                "screen_angle": screen_angle,
+                "yaw_offset_deg": yaw_offset,
+                "compass_heading_top": heading_top,
+                "compass_heading_back": heading_back,
+                "az": az,
+                "alt": alt,
+                "roll": roll,
+                "tolerance_deg": ROUND_TRIP_TOLERANCE_DEG,
+            }
+        )
+    return cases
+
+
+def gimbal_rows() -> list[dict[str, object]]:
+    """Approaches to the nadir (beta from 0) and the zenith (beta from 180) for two headings: the
+    rows inside the band (|alt| >= 89.99) use the screen-top rule, the others the general rule,
+    and the sequence must be continuous."""
+    rows: list[dict[str, object]] = []
+    for alpha in (0.0, 90.0):
+        for region, betas in (
+            ("nadir", (0.0, 0.005, 0.02, 0.5)),
+            ("zenith", (180.0, 179.995, 179.98, 179.5)),
+        ):
+            for beta in betas:
+                # 180 is outside the W3C range and becomes -180; the others are written as is.
+                beta_w3c = beta if beta < 180.0 else _wrap_signed_lower(beta)
+                pose = view_from_page_matrix(page_matrix(alpha, beta_w3c, 0.0, 0.0))
+                rows.append(
+                    {
+                        "region": region,
+                        "alpha": alpha,
+                        "beta": beta_w3c,
+                        "gamma": 0.0,
+                        "screen_angle": 0.0,
+                        "in_band": abs(pose.alt) >= GIMBAL_ALT_DEG,
+                        "az": pose.az,
+                        "alt": pose.alt,
+                        "roll": pose.roll,
+                        "tolerance_deg": CLOSED_FORM_TOLERANCE_DEG,
+                    }
+                )
+    return rows
+
+
+def _check_matrix_against_product(rng: random.Random) -> None:
+    """The transcribed spec matrix equals ``Rz(alpha) Rx(beta) Ry(gamma)`` (generator self-test)."""
+    for _ in range(500):
+        alpha, beta, gamma = (
+            360.0 * rng.random(),
+            -180.0 + 360.0 * rng.random(),
+            -90.0 + 180.0 * rng.random(),
+        )
+        spec = w3c_rotation_matrix(alpha, beta, gamma)
+        product = _mat_mul(_mat_mul(_rot_z(alpha), _rot_x(beta)), _rot_y(gamma))
+        error = max(abs(spec[i][j] - product[i][j]) for i in range(3) for j in range(3))
+        if error > 1e-12:
+            raise FixtureError(f"spec matrix differs from the rotation product by {error:.3e}")
+
+
+def build_orientation_fixture(generated_at: str) -> dict[str, object]:
+    rng = random.Random(ORIENTATION_SEED)
+    _check_matrix_against_product(rng)
+    return {
+        "source": (
+            "W3C Device Orientation and Motion (Appendix A worked example and getRotationMatrix,"
+            " R = Rz(alpha) Rx(beta) Ry(gamma)), W3C Screen Orientation (angle counter-clockwise"
+            " from natural); geometric construction of the expected poses"
+        ),
+        "generator": ORIENTATION_GENERATOR,
+        "generated_at": generated_at,
+        "parameters": {
+            "seed": ORIENTATION_SEED,
+            "round_trips": ORIENTATION_ROUND_TRIPS,
+            "compass_cases": ORIENTATION_COMPASS_CASES,
+            "gimbal_alt_deg": GIMBAL_ALT_DEG,
+            "closed_form_tolerance_deg": CLOSED_FORM_TOLERANCE_DEG,
+            "round_trip_tolerance_deg": ROUND_TRIP_TOLERANCE_DEG,
+            "euler_decimals": EULER_DECIMALS,
+        },
+        "conventions": {
+            "device": "x right, y top, z out of the screen; the rear camera looks along -z",
+            "earth": "[E, N, U]; azimuth from north through east",
+            "screen_angle": (
+                "screen.orientation.angle, counter-clockwise from natural;"
+                " page = device turned back by it"
+            ),
+            "roll": (
+                "right-handed about the view axis, positive when the screen top leans to the"
+                " user's right, (-180, 180]"
+            ),
+            "gimbal": (
+                "|alt| >= 89.99: roll 0, az = heading of the screen top (nadir)"
+                " or heading + 180 (zenith)"
+            ),
+        },
+        "cases": closed_form_cases(),
+        "round_trips": round_trip_cases(rng),
+        "compass_cases": compass_cases(rng),
+        "gimbal_rows": gimbal_rows(),
+    }
+
+
+def run_orientation(args: argparse.Namespace) -> int:
+    out: Path = args.out
+    write_fixture(out, build_orientation_fixture(utc_now_iso()))
+    return 0
+
+
 # CLI
 # --------------------------------------------------------------------------------------------
 
@@ -1143,6 +1826,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--ephemeris", default="de440s.bsp", help="ephemeris file name (default de440s.bsp)"
     )
     skyfield.set_defaults(handler=run_skyfield)
+
+    orientation = subparsers.add_parser(
+        "orientation",
+        help="write the device-orientation fixture from the W3C matrix (offline, seeded)",
+    )
+    orientation.add_argument(
+        "--out",
+        type=Path,
+        default=DEFAULT_ORIENTATION_OUT,
+        help="output JSON path (default backend/tests/fixtures/device_orientation_cases.json)",
+    )
+    orientation.set_defaults(handler=run_orientation)
     return parser
 
 

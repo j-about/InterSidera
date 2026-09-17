@@ -15,6 +15,7 @@ describe('EngineContext', () => {
       backend: 'webgpu',
       adapterInfo: null,
       current: createFrameEval(1),
+      underlayRoot: document.createElement('div'),
       setCatalog: () => undefined,
       currentTt: () => NaN,
       whenReady: () => Promise.resolve(),
@@ -29,6 +30,10 @@ describe('EngineContext', () => {
       skyBrightness: () => 0,
       layerStats: () => ({ dso: 0, clinesSegments: 0 }),
       reducedMotion: () => false,
+      preloadXr: () => Promise.resolve(),
+      enterXr: () => Promise.reject(new Error('no XR in tests')),
+      exitXr: () => Promise.resolve(),
+      arTransparent: () => false,
       resize: () => undefined,
       dispose: () => undefined,
     };

@@ -486,5 +486,64 @@
     "editor": "T: set the date and time",
     "view": "Arrows: look around; + and −: zoom",
     "escape": "Esc: close"
+  },
+  "ar": {
+    "button": "Augmented reality",
+    "exit": "Exit augmented reality",
+    "cancel": "Cancel",
+    "requestingTitle": "Starting augmented reality",
+    "requesting": "Allow the camera and the motion sensors when the browser asks.",
+    "mode": {
+      "label": "Augmented reality status",
+      "sensor": "Augmented reality on: the sky follows the phone.",
+      "xr": "Immersive augmented reality on."
+    },
+    "errorTitle": "Augmented reality unavailable",
+    "error": {
+      "noCamera": "No camera was found; the normal view is shown.",
+      "noRearCamera": "No rear camera was found; the normal view is shown.",
+      "cameraDenied": "Camera access was denied. Allow the camera for this site in the browser settings to use augmented reality.",
+      "cameraUnavailable": "The camera or augmented reality could not be started; the normal view is shown.",
+      "trackEnded": "The camera stream ended; the normal view is shown.",
+      "orientationDenied": "Motion sensor access was denied; augmented reality needs the device orientation.",
+      "orientationUnavailable": "No orientation sensor answered for three seconds; the normal view is shown.",
+      "xrUnsupported": "No immersive AR session is available on this device, or it was refused (on Android, Google Play Services for AR may be missing); the sensor mode stays on.",
+      "xrDenied": "The immersive session was refused by the browser or the user; the sensor mode stays on.",
+      "xrBusy": "An immersive session is already running; the sensor mode stays on.",
+      "xrFailed": "The immersive session could not start; the sensor mode stays on."
+    },
+    "offset": {
+      "label": "Time offset from now",
+      "now": "Now",
+      "value": "Azimuth offset {{deg}}",
+      "reset": "Reset the alignment",
+      "years_one": "{{count}} yr",
+      "years_other": "{{count}} yr",
+      "days_one": "{{count}} d",
+      "days_other": "{{count}} d",
+      "hours_one": "{{count}} h",
+      "hours_other": "{{count}} h",
+      "minutes_one": "{{count}} min",
+      "minutes_other": "{{count}} min"
+    },
+    "compass": {
+      "label": "Compass",
+      "good": "Compass heading",
+      "fair": "Compass heading (fair)",
+      "poor": "Compass heading (poor)",
+      "invalid": "Compass needs calibration",
+      "manual": "No compass: align north by dragging",
+      "none": "Waiting for the sensors…",
+      "accuracy": "±{{deg}}",
+      "magnetic": "Magnetic north; drag sideways to absorb the declination"
+    },
+    "hint": {
+      "title": "Align the sky",
+      "manualNorth": "No compass on this device: point the phone north, then drag sideways to align the sky.",
+      "waiting": "Waiting for the motion sensors; if no compass answers, point the phone north and drag sideways to align the sky."
+    },
+    "fov": "Camera field of view",
+    "enterXr": "Immersive mode (WebXR)",
+    "leaveXr": "Leave the immersive mode"
   }
 }

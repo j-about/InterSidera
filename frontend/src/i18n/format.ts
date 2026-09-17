@@ -5,9 +5,11 @@
 // `sky/math` themselves (ESLint block F), so the TT -> calendar conversion lives here.
 
 import i18next from 'i18next';
+import type { TFunction } from 'i18next';
 
 import { calendarFromJd, formatYear, isoUtcFromTt } from '../sky/math/time';
 import type { CalendarFields } from '../sky/math/time';
+import type { TimeOffsetParts } from '../state/timeDisplay';
 
 /** Shown for an unknown value (`NaN`, `null`): an em dash, no words to translate. */
 export const UNKNOWN_VALUE = '—';
@@ -152,4 +154,34 @@ export function formatUtc(tt: number, ttMinusUtc: number): string {
     return UNKNOWN_VALUE;
   }
   return isoUtcFromTt(tt, ttMinusUtc).replace('T', ' ').replace(/Z$/, '');
+}
+
+/** U+2212 MINUS SIGN: the typographic minus of the time-offset badge (a hyphen reads as a dash). */
+const MINUS_SIGN = '\u2212';
+
+/**
+ * The time offset of the augmented-reality badge (plan D127) from `timeOffsetParts`: the kept
+ * units through their plural keys (`ar.offset.years` .. `ar.offset.minutes`, `yr` / `d` / `h` /
+ * `min` in English, `a` / `j` / `h` / `min` in French), joined by a space behind `+` or U+2212;
+ * `ar.offset.now` when nothing remains. `Intl.DurationFormat` is not used (Safari 17 ships
+ * without it and the unit symbols belong to the resource files anyway).
+ */
+export function formatTimeOffset(parts: TimeOffsetParts, t: TFunction): string {
+  if (parts.sign === 0) {
+    return t('ar.offset.now');
+  }
+  const pieces: string[] = [];
+  if (parts.years > 0) {
+    pieces.push(t('ar.offset.years', { count: parts.years }));
+  }
+  if (parts.days > 0) {
+    pieces.push(t('ar.offset.days', { count: parts.days }));
+  }
+  if (parts.hours > 0) {
+    pieces.push(t('ar.offset.hours', { count: parts.hours }));
+  }
+  if (parts.minutes > 0) {
+    pieces.push(t('ar.offset.minutes', { count: parts.minutes }));
+  }
+  return `${parts.sign < 0 ? MINUS_SIGN : '+'}${pieces.join(' ')}`;
 }

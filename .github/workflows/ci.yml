@@ -105,17 +105,22 @@ jobs:
       - run: npm run gen:types
       - run: git ls-files --error-unmatch -- src/api/schema.d.ts && git diff --exit-code -- src/api/schema.d.ts
       - run: node --check ../scripts/check_i18n.mjs
+      - run: node --check ../scripts/check_chunks.mjs
       - run: npm exec -- prettier --no-config --print-width 100 --single-quote --check ../scripts
       - run: node ../scripts/check_i18n.mjs
       - run: npm run build
       # The production build never contains the window.__sky debug hook (brief l.410; make build).
       - run: '! grep -rl "__sky" dist/assets'
+      # The AR, WebXR and WebGPU code stays in lazy chunks (brief l.257, l.478; plan D131; make build).
+      - run: node ../scripts/check_chunks.mjs dist
 
-  # End-to-end (M3): the API on de440s with the full star, DSO and constellation data (never de441 or
-  # MPCORB: the API then reports `degraded` with `missing: ["mpc"]`, which the suite accepts), the e2e
-  # build of the frontend (`vite build --mode e2e` exposes window.__sky) and Playwright Chromium on the
-  # two projects `make e2e` runs. The `chromium-webgpu` project is configured but unmeasured on a
-  # GPU-less runner (docs/testing.md, plan.md maintainer question 16).
+  # End-to-end (M3, extended at M4 and M5): the API on de440s with the full star, DSO and constellation
+  # data (never de441 or MPCORB: the API then reports `degraded` with `missing: ["mpc"]`, which the
+  # suite accepts), the e2e build of the frontend (`vite build --mode e2e` exposes window.__sky) and
+  # Playwright Chromium on the two projects `make e2e` runs; `ar.spec.ts` runs on `chromium-mobile`
+  # only, in its own worker with the fake camera flags and the sensor permissions (plan D134). The
+  # `chromium-webgpu` project is configured but unmeasured on a GPU-less runner (docs/testing.md,
+  # plan.md maintainer question 16).
   e2e:
     needs: [backend, frontend]
     runs-on: ubuntu-latest

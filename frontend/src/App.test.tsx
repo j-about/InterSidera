@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import App from './App';
 import type { EngineTicker, SkyEngineApi, SkyEngineFactory } from './sky/engine/types';
@@ -15,6 +15,7 @@ function fakeEngine(): SkyEngineApi {
     backend: 'webgl2',
     adapterInfo: null,
     current: createFrameEval(1),
+    underlayRoot: document.createElement('div'),
     setCatalog: () => undefined,
     currentTt: () => NaN,
     whenReady: () => new Promise<void>(() => undefined),
@@ -29,6 +30,10 @@ function fakeEngine(): SkyEngineApi {
     skyBrightness: () => 0,
     layerStats: () => ({ dso: 0, clinesSegments: 0 }),
     reducedMotion: () => false,
+    preloadXr: () => Promise.resolve(),
+    enterXr: () => Promise.reject(new Error('no XR in tests')),
+    exitXr: () => Promise.resolve(),
+    arTransparent: () => false,
     resize: () => undefined,
     dispose: () => undefined,
   };
@@ -129,5 +134,66 @@ describe('App', () => {
     expect(createEngine.mock.calls[0]?.[0].labelRoot.hasAttribute('data-sky-labels')).toBe(true);
     view.unmount();
     expect(onEngine).toHaveBeenLastCalledWith(null);
+  });
+
+  it('renders the AR underlay before the canvas inside the stage (plan D121)', () => {
+    render(
+      <App
+        store={createSkyStore()}
+        frames={fakeFrames()}
+        createEngine={() => Promise.resolve(fakeEngine())}
+      />,
+    );
+    const stage = document.getElementById('sky-stage');
+    const underlay = stage?.querySelector('[data-sky-underlay]');
+    if (!(underlay instanceof HTMLElement)) {
+      throw new Error('underlay root missing');
+    }
+    const canvas = screen.getByLabelText('Sky view');
+    expect(
+      underlay.compareDocumentPosition(canvas) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(underlay).toBeEmptyDOMElement();
+  });
+
+  it('swaps the top bar for the lazy AR overlay while AR runs and returns the focus on exit (plan D127)', async () => {
+    const store = createSkyStore();
+    const { actions } = store.getState();
+    actions.setArCapabilities({
+      secure: true,
+      camera: true,
+      orientation: true,
+      touch: true,
+      videoInput: true,
+    });
+    render(
+      <App
+        store={store}
+        frames={fakeFrames()}
+        createEngine={() => Promise.resolve(fakeEngine())}
+      />,
+    );
+    const arButton = screen.getByRole('button', { name: 'Augmented reality' });
+    expect(screen.getByRole('banner')).toContainElement(arButton);
+    arButton.focus();
+    act(() => {
+      actions.setArPermission('granted');
+      actions.requestAr();
+      actions.setArMode('sensor');
+    });
+    // The overlay chunk resolves asynchronously (`lazy`); the top bar is gone meanwhile.
+    const exit = await screen.findByRole('button', { name: 'Exit augmented reality' });
+    expect(screen.queryByRole('button', { name: 'About InterSidera' })).toBeNull();
+    expect(screen.getByRole('banner')).toHaveAttribute('id', 'ar-overlay');
+    expect(screen.getByRole('banner')).toContainElement(exit);
+    await waitFor(() => {
+      expect(exit).toHaveFocus();
+    });
+    act(() => {
+      actions.exitAr();
+    });
+    expect(screen.getByRole('button', { name: 'About InterSidera' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Exit augmented reality' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Augmented reality' })).toHaveFocus();
   });
 });

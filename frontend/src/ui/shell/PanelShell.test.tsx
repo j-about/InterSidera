@@ -47,4 +47,34 @@ describe('PanelShell', () => {
     expect(store.getState().ui.sheet).toBe('collapsed');
     expect(handle).toHaveAttribute('aria-expanded', 'false');
   });
+
+  it('drops the strip transport during a WebXR session, where the AR overlay owns it', () => {
+    const store = createSkyStore();
+    const { actions } = store.getState();
+    render(<PanelShell store={store} />);
+    expect(screen.getByRole('group', { name: 'Speed' })).toBeInTheDocument();
+    act(() => {
+      actions.setArCapabilities({
+        secure: true,
+        camera: true,
+        orientation: true,
+        touch: true,
+        videoInput: true,
+      });
+      actions.setArPermission('granted');
+      actions.requestAr();
+      actions.setArMode('sensor');
+    });
+    // The sensor mode keeps the strip's transport (the overlay has none there).
+    expect(screen.getByRole('group', { name: 'Speed' })).toBeInTheDocument();
+    act(() => {
+      actions.setArMode('xr');
+    });
+    expect(screen.queryByRole('group', { name: 'Speed' })).toBeNull();
+    expect(document.querySelectorAll('#transport-speed')).toHaveLength(0);
+    act(() => {
+      actions.exitAr();
+    });
+    expect(screen.getByRole('group', { name: 'Speed' })).toBeInTheDocument();
+  });
 });

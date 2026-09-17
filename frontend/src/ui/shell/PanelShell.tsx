@@ -32,9 +32,9 @@ export const DEFAULT_PANEL: PanelId = 'observer';
 export default function PanelShell({ store }: PanelShellProps) {
   const { t } = useTranslation();
   const desktop = useMediaQuery(DESKTOP_QUERY);
-  const { panel, sheet } = useStore(
+  const { panel, sheet, xrSession } = useStore(
     store,
-    useShallow((s) => ({ panel: s.ui.panel, sheet: s.ui.sheet })),
+    useShallow((s) => ({ panel: s.ui.panel, sheet: s.ui.sheet, xrSession: s.ar.mode === 'xr' })),
   );
   const { actions } = store.getState();
 
@@ -68,7 +68,9 @@ export default function PanelShell({ store }: PanelShellProps) {
           desktop ? undefined : (
             <>
               <TimeReadout store={store} />
-              <TransportBar store={store} />
+              {/* Inside a WebXR session the AR overlay owns the transport (plan D127), so the
+                  document holds one `SpeedSelect#transport-speed` and one time-editor dialog. */}
+              {!xrSession && <TransportBar store={store} />}
             </>
           )
         }

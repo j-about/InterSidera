@@ -5,8 +5,18 @@
 // (East -> +X, Up -> +Y, North -> +Z, brief l.59) exists ONLY in this module: every sky mesh keeps
 // its geometry in ENU and carries `enuToBabylonMatrix()` as its frozen world matrix, so no shader
 // and no other module ever swaps axes. Unit tests assert az=0 -> +Z, az=90 -> +X, alt=90 -> +Y.
+//
+// Roll (plan D119, amending D72 "the camera never rolls" to "only in AR"): the camera functions
+// take a trailing `rollDeg = 0`, the rotation of the camera about its view axis, right-handed in
+// ENU, positive when the screen top leans to the user's right (`up = up0 cos r + right0 sin r`,
+// `right = right0 cos r - up0 sin r`); with roll +90 looking north the screen top points east and
+// the zenith side of the field lands on the LEFT edge. Babylon's `TargetCamera` takes it as
+// `rotation.z = -roll`: P is a reflection (determinant -1), so a right-handed rotation about the
+// forward axis in ENU is a left-handed one in Babylon's frame. Verified on the `NullEngine`
+// against these formulas (4e-8 in Float32). The camera rolls only in AR (`ar.roll`, 0 elsewhere).
 
-import type { ReadonlyVec3, Vec3 } from './typed';
+import { rotate } from './quaternion';
+import type { ReadonlyQuat, ReadonlyVec3, Vec3 } from './typed';
 
 /** Radius of the celestial sphere in Babylon units (brief l.59). */
 export const SKY_RADIUS = 1000;
@@ -62,6 +72,15 @@ export function wrapAzimuthDeg(azDeg: number): number {
   return wrapped >= 360 || wrapped <= 0 ? 0 : wrapped;
 }
 
+/**
+ * Wrap a signed angle into `[-180, 180)` (`180` becomes `-180`, never `-0`): the AR-3 calibration
+ * offset and the XR yaw correction (plan D120, D130). Built on `wrapAzimuthDeg`, whose guards
+ * already absorb the rounding at the seam (`180 - 180` is `+0`).
+ */
+export function wrapSignedDeg(deg: number): number {
+  return wrapAzimuthDeg(deg + 180) - 180;
+}
+
 /** Clamp an altitude to the range the camera can look at (plan D72). */
 export function clampCameraAltDeg(altDeg: number): number {
   return Math.max(-MAX_CAMERA_ALT_DEG, Math.min(MAX_CAMERA_ALT_DEG, altDeg));
@@ -108,13 +127,14 @@ export function babylonToEnu(out: Vec3, x: number, y: number, z: number): Vec3 {
 /**
  * Euler rotation `[x, y, z]` in radians for a Babylon `TargetCamera` at the origin looking toward
  * (`azDeg`, `altDeg`): yaw about +Y equals the azimuth (az=0 looks +Z = north, az=90 looks +X =
- * east) and a positive pitch looks down, so `x = -alt`. Roll is zero. Verified against Babylon
- * 9.25's `RotationYawPitchRoll` (plan D72).
+ * east) and a positive pitch looks down, so `x = -alt`; `z = -roll` (module header). Verified
+ * against Babylon 9.25's `RotationYawPitchRoll` (plan D72, D119). `0 - ...` keeps `z` at `+0`
+ * for a zero roll.
  */
-export function cameraRotationFor(out: Vec3, azDeg: number, altDeg: number): Vec3 {
+export function cameraRotationFor(out: Vec3, azDeg: number, altDeg: number, rollDeg = 0): Vec3 {
   out[0] = -clampCameraAltDeg(altDeg) * DEG;
   out[1] = wrapAzimuthDeg(azDeg) * DEG;
-  out[2] = 0;
+  out[2] = 0 - rollDeg * DEG;
   return out;
 }
 
@@ -169,8 +189,9 @@ export function raDecFromDir(out: RaDec, v: ReadonlyVec3): RaDec {
 // `TargetCamera` at the origin with `FOVMODE_VERTICAL_FIXED`. Camera axes in ENU: forward = the
 // view direction `altAzToEnu(viewAlt, viewAz)`, right = the horizontal unit vector 90 degrees
 // clockwise from the view azimuth `(cos az, -sin az, 0)` (east when looking north), up = right x
-// forward. In Babylon's left-handed frame these are +Z, +X and +Y for the identity camera, which
-// is exactly `enuToBabylon`. NDC: `x = x_cam / (z_cam tan(fov / 2) aspect)`,
+// forward, both then rolled about forward (module header). In Babylon's left-handed frame these
+// are +Z, +X and +Y for the identity camera, which is exactly `enuToBabylon`. NDC:
+// `x = x_cam / (z_cam tan(fov / 2) aspect)`,
 // `y = y_cam / (z_cam tan(fov / 2))`, `aspect = width / height`; screen x grows to the right,
 // screen y downward: `px = (x + 1) / 2 * width`, `py = (1 - y) / 2 * height`.
 
@@ -188,9 +209,10 @@ const camTarget: Vec3 = [0, 0, 0];
 /**
  * The camera axes in ENU for a view (az, alt) in degrees, into `outForward`, `outRight` and
  * `outUp`: forward is the view direction, right the horizontal unit vector 90 degrees clockwise
- * from the view azimuth (the camera never rolls), up their cross product. Shared by the
- * projections below, the billboard bases of the body and DSO layers and the background shader
- * (plan D104), so there is exactly one camera basis in the client.
+ * from the view azimuth, up their cross product, then right and up rolled about forward by
+ * `rollDeg` (0 outside AR; header). Shared by the projections below, the billboard bases of the
+ * body and DSO layers and the background shader (plan D104), so there is exactly one camera basis
+ * in the client.
  */
 export function cameraBasis(
   outForward: Vec3,
@@ -198,16 +220,61 @@ export function cameraBasis(
   outUp: Vec3,
   viewAz: number,
   viewAlt: number,
+  rollDeg = 0,
 ): void {
   altAzToEnu(outForward, viewAlt, viewAz);
   const az = viewAz * DEG;
-  outRight[0] = Math.cos(az);
-  outRight[1] = -Math.sin(az);
-  outRight[2] = 0;
-  // up = right x forward
-  outUp[0] = outRight[1] * outForward[2] - outRight[2] * outForward[1];
-  outUp[1] = outRight[2] * outForward[0] - outRight[0] * outForward[2];
-  outUp[2] = outRight[0] * outForward[1] - outRight[1] * outForward[0];
+  const r0x = Math.cos(az);
+  const r0y = -Math.sin(az);
+  // up0 = right0 x forward (right0 has no vertical component)
+  const u0x = r0y * outForward[2];
+  const u0y = -r0x * outForward[2];
+  const u0z = r0x * outForward[1] - r0y * outForward[0];
+  // Roll: right = right0 cos r - up0 sin r, up = up0 cos r + right0 sin r.
+  const r = rollDeg * DEG;
+  const c = Math.cos(r);
+  const s = Math.sin(r);
+  outRight[0] = r0x * c - u0x * s;
+  outRight[1] = r0y * c - u0y * s;
+  outRight[2] = 0 - u0z * s;
+  outUp[0] = u0x * c + r0x * s;
+  outUp[1] = u0y * c + r0y * s;
+  outUp[2] = u0z * c;
+}
+
+/**
+ * The camera axes in ENU of a Babylon camera whose world rotation is the quaternion `q` (the XR
+ * rig camera, plan D130): `q` rotates Babylon's +Z (forward), +X (right) and +Y (up), and each
+ * result is relabelled through `babylonToEnu`. For the quaternion of `cameraRotationFor(az, alt,
+ * roll)` (Babylon's `RotationYawPitchRoll` = Hamilton `qy(yaw) qx(pitch) qz(roll)`) it returns
+ * exactly `cameraBasis(az, alt, roll)`, which the unit tests pin. Allocation-free.
+ */
+export function basisFromBabylonQuaternion(
+  outForward: Vec3,
+  outRight: Vec3,
+  outUp: Vec3,
+  q: ReadonlyQuat,
+): void {
+  rotate(outForward, q, BABYLON_FORWARD);
+  babylonToEnu(outForward, outForward[0], outForward[1], outForward[2]);
+  rotate(outRight, q, BABYLON_RIGHT);
+  babylonToEnu(outRight, outRight[0], outRight[1], outRight[2]);
+  rotate(outUp, q, BABYLON_UP);
+  babylonToEnu(outUp, outUp[0], outUp[1], outUp[2]);
+}
+
+const BABYLON_FORWARD: ReadonlyVec3 = [0, 0, 1];
+const BABYLON_RIGHT: ReadonlyVec3 = [1, 0, 0];
+const BABYLON_UP: ReadonlyVec3 = [0, 1, 0];
+
+/**
+ * The azimuth change in degrees a horizontal drag of `dxPx` CSS pixels means under a vertical
+ * field `fovDeg` on a canvas `heightPx` tall: `-dx fov / height` (dragging right turns the view
+ * left, as the camera controller does), the rule the AR-3 calibration drag shares (plan D120).
+ * A non-positive or unknown height gives 0.
+ */
+export function dragDeltaDeg(dxPx: number, fovDeg: number, heightPx: number): number {
+  return heightPx > 0 ? 0 - (dxPx * fovDeg) / heightPx : 0;
 }
 
 /** The sky direction under the screen point (`px`, `py`) for the given view. */
@@ -220,8 +287,9 @@ export function screenToDirection(
   fovDeg: number,
   viewAz: number,
   viewAlt: number,
+  rollDeg = 0,
 ): AltAz {
-  cameraBasis(camForward, camRight, camUp, viewAz, viewAlt);
+  cameraBasis(camForward, camRight, camUp, viewAz, viewAlt, rollDeg);
   const t = Math.tan((fovDeg / 2) * DEG);
   const xNdc = (2 * px) / width - 1;
   const yNdc = 1 - (2 * py) / height;
@@ -246,8 +314,9 @@ export function directionToScreen(
   fovDeg: number,
   viewAz: number,
   viewAlt: number,
+  rollDeg = 0,
 ): boolean {
-  cameraBasis(camForward, camRight, camUp, viewAz, viewAlt);
+  cameraBasis(camForward, camRight, camUp, viewAz, viewAlt, rollDeg);
   altAzToEnu(camTarget, altDeg, azDeg);
   const zCam =
     camTarget[0] * camForward[0] + camTarget[1] * camForward[1] + camTarget[2] * camForward[2];

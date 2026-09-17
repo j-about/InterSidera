@@ -7,6 +7,7 @@ import './i18n';
 import { detectLanguage } from './i18n/detect';
 import { createSkyEngine } from './sky/engine/SkyEngine';
 import type { EngineTicker } from './sky/engine/types';
+import { startArCapabilityProbe } from './state/arCapabilities';
 import { createDetailsController } from './state/detailsController';
 import { startDomSync } from './state/domSync';
 import { createFrameController } from './state/frameController';
@@ -23,8 +24,10 @@ import './styles/app.css';
 // browser's first supported one (written back to the URL only when it is not the default); the
 // document mirror applies language and night mode before the first paint; the synchroniser
 // writes every later change back at <= 2 Hz; a URL without an observer starts the geolocation
-// request on the same tick as the boot. The frame controller, the details ticker and the engine
-// factory are handed to the shell as props so tests can inject fakes.
+// request on the same tick as the boot; the AR-1 capability probe (plan D125, main bundle, a
+// re-run on `devicechange`) starts here too, so the AR button exists before any AR chunk loads.
+// The frame controller, the details ticker and the engine factory are handed to the shell as
+// props so tests can inject fakes.
 
 // Guard instead of a `!` non-null assertion: strictTypeChecked forbids it (plan D19), and a missing
 // mount point should fail loudly rather than as a null dereference deep inside React.
@@ -38,6 +41,7 @@ initial.lang ??= detectLanguage(navigator.languages, LANGS);
 const store = createSkyStore(initial);
 startDomSync(store);
 startUrlSync(store);
+startArCapabilityProbe(store);
 if (
   initial.body === undefined &&
   initial.lat === undefined &&

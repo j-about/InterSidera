@@ -109,6 +109,10 @@ async function tryWebGpu(
   const engineOptions: WebGPUEngineOptions = {
     antialias: true,
     powerPreference: 'high-performance',
+    // Babylon's default (`premultipliedAlpha ?? true` -> canvas `alphaMode: "premultiplied"`),
+    // written down because the AR mode relies on it (plan D122): the scene clears to alpha 0 and
+    // the stars composite over the camera video behind the canvas.
+    premultipliedAlpha: true,
     // Babylon's default tab index is 1: a positive value that would jump ahead of the skip link
     // and every control in the Tab order (UX-4). 0 keeps the canvas focusable in DOM order.
     canvasTabIndex: 0,
@@ -145,6 +149,11 @@ function createWebGl2(canvas: HTMLCanvasElement): AbstractEngine {
       powerPreference: 'high-performance',
       preserveDrawingBuffer: false,
       loseContextOnDispose: true,
+      // The WebGL defaults (`alpha: true`, `premultipliedAlpha: true`), written down because the
+      // AR mode relies on them (plan D122): a transparent clear shows the camera video behind the
+      // canvas and the premultiplied star pixels composite over it by definition.
+      alpha: true,
+      premultipliedAlpha: true,
       // Same reason as the WebGPU options: the canvas joins the Tab order in DOM position.
       canvasTabIndex: 0,
     });

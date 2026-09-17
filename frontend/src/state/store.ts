@@ -3,19 +3,23 @@
 // (selector subscriptions). The engine owns time: it derives `tt` from `clock`'s control block on
 // every frame and publishes the mirror through `publishTt` at most twice per second; the store
 // itself never ticks. Every per-user value here round-trips through the URL (OBS-8); the `ui`,
-// `geo`, `geocoder`, `details`, `readout`, `labels` and `minorBodies` slices are session-only.
+// `geo`, `geocoder`, `details`, `readout`, `labels`, `minorBodies` and `ar` slices are
+// session-only (the `ar` slice by decision, plan D115, backlog B-73).
 
 import { subscribeWithSelector } from 'zustand/middleware';
 import { createStore } from 'zustand/vanilla';
 
-import { clampCameraAltDeg, clampFovDeg, wrapAzimuthDeg } from '../sky/math/frames';
+import { clampCameraDiagonalFovDeg } from '../sky/math/cameraFov';
+import { clampCameraAltDeg, clampFovDeg, wrapAzimuthDeg, wrapSignedDeg } from '../sky/math/frames';
 import { DAY_S } from '../sky/math/time';
 import { anchored, liveControl, pausedAt, ttAt } from './clock';
 import { clampInsideCoverage } from './frames';
 import type { SkyActions, SkyState, SkyStore } from './storeTypes';
 import { shiftYears } from './timeDisplay';
-import { LAYER_IDS } from './types';
+import { LAYER_IDS, createArState } from './types';
 import type {
+  ArError,
+  ArState,
   ClockControl,
   ClockState,
   LayerFlags,
@@ -150,6 +154,27 @@ function canonicalView(view: ViewState): ViewState {
   };
 }
 
+/** The `ArError` codes that end a WebXR session but keep the sensor mode (plan D128). */
+const XR_ERRORS: ReadonlySet<ArError> = new Set<ArError>([
+  'xrUnsupported',
+  'xrDenied',
+  'xrBusy',
+  'xrFailed',
+]);
+
+/** The `ar` slice after leaving AR (plan D115): off, the per-frame fields reset, the error kept. */
+function arExited(ar: ArState): ArState {
+  return {
+    ...ar,
+    mode: 'off',
+    heading: { source: 'none', accuracyDeg: null, level: 'none' },
+    frame: null,
+    roll: 0,
+    viewBefore: null,
+    xr: { ...ar.xr, phase: 'idle', aligned: null },
+  };
+}
+
 /** The speed a control block runs at: 0 paused, 1 live, else the playing speed (TIME-3). */
 function runningSpeed(control: ClockControl): number {
   switch (control.mode) {
@@ -215,10 +240,31 @@ export function createSkyStore(initial: UrlState = {}, nowMs: number = Date.now(
         }
       };
 
+      /**
+       * Leave AR inside a patch (plan D115): `exitAr`, `failAr` and an observer moving off Earth
+       * (AR-1) share it, so the exit and its cause land in one `set`. The field of view returns
+       * to what it was at entry and the direction is kept; `keepFov` (a URL carrying its own
+       * `fov`) skips the restoration. Nothing happens while AR is off.
+       */
+      const exitArInto = (patch: Partial<SkyState>, state: SkyState, keepFov = false): void => {
+        const { ar } = state;
+        if (ar.mode === 'off') {
+          return;
+        }
+        patch.ar = arExited(ar);
+        if (ar.viewBefore !== null && !keepFov) {
+          patch.view = { ...(patch.view ?? state.view), fov: ar.viewBefore.fov };
+        }
+      };
+
       const actions: SkyActions = {
         setObserver(next) {
+          const state = get();
           const patch: Partial<SkyState> = { observer: next };
           geoAfterObserverChange(patch);
+          if (next.body !== 'earth') {
+            exitArInto(patch, state);
+          }
           set(patch);
         },
         setView(patch) {
@@ -410,6 +456,106 @@ export function createSkyStore(initial: UrlState = {}, nowMs: number = Date.now(
           const { boot } = get();
           set({ boot: { ...boot, retrySeq: boot.retrySeq + 1 } });
         },
+        setArCapabilities(caps) {
+          set({ ar: { ...get().ar, capabilities: caps } });
+        },
+        requestAr() {
+          const state = get();
+          // AR-1 is Earth only: the button is hidden off Earth (plan D125) and a stray call stays a
+          // no-op, the counterpart of the exit `setObserver`/`applyUrl` perform when leaving Earth.
+          if (state.ar.mode !== 'off' || state.observer.body !== 'earth') {
+            return;
+          }
+          set({
+            ar: { ...state.ar, mode: 'requesting', viewBefore: state.view, error: null },
+            follow: false,
+            ui: { ...state.ui, sheet: 'collapsed', dialog: null },
+          });
+        },
+        setArPermission(permission) {
+          set({ ar: { ...get().ar, permission } });
+        },
+        setArMode(mode) {
+          const { ar } = get();
+          const allowed =
+            (ar.mode === 'requesting' && mode === 'sensor') ||
+            (ar.mode === 'sensor' && mode === 'xr') ||
+            (ar.mode === 'xr' && mode === 'sensor');
+          if (allowed) {
+            set({ ar: { ...ar, mode } });
+          }
+        },
+        exitAr() {
+          const patch: Partial<SkyState> = {};
+          exitArInto(patch, get());
+          if (patch.ar !== undefined) {
+            set(patch);
+          }
+        },
+        failAr(code) {
+          const state = get();
+          const { ar } = state;
+          if (XR_ERRORS.has(code) && (ar.mode === 'sensor' || ar.mode === 'xr')) {
+            set({
+              ar: {
+                ...ar,
+                mode: 'sensor',
+                error: code,
+                xr: { ...ar.xr, phase: 'idle', aligned: null },
+              },
+            });
+            return;
+          }
+          const patch: Partial<SkyState> = {};
+          exitArInto(patch, state);
+          patch.ar = { ...(patch.ar ?? ar), error: code };
+          set(patch);
+        },
+        clearArError() {
+          const { ar } = get();
+          if (ar.error !== null) {
+            set({ ar: { ...ar, error: null } });
+          }
+        },
+        setArPose(azDeg, altDeg, rollDeg) {
+          const state = get();
+          if (state.ar.mode === 'off') {
+            return;
+          }
+          set({
+            view: canonicalView({ ...state.view, az: azDeg, alt: altDeg }),
+            ar: { ...state.ar, roll: rollDeg },
+          });
+        },
+        setArHeading(heading) {
+          set({ ar: { ...get().ar, heading } });
+        },
+        setArOffset(deg) {
+          if (!Number.isFinite(deg)) {
+            return;
+          }
+          set({ ar: { ...get().ar, azOffsetDeg: wrapSignedDeg(deg) } });
+        },
+        nudgeArOffset(deltaDeg) {
+          if (!Number.isFinite(deltaDeg)) {
+            return;
+          }
+          const { ar } = get();
+          set({ ar: { ...ar, azOffsetDeg: wrapSignedDeg(ar.azOffsetDeg + deltaDeg) } });
+        },
+        setArCameraFov(deg) {
+          set({ ar: { ...get().ar, cameraFovDeg: clampCameraDiagonalFovDeg(deg) } });
+        },
+        setArFrame(frame) {
+          set({ ar: { ...get().ar, frame } });
+        },
+        setArXr(patch) {
+          const { ar } = get();
+          set({ ar: { ...ar, xr: { ...ar.xr, ...patch } } });
+        },
+        dismissArHint() {
+          set({ ar: { ...get().ar, hintDismissed: true } });
+        },
         applyUrl(url, nowMs = Date.now()) {
           const state = get();
           const patch: Partial<SkyState> = {};
@@ -447,6 +593,11 @@ export function createSkyStore(initial: UrlState = {}, nowMs: number = Date.now(
               alt: url.alt ?? state.view.alt,
               fov: url.fov ?? state.view.fov,
             });
+          }
+          // AR-1 is Earth only: a link or Back to another body leaves AR in the same write; a
+          // `fov` the URL carries wins over the one remembered at entry.
+          if (patch.observer !== undefined && patch.observer.body !== 'earth') {
+            exitArInto(patch, state, url.fov !== undefined);
           }
           if (url.layers !== undefined) {
             patch.layers = layersFromList(url.layers);
@@ -520,6 +671,7 @@ export function createSkyStore(initial: UrlState = {}, nowMs: number = Date.now(
           lastSpeed: runningSpeed(clock) === 0 ? 1 : runningSpeed(clock),
         },
         follow: false,
+        ar: createArState(),
         labels: { visible: [] },
         readout: null,
         details: {

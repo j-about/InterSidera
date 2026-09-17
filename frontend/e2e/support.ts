@@ -115,6 +115,21 @@ export function collectForeignRequests(
   return foreign;
 }
 
+/**
+ * Request URLs whose pathname matches `pattern`: the lazy-chunk proof of plan D131/D134 (no
+ * `arController-*`, `ArOverlay-*`, `XrBridge-*`, `webgpu-*` or `babylon-webgpu-*` chunk before
+ * AR entry). `pattern` must not carry the `g` flag (its `lastIndex` would skip matches).
+ */
+export function collectAssetRequests(page: Page, pattern: RegExp): string[] {
+  const urls: string[] = [];
+  page.on('request', (request) => {
+    if (pattern.test(new URL(request.url()).pathname)) {
+      urls.push(request.url());
+    }
+  });
+  return urls;
+}
+
 /** `/api/v1/meta` as the API serves it; callers validate the shape they read. */
 export async function metaOf(page: Page): Promise<unknown> {
   const res = await page.request.get('/api/v1/meta');

@@ -486,5 +486,68 @@
     "editor": "T : régler la date et l'heure",
     "view": "Flèches : regarder autour ; + et − : zoom",
     "escape": "Échap : fermer"
+  },
+  "ar": {
+    "button": "Réalité augmentée",
+    "exit": "Quitter la réalité augmentée",
+    "cancel": "Annuler",
+    "requestingTitle": "Démarrage de la réalité augmentée",
+    "requesting": "Autorisez la caméra et les capteurs de mouvement lorsque le navigateur le demande.",
+    "mode": {
+      "label": "État de la réalité augmentée",
+      "sensor": "Réalité augmentée active : le ciel suit le téléphone.",
+      "xr": "Réalité augmentée immersive active."
+    },
+    "errorTitle": "Réalité augmentée indisponible",
+    "error": {
+      "noCamera": "Aucune caméra n'a été trouvée ; la vue normale est affichée.",
+      "noRearCamera": "Aucune caméra arrière n'a été trouvée ; la vue normale est affichée.",
+      "cameraDenied": "L'accès à la caméra a été refusé. Autorisez la caméra pour ce site dans les réglages du navigateur pour utiliser la réalité augmentée.",
+      "cameraUnavailable": "La caméra ou la réalité augmentée n'a pas pu démarrer ; la vue normale est affichée.",
+      "trackEnded": "Le flux de la caméra s'est interrompu ; la vue normale est affichée.",
+      "orientationDenied": "L'accès aux capteurs de mouvement a été refusé ; la réalité augmentée a besoin de l'orientation de l'appareil.",
+      "orientationUnavailable": "Aucun capteur d'orientation n'a répondu pendant trois secondes ; la vue normale est affichée.",
+      "xrUnsupported": "Aucune session de RA immersive n'est disponible sur cet appareil, ou elle a été refusée (sur Android, les Services Google Play pour la RA peuvent manquer) ; le mode capteurs reste actif.",
+      "xrDenied": "La session immersive a été refusée par le navigateur ou l'utilisateur ; le mode capteurs reste actif.",
+      "xrBusy": "Une session immersive est déjà en cours ; le mode capteurs reste actif.",
+      "xrFailed": "La session immersive n'a pas pu démarrer ; le mode capteurs reste actif."
+    },
+    "offset": {
+      "label": "Décalage temporel par rapport à maintenant",
+      "now": "Maintenant",
+      "value": "Décalage d'azimut {{deg}}",
+      "reset": "Réinitialiser l'alignement",
+      "years_one": "{{count}} a",
+      "years_many": "{{count}} a",
+      "years_other": "{{count}} a",
+      "days_one": "{{count}} j",
+      "days_many": "{{count}} j",
+      "days_other": "{{count}} j",
+      "hours_one": "{{count}} h",
+      "hours_many": "{{count}} h",
+      "hours_other": "{{count}} h",
+      "minutes_one": "{{count}} min",
+      "minutes_many": "{{count}} min",
+      "minutes_other": "{{count}} min"
+    },
+    "compass": {
+      "label": "Boussole",
+      "good": "Cap boussole",
+      "fair": "Cap boussole (moyen)",
+      "poor": "Cap boussole (imprécis)",
+      "invalid": "Boussole à étalonner",
+      "manual": "Pas de boussole : alignez le nord en faisant glisser",
+      "none": "En attente des capteurs…",
+      "accuracy": "±{{deg}}",
+      "magnetic": "Nord magnétique ; faites glisser latéralement pour absorber la déclinaison"
+    },
+    "hint": {
+      "title": "Aligner le ciel",
+      "manualNorth": "Pas de boussole sur cet appareil : pointez le téléphone vers le nord, puis faites glisser latéralement pour aligner le ciel.",
+      "waiting": "En attente des capteurs de mouvement ; si aucune boussole ne répond, pointez le téléphone vers le nord et faites glisser latéralement pour aligner le ciel."
+    },
+    "fov": "Champ de la caméra",
+    "enterXr": "Mode immersif (WebXR)",
+    "leaveXr": "Quitter le mode immersif"
   }
 }

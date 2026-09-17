@@ -6,9 +6,22 @@
 // the engine (`pick`, INFO-1) and selects it (nothing -> deselect); a double tap or click centres
 // the view on the tapped sky direction through `frames.ts` `screenToDirection`. Any pointer
 // contact ends follow mode (VIEW-4).
+//
+// Drag modes (plan D120, AR-3): in `'view'` mode (the default) the gestures above apply. The
+// engine switches to `'offset'` mode while the sensor AR mode runs: the horizontal drag then
+// calibrates `ar.azOffsetDeg` through `nudgeArOffset(dragDeltaDeg(dx, view.fov, height))` (the
+// pose itself comes from the sensors), vertical movement is ignored, inertia is never armed, pinch
+// and wheel scale the assumed diagonal camera field (`setArCameraFov`) instead of `view.fov`, a
+// single tap still picks and the double tap is inert.
 
 import type { SkyStore } from '../../state/storeTypes';
-import { clampCameraAltDeg, clampFovDeg, screenToDirection, wrapAzimuthDeg } from '../math/frames';
+import {
+  clampCameraAltDeg,
+  clampFovDeg,
+  dragDeltaDeg,
+  screenToDirection,
+  wrapAzimuthDeg,
+} from '../math/frames';
 import type { AltAz } from '../math/frames';
 
 /** Inertia time constant, seconds. */
@@ -36,6 +49,9 @@ interface PointerPoint {
 /** The engine's picker: canvas CSS pixels -> object id in the `sel` syntax, or `null`. */
 export type PickFn = (xCss: number, yCss: number) => string | null;
 
+/** `'view'` writes `view` (the default); `'offset'` calibrates the AR azimuth offset (plan D120). */
+export type DragMode = 'view' | 'offset';
+
 export class CameraController {
   private readonly canvas: HTMLCanvasElement;
   private readonly store: SkyStore;
@@ -62,6 +78,7 @@ export class CameraController {
   private lastTapMs = -Infinity;
   private lastTapX = 0;
   private lastTapY = 0;
+  private dragMode: DragMode = 'view';
 
   constructor(canvas: HTMLCanvasElement, store: SkyStore, pick: PickFn) {
     this.canvas = canvas;
@@ -85,6 +102,19 @@ export class CameraController {
   /** `prefers-reduced-motion: reduce` as the page sees it (the debug hook reports it). */
   get reducedMotion(): boolean {
     return this.reduced;
+  }
+
+  /**
+   * Switch between the view drag and the AR calibration drag (plan D120); the engine calls it
+   * from its `ar.mode` subscription (`'sensor'` -> `'offset'`, else `'view'`). A glide in progress
+   * stops: an offset has no inertia and a returning view starts still.
+   */
+  setDragMode(mode: DragMode): void {
+    if (mode === this.dragMode) {
+      return;
+    }
+    this.dragMode = mode;
+    this.inertia = false;
   }
 
   /** Inertia step, called once per engine tick with the wall clock. */
@@ -159,7 +189,9 @@ export class CameraController {
       this.moved = true;
       this.endFollow();
       this.pinchStartDistance = this.pointerDistance();
-      this.pinchStartFov = this.store.getState().view.fov;
+      const state = this.store.getState();
+      // In offset mode the pinch scales the assumed diagonal camera field (AR-2), not `view.fov`.
+      this.pinchStartFov = this.dragMode === 'offset' ? state.ar.cameraFovDeg : state.view.fov;
     }
     event.preventDefault();
   };
@@ -174,9 +206,13 @@ export class CameraController {
     if (this.pointers.size >= 2) {
       const distance = this.pointerDistance();
       if (distance > 0 && this.pinchStartDistance > 0) {
-        this.store.getState().actions.setView({
-          fov: clampFovDeg((this.pinchStartFov * this.pinchStartDistance) / distance),
-        });
+        const scaled = (this.pinchStartFov * this.pinchStartDistance) / distance;
+        const { actions } = this.store.getState();
+        if (this.dragMode === 'offset') {
+          actions.setArCameraFov(scaled);
+        } else {
+          actions.setView({ fov: clampFovDeg(scaled) });
+        }
       }
       return;
     }
@@ -201,6 +237,14 @@ export class CameraController {
     const height = this.canvas.clientHeight > 0 ? this.canvas.clientHeight : 1;
     const state = this.store.getState();
     const { view } = state;
+    if (this.dragMode === 'offset') {
+      // AR-3 calibration: the horizontal drag turns the sky against the camera video by the same
+      // rule as the view drag; vertical movement is ignored and no velocity is kept (no inertia).
+      if (dx !== 0) {
+        state.actions.nudgeArOffset(dragDeltaDeg(dx, view.fov, height));
+      }
+      return;
+    }
     // Drag: one full height of the canvas pans the vertical field of view (VIEW-1).
     const dAz = (-dx * view.fov) / height;
     const dAlt = (dy * view.fov) / height;
@@ -250,6 +294,7 @@ export class CameraController {
       return;
     }
     if (
+      this.dragMode === 'view' &&
       !this.reduced &&
       this.moved &&
       nowMs - this.lastMoveMs <= INERTIA_MAX_GAP_MS &&
@@ -269,14 +314,18 @@ export class CameraController {
       deltaPx *= WHEEL_PAGE_PX;
     }
     const state = this.store.getState();
-    state.actions.setView({
-      fov: clampFovDeg(state.view.fov * Math.pow(WHEEL_ZOOM_BASE, deltaPx / 100)),
-    });
+    const factor = Math.pow(WHEEL_ZOOM_BASE, deltaPx / 100);
+    if (this.dragMode === 'offset') {
+      state.actions.setArCameraFov(state.ar.cameraFovDeg * factor);
+      return;
+    }
+    state.actions.setView({ fov: clampFovDeg(state.view.fov * factor) });
   };
 
   /**
    * A single tap picks and selects the object under it (INFO-1); a second tap within 350 ms and
-   * 30 px centres the view on the tapped direction (the first tap's selection stands).
+   * 30 px centres the view on the tapped direction (the first tap's selection stands). In offset
+   * mode every tap is a single tap: the sensors own the view (plan D120).
    */
   private onTap(clientX: number, clientY: number, nowMs: number): void {
     const rect = this.canvas.getBoundingClientRect();
@@ -284,6 +333,7 @@ export class CameraController {
       return;
     }
     const isDouble =
+      this.dragMode === 'view' &&
       nowMs - this.lastTapMs <= DOUBLE_TAP_MS &&
       Math.hypot(clientX - this.lastTapX, clientY - this.lastTapY) <= DOUBLE_TAP_DISTANCE_PX;
     const state = this.store.getState();
@@ -310,6 +360,7 @@ export class CameraController {
       view.fov,
       view.az,
       view.alt,
+      state.ar.roll,
     );
     state.actions.setView({ az: this.altAz.az, alt: clampCameraAltDeg(this.altAz.alt) });
   }

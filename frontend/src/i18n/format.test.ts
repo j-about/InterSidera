@@ -15,6 +15,7 @@ import {
   formatMagnitude,
   formatNumber,
   formatPercent,
+  formatTimeOffset,
   formatUtc,
   formatYearOfJd,
 } from './format';
@@ -87,5 +88,44 @@ describe('format', () => {
     expect(formatDateOfTt(2460409.25, 69.184)).toBe('2024-04-08');
     expect(formatUtc(NaN, 69.184)).toBe(UNKNOWN_VALUE);
     expect(formatDateOfTt(2460409.25, NaN)).toBe(UNKNOWN_VALUE);
+  });
+});
+
+describe('formatTimeOffset (the AR time-offset badge, plan D127)', () => {
+  const en = i18next.getFixedT('en');
+  const fr = i18next.getFixedT('fr');
+
+  it('joins the kept units behind a plus or a typographic minus', () => {
+    expect(formatTimeOffset({ sign: 1, years: 0, days: 0, hours: 3, minutes: 12 }, en)).toBe(
+      '+3 h 12 min',
+    );
+    expect(formatTimeOffset({ sign: -1, years: 2, days: 10, hours: 0, minutes: 0 }, en)).toBe(
+      '\u22122 yr 10 d',
+    );
+    expect(formatTimeOffset({ sign: 1, years: 1, days: 0, hours: 5, minutes: 0 }, en)).toBe(
+      '+1 yr 5 h',
+    );
+    expect(formatTimeOffset({ sign: -1, years: 0, days: 0, hours: 0, minutes: 1 }, en)).toBe(
+      '\u22121 min',
+    );
+  });
+
+  it('reads Now for a zero offset', () => {
+    expect(formatTimeOffset({ sign: 0, years: 0, days: 0, hours: 0, minutes: 0 }, en)).toBe('Now');
+    expect(formatTimeOffset({ sign: 0, years: 0, days: 0, hours: 0, minutes: 0 }, fr)).toBe(
+      'Maintenant',
+    );
+  });
+
+  it('uses the French unit symbols a, j, h, min', () => {
+    expect(formatTimeOffset({ sign: 1, years: 0, days: 0, hours: 3, minutes: 12 }, fr)).toBe(
+      '+3 h 12 min',
+    );
+    expect(formatTimeOffset({ sign: -1, years: 2, days: 10, hours: 0, minutes: 0 }, fr)).toBe(
+      '\u22122 a 10 j',
+    );
+    expect(formatTimeOffset({ sign: 1, years: 1, days: 1, hours: 0, minutes: 0 }, fr)).toBe(
+      '+1 a 1 j',
+    );
   });
 });

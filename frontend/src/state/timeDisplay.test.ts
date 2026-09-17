@@ -22,6 +22,7 @@ import {
   stepTargetTt,
   stepDeltaOf,
   stepUnitsFor,
+  timeOffsetParts,
   ttFromLocalCalendar,
   ttFromUtcCalendar,
   utcCalendarOfTt,
@@ -32,6 +33,8 @@ import {
   zoneName,
 } from './timeDisplay';
 import type { CalendarFields } from './timeDisplay';
+import { liveControl, ttAt } from './clock';
+import type { ClockState } from './types';
 
 // The time display and editor helpers (TIME-1, TIME-2): calendar round trips across the whole
 // ephemeris range (negative years, year 0, both DE441 bounds), the zone offset as an injected
@@ -316,5 +319,100 @@ describe('steps', () => {
     });
     // The ttMinusUtc offset is carried through unchanged.
     expect(shiftYears(tt, 1, 69.184)).toBeCloseTo(shiftYears(tt, 1, 0), 9);
+  });
+});
+
+describe('timeOffsetParts (the AR time-offset badge, plan D127)', () => {
+  /** 2026-09-17T12:00Z as the wall clock. */
+  const NOW_MS = Date.UTC(2026, 8, 17, 12);
+  const liveNow = ttAt(liveControl(NOW_MS), NOW_MS, TT_MINUS_UTC);
+  const MINUTE_D = 1 / 1440;
+
+  function pausedAt(tt: number, ttMinusUtc = TT_MINUS_UTC): ClockState {
+    return {
+      mode: 'paused',
+      speed: 0,
+      ttAnchor: tt,
+      wallAnchorMs: NOW_MS,
+      tt,
+      ttMinusUtc,
+      lstHours: NaN,
+    };
+  }
+
+  it('reads hours and minutes ahead of now, floored to the minute', () => {
+    const clock = pausedAt(liveNow + (3 * 60 + 12) * MINUTE_D + 30 / 86400);
+    expect(timeOffsetParts(clock, NOW_MS)).toEqual({
+      sign: 1,
+      years: 0,
+      days: 0,
+      hours: 3,
+      minutes: 12,
+    });
+  });
+
+  it('reads years and days behind now in 365.25-day years', () => {
+    const clock = pausedAt(liveNow - (2 * 365.25 + 10) - 5 * MINUTE_D);
+    expect(timeOffsetParts(clock, NOW_MS)).toEqual({
+      sign: -1,
+      years: 2,
+      days: 10,
+      hours: 0,
+      minutes: 0,
+    });
+  });
+
+  it('keeps the two leading non-zero units only', () => {
+    const clock = pausedAt(liveNow + 2 * 365.25 + (5 * 60 + 3) * MINUTE_D);
+    expect(timeOffsetParts(clock, NOW_MS)).toEqual({
+      sign: 1,
+      years: 2,
+      days: 0,
+      hours: 5,
+      minutes: 0,
+    });
+    const days = pausedAt(liveNow - (10 + 7 / 24 + 59 * MINUTE_D));
+    expect(timeOffsetParts(days, NOW_MS)).toEqual({
+      sign: -1,
+      years: 0,
+      days: 10,
+      hours: 7,
+      minutes: 0,
+    });
+  });
+
+  it('is zero under a minute either way, on a live mirror and on an unknown mirror', () => {
+    const zero = { sign: 0, years: 0, days: 0, hours: 0, minutes: 0 };
+    expect(timeOffsetParts(pausedAt(liveNow + 30 / 86400), NOW_MS)).toEqual(zero);
+    expect(timeOffsetParts(pausedAt(liveNow - 59 / 86400), NOW_MS)).toEqual(zero);
+    const live: ClockState = {
+      ...liveControl(NOW_MS),
+      tt: liveNow,
+      ttMinusUtc: TT_MINUS_UTC,
+      lstHours: NaN,
+    };
+    expect(timeOffsetParts(live, NOW_MS)).toEqual(zero);
+    expect(timeOffsetParts(pausedAt(NaN), NOW_MS)).toEqual(zero);
+    expect(timeOffsetParts(pausedAt(liveNow + 1, NaN), NOW_MS)).toEqual(zero);
+  });
+
+  it('follows a playing clock through its own mirror, not the control block', () => {
+    const playing: ClockState = {
+      mode: 'playing',
+      speed: 3600,
+      ttAnchor: liveNow - 1,
+      wallAnchorMs: NOW_MS - 60_000,
+      // The mirror the engine published: one day back plus what an hour per second adds.
+      tt: liveNow - 1 + 60 / 24,
+      ttMinusUtc: TT_MINUS_UTC,
+      lstHours: NaN,
+    };
+    expect(timeOffsetParts(playing, NOW_MS)).toEqual({
+      sign: 1,
+      years: 0,
+      days: 1,
+      hours: 12,
+      minutes: 0,
+    });
   });
 });

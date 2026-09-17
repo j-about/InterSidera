@@ -182,8 +182,9 @@ export class BodiesLayer {
    * direction (refracted when `refractionOn`) scaled to the sky radius, params = (angular
    * radius, magnitude, phase, class), sun = the body -> Sun light direction in the billboard
    * basis so the fragment shader can shade the phase. `width`/`height` are render pixels, `fovRad` the
-   * vertical field of view, `pixelScale` device pixels per CSS pixel. The uniforms are shared
-   * with the minor-body layer, so this runs before it every frame.
+   * vertical field of view, `pixelScale` device pixels per CSS pixel, `rollDeg` the camera roll
+   * (`ar.roll`, 0 outside AR). The uniforms are shared with the minor-body layer, so this runs
+   * before it every frame.
    */
   update(
     frame: FrameEval,
@@ -194,6 +195,7 @@ export class BodiesLayer {
     height: number,
     fovRad: number,
     pixelScale: number,
+    rollDeg: number,
   ): void {
     this.viewport.set(width, height);
     this.bodyPx.set(
@@ -212,12 +214,12 @@ export class BodiesLayer {
       return;
     }
 
-    // The Sun direction as seen by the observer, and the camera's horizontal right axis
-    // (`frames.ts::cameraBasis`; the camera never rolls) from which `billboardBasis` derives each
-    // body's own screen-aligned basis.
+    // The Sun direction as seen by the observer, and the camera's right axis
+    // (`frames.ts::cameraBasis`, rolled only in AR, plan D119) from which `billboardBasis`
+    // derives each body's own screen-aligned basis.
     const q = frame.horizonQ;
     rotate(this.sunEnu, q, frame.sunDir);
-    cameraBasis(this.camForward, this.camRight, this.camUp, view.az, view.alt);
+    cameraBasis(this.camForward, this.camRight, this.camUp, view.az, view.alt, rollDeg);
 
     // The Sun's distance feeds the per-body light direction (`lightDirection`); the Sun is
     // always a requested body because it is never an observer (brief l.129, docs/api.md).

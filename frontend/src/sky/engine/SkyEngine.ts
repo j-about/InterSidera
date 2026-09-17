@@ -10,6 +10,16 @@
 // Hz on change. Geometry lives in ENU under the frozen world matrix P of `frames.ts` (ADR-0009);
 // Babylon's only jobs are the camera, the meshes and the render loop. Nothing here allocates per
 // frame (the 2 Hz readout copy and the label texts on an id change are the exceptions).
+// Augmented reality (plan D116, D122-D124): the engine hosts the lazily imported sensor-mode
+// controller (`sky/ar/arController.ts`, loaded when `ar.mode` becomes `requesting`, ticked after
+// the other tickers, disposed on `off`), clears the scene transparent over the camera video in the
+// underlay, hides the sky and ground quads, stops the horizon culling, the follow and the centring,
+// writes `view.fov` from the camera-field model on a frame, field or size change (deferred to the
+// next tick, never from inside a store listener) and draws the video under the PNG export.
+// WebXR (plan D128-D130): `preloadXr`/`enterXr`/`exitXr` are the event-time calls of the same
+// seam; the lazy `./xr/XrBridge` chunk (the Babylon XR set, the bridge and the store flow) is
+// imported on demand, the flow owns the store transitions, the bridge corrects the XR rig in
+// `tick` and the engine only restores its camera and canvas when a session ends.
 
 import { shallow } from 'zustand/vanilla/shallow';
 
@@ -20,6 +30,7 @@ import type { MetaResponse, MinorBodySummary, SkyActions, SkyStore } from '../..
 import { createFrameEval, createSelectionReadout } from '../../state/types';
 import type {
   AdapterInfo,
+  ArMode,
   Backend,
   CentreRequest,
   DsoType,
@@ -33,6 +44,8 @@ import type {
 } from '../../state/types';
 import { apparentCatalogEnu, apparentStarEnuAt, enuFromApparentIcrf } from '../math/apparent';
 import { effectiveMagLimit, groundAlpha, skyBrightness } from '../math/atmosphere';
+import { coverCropRect, visibleVerticalFovDeg } from '../math/cameraFov';
+import type { CropRect } from '../math/cameraFov';
 import { dsoMagnitudeLimit, dsoSizeLimitArcmin } from '../math/dso';
 import {
   DEG,
@@ -81,7 +94,9 @@ import { MinorLayer } from './layers/MinorLayer';
 import { StarLayer } from './layers/StarLayer';
 import type { StarUniforms } from './layers/StarLayer';
 import { SkyResolver } from './resolver';
+import type { XrFlow } from './xr/xrFlow';
 import type {
+  ArController,
   EngineTicker,
   FrameSource,
   LabelBox,
@@ -116,6 +131,9 @@ const MAX_DEVICE_PIXEL_RATIO = 2;
 const MAX_FRAME_FAILURES = 60;
 const NO_TICKERS: readonly EngineTicker[] = [];
 
+/** The lazy WebXR chunk (`sky/engine/xr/`): the Babylon XR set, the bridge and the store flow. */
+type XrModule = typeof import('./xr/XrBridge');
+
 interface PendingCentre extends CentreRequest {
   sinceMs: number;
 }
@@ -127,6 +145,8 @@ class SkyEngine implements SkyEngineApi {
   /** The label host and text resolver of plan D93, consumed by the labels layer. */
   readonly labelRoot: HTMLElement;
   readonly labelText: (key: LabelTextKey) => string;
+  /** The AR video host of plan D121 (the AR controller owns its contents). */
+  readonly underlayRoot: HTMLElement;
 
   private readonly engine: AbstractEngine;
   private readonly canvas: HTMLCanvasElement;
@@ -172,6 +192,25 @@ class SkyEngine implements SkyEngineApi {
   private catalog: StarCatalogInput | null = null;
   private bundle: CatalogBundle | null = null;
   private view: ViewState;
+  /** Camera roll in degrees (`ar.roll`, plan D119): 0 outside AR, applied through frames.ts. */
+  private roll = 0;
+  /** Mirror of `ar.mode` (plan D124); every AR rule below reads it. */
+  private arMode: ArMode = 'off';
+  /** The lazily imported sensor-mode controller (plan D116), alive while `ar.mode !== 'off'`. */
+  private arController: ArController | null = null;
+  /** Bumped on every mode change: a `startAr` that awaited the chunk under an older value stops. */
+  private arSeq = 0;
+  /** `view.fov` must be recomputed from the camera model at the next tick (plan D123). */
+  private arFovDirty = false;
+  /** `setVisibleLabels([])` is owed at the next overlay tick (XR entry, plan D124). */
+  private labelsClearPending = false;
+  /** The lazy WebXR chunk, loaded once (`preloadXr`, plan D128, R86); reset after a failed load. */
+  private xrModule: Promise<XrModule> | null = null;
+  /** The WebXR flow (store transitions) and, inside it, the Babylon bridge; created on the first tap. */
+  private xr: XrFlow | null = null;
+  private readonly clearOpaque = new Color4(0, 0, 0, 1);
+  private readonly clearTransparent = new Color4(0, 0, 0, 0);
+  private readonly cropRect: CropRect = { sx: 0, sy: 0, sw: 0, sh: 0 };
   private observer: Observer;
   private layers: LayerFlags;
   private options: Options;
@@ -218,6 +257,7 @@ class SkyEngine implements SkyEngineApi {
     this.tickers = options.tickers ?? NO_TICKERS;
     this.labelRoot = options.labelRoot;
     this.labelText = options.labelText;
+    this.underlayRoot = options.underlayRoot;
     this.signal = options.signal;
     this.readyPromise = new Promise<void>((resolve) => {
       this.readyResolve = resolve;
@@ -225,7 +265,8 @@ class SkyEngine implements SkyEngineApi {
 
     const scene = new Scene(this.engine);
     scene.autoClear = true;
-    scene.clearColor = new Color4(0, 0, 0, 1);
+    // Opaque black outside AR; the transparent twin shows the camera video (plan D122).
+    scene.clearColor = this.clearOpaque;
     // Every sky mesh is always active (brief l.545): no per-frame frustum work.
     scene.skipFrustumClipping = true;
     // The Scene constructor attaches Babylon's input manager; the camera controller owns the
@@ -236,6 +277,11 @@ class SkyEngine implements SkyEngineApi {
     this.camera = new TargetCamera('sky-camera', Vector3.Zero(), scene);
     this.camera.minZ = CAMERA_MIN_Z;
     this.camera.maxZ = CAMERA_MAX_Z;
+    // The roll (`rotation.z = -ar.roll`, plan D119) reaches the view matrix through the up
+    // vector, which `TargetCamera` otherwise refreshes only when `rotation.z` itself changes: a
+    // yaw or pitch change under a fixed roll would render a stale roll. With roll 0 the picture
+    // is today's (the rotated up vector lies in the vertical plane of the view direction).
+    this.camera.updateUpVectorFromRotation = true;
 
     // The single ENU -> Babylon mapping, applied once as the world matrix of every mesh (D72).
     const world = Matrix.FromArray(enuToBabylonMatrix());
@@ -305,6 +351,7 @@ class SkyEngine implements SkyEngineApi {
       starMagLimit: Infinity,
       dsoMagLimit: 7,
       dsoSizeLimitArcmin: 12,
+      roll: 0,
     };
     this.labelRebuild = {
       catalog: null,
@@ -316,7 +363,15 @@ class SkyEngine implements SkyEngineApi {
       selection: state.selection,
     };
 
-    // Store -> engine (plan D80): selector subscriptions, fired once for the initial state.
+    // Created before the subscriptions: every `fireImmediately` callback below runs inside this
+    // constructor, and `applyArMode` reaches `this.controller.setDragMode` whenever the store is
+    // not in `off` (the AR button is live while the engine still boots). Its constructor reads
+    // only the canvas, the store and `matchMedia`; the pick closure defers `this.pick`.
+    this.controller = new CameraController(options.canvas, this.store, (x, y) => this.pick(x, y));
+
+    // Store -> engine (plan D80): selector subscriptions, fired once for the initial state. Every
+    // field a callback touches (the camera, the layers, the resolver, `labelRoot`, `controller`,
+    // the mirrored `view` and `options`) exists above this line.
     this.unsubscribe.push(
       this.store.subscribe(
         (s) => s.view,
@@ -324,6 +379,37 @@ class SkyEngine implements SkyEngineApi {
           this.applyView(view);
         },
         { equalityFn: shallow, fireImmediately: true },
+      ),
+      // `setArPose` writes `view` and `ar.roll` in one `set`; both listeners re-apply the camera
+      // (cheap: three Euler angles) so the order they fire in does not matter.
+      this.store.subscribe(
+        (s) => s.ar.roll,
+        (roll) => {
+          this.roll = roll;
+          this.applyView(this.view);
+        },
+        { fireImmediately: true },
+      ),
+      // Augmented reality (plan D116, D124): the mode drives the controller's life and the visuals;
+      // the frame size and the camera field make `view.fov` dirty (written in the next tick).
+      this.store.subscribe(
+        (s) => s.ar.mode,
+        (mode) => {
+          this.applyArMode(mode);
+        },
+        { fireImmediately: true },
+      ),
+      this.store.subscribe(
+        (s) => s.ar.frame,
+        () => {
+          this.arFovDirty = true;
+        },
+      ),
+      this.store.subscribe(
+        (s) => s.ar.cameraFovDeg,
+        () => {
+          this.arFovDirty = true;
+        },
       ),
       this.store.subscribe(
         (s) => s.layers,
@@ -408,7 +494,6 @@ class SkyEngine implements SkyEngineApi {
       ),
     );
 
-    this.controller = new CameraController(options.canvas, this.store, (x, y) => this.pick(x, y));
     this.resizeObserver =
       typeof ResizeObserver === 'undefined'
         ? null
@@ -500,19 +585,30 @@ class SkyEngine implements SkyEngineApi {
     const current = this.current;
     const width = this.canvas.clientWidth;
     const height = this.canvas.clientHeight;
-    if (!current.valid || width <= 0 || height <= 0) {
+    // In an XR session the DOM overlay covers the canvas (plan D124, backlog B-80).
+    if (this.arMode === 'xr' || !current.valid || width <= 0 || height <= 0) {
       return null;
     }
     const { view } = this;
     const q = current.horizonQ;
     const tapEnu = this.scratchEnu;
     const tapIcrf = this.scratchIcrf;
-    screenToDirection(this.scratchAltAz, xCss, yCss, width, height, view.fov, view.az, view.alt);
+    screenToDirection(
+      this.scratchAltAz,
+      xCss,
+      yCss,
+      width,
+      height,
+      view.fov,
+      view.az,
+      view.alt,
+      this.roll,
+    );
     altAzToEnu(tapEnu, this.scratchAltAz.alt, this.scratchAltAz.az);
     rotateInverse(tapIcrf, q, tapEnu);
     const tolDeg = pickToleranceDeg(PICK_TOLERANCE_PX, view.fov, height);
     const cosCone = coneCosine(tolDeg);
-    const cullBelow = this.options.ground === 'opaque';
+    const cullBelow = this.cullBelowHorizon();
     const best = this.pickBest;
     resetPickBest(best, PICK_TOLERANCE_PX);
     const enu = this.pickEnu;
@@ -605,7 +701,17 @@ class SkyEngine implements SkyEngineApi {
     enuToAltAz(altAz, enu[0], enu[1], enu[2]);
     if (
       (cullBelow && enu[2] < 0) ||
-      !directionToScreen(screen, altAz.alt, altAz.az, width, height, view.fov, view.az, view.alt)
+      !directionToScreen(
+        screen,
+        altAz.alt,
+        altAz.az,
+        width,
+        height,
+        view.fov,
+        view.az,
+        view.alt,
+        this.roll,
+      )
     ) {
       return Infinity;
     }
@@ -625,11 +731,16 @@ class SkyEngine implements SkyEngineApi {
   /**
    * A PNG of the next rendered frame (VIEW-6, plan D112): the rendering canvas drawn inside
    * `onEndFrameObservable` (Babylon's own screenshot path, valid with `preserveDrawingBuffer`
-   * false) onto a 2D canvas of the same size, the label overlay composited with `fillText`.
+   * false) onto a 2D canvas of the same size, the label overlay composited with `fillText`. In
+   * the sensor AR mode the camera video is drawn first (plan D122); during a WebXR session the
+   * canvas is Babylon's XR framebuffer, so the export is refused (plan D124, backlog B-80).
    */
   snapshot(): Promise<Blob> {
     if (this.disposed || this.store.getState().engine.status === 'failed') {
       return Promise.reject(new Error('the sky engine is not running'));
+    }
+    if (this.arMode === 'xr') {
+      return Promise.reject(new Error('no snapshot during a WebXR session'));
     }
     return new Promise<Blob>((resolve, reject) => {
       let done = false;
@@ -654,8 +765,32 @@ class SkyEngine implements SkyEngineApi {
           if (ctx === null) {
             throw new Error('no 2D context for the snapshot');
           }
-          ctx.drawImage(source, 0, 0);
           const cssWidth = source.clientWidth > 0 ? source.clientWidth : source.width;
+          const cssHeight = source.clientHeight > 0 ? source.clientHeight : source.height;
+          // AR (plan D122): the camera video first, cropped as `object-fit: cover` shows it in
+          // the canvas box, so every premultiplied star pixel lands on an opaque background.
+          const video = this.arController?.video() ?? null;
+          if (video !== null && video.videoWidth > 0 && video.videoHeight > 0) {
+            const crop = coverCropRect(
+              this.cropRect,
+              video.videoWidth,
+              video.videoHeight,
+              cssWidth,
+              cssHeight,
+            );
+            ctx.drawImage(
+              video,
+              crop.sx,
+              crop.sy,
+              crop.sw,
+              crop.sh,
+              0,
+              0,
+              target.width,
+              target.height,
+            );
+          }
+          ctx.drawImage(source, 0, 0);
           this.labels.compositeOnto(ctx, source.width / cssWidth);
           target.toBlob((blob) => {
             if (blob === null) {
@@ -671,14 +806,106 @@ class SkyEngine implements SkyEngineApi {
     });
   }
 
-  /** Match the canvas to its CSS size at up to 2 device pixels per CSS pixel (plan D85). */
-  resize(): void {
+  /**
+   * Load the WebXR chunk ahead of the tap (plan D128, R86: the transient activation must not
+   * span a download); the controller calls it once `ar.xr.support` is `supported`.
+   */
+  preloadXr(): Promise<void> {
+    return this.loadXr().then(() => undefined);
+  }
+
+  private loadXr(): Promise<XrModule> {
+    if (this.xrModule === null) {
+      const loading = import('./xr/XrBridge');
+      this.xrModule = loading;
+      void loading.catch(() => {
+        // Offline or a stale deployment: the next tap retries the download.
+        if (this.xrModule === loading) {
+          this.xrModule = null;
+        }
+      });
+    }
+    return this.xrModule;
+  }
+
+  /**
+   * Event-time entry into an `immersive-ar` session (plan D93, D128): allowed from the sensor
+   * mode with `xr.support === 'supported'` and an idle phase; the phase turns `entering` at once,
+   * the chunk is awaited (a failed load is the one failure classified here: `xrFailed`), then the
+   * flow creates the bridge, enters and writes the outcome (`setArMode('xr')` and `active`, or
+   * `failAr(code)` keeping the sensor mode; an `AbortError` stays silent). The promise settles
+   * with the flow's.
+   */
+  async enterXr(overlay: HTMLElement): Promise<void> {
+    // Read through a function: TypeScript keeps the narrowing of `this.disposed` across `await`.
+    const disposed = (): boolean => this.disposed;
+    if (disposed()) {
+      throw abortError();
+    }
+    const { ar, actions } = this.store.getState();
+    if (ar.mode !== 'sensor' || ar.xr.support !== 'supported' || ar.xr.phase !== 'idle') {
+      throw new Error('WebXR cannot start in this state');
+    }
+    actions.setArXr({ phase: 'entering' });
+    let mod: XrModule;
+    try {
+      mod = await this.loadXr();
+    } catch (error: unknown) {
+      if (!disposed()) {
+        console.error('the WebXR chunk could not be loaded', error);
+        this.store.getState().actions.failAr('xrFailed');
+      }
+      throw error;
+    }
+    if (disposed()) {
+      throw abortError();
+    }
+    this.xr ??= new mod.XrFlow({
+      store: this.store,
+      createBridge: (hooks) => mod.XrBridge.create(this.scene, this.camera, this.store, hooks),
+      onSessionEnded: () => {
+        this.afterXrSession();
+      },
+    });
+    await this.xr.enter(overlay);
+  }
+
+  /** End the session (the overlay's control); the store returns to the sensor mode on its end. */
+  exitXr(): Promise<void> {
+    return this.xr?.exit() ?? Promise.resolve();
+  }
+
+  /**
+   * A session ended (plan D124, R87): the store already reads `sensor` (or `off`), so the sky
+   * camera is the active one again; re-apply the view it should show and the canvas size Babylon
+   * reset to DPR 1.
+   */
+  private afterXrSession(): void {
     if (this.disposed) {
+      return;
+    }
+    this.applyView(this.view);
+    this.resize();
+  }
+
+  arTransparent(): boolean {
+    return this.scene.clearColor.a === 0;
+  }
+
+  /**
+   * Match the canvas to its CSS size at up to 2 device pixels per CSS pixel (plan D85). Skipped
+   * during a WebXR session (the XR framebuffer renders; Babylon sizes the canvas itself) and run
+   * once when the session ends (`afterXrSession`).
+   */
+  resize(): void {
+    if (this.disposed || this.arMode === 'xr') {
       return;
     }
     const ratio = window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
     this.engine.setHardwareScalingLevel(1 / Math.min(ratio, MAX_DEVICE_PIXEL_RATIO));
     this.engine.resize();
+    // The visible part of the camera frame changed with the box (plan D123).
+    this.arFovDirty = true;
   }
 
   /** Idempotent: the React cleanup and the abort signal may both call it (brief l.551). */
@@ -693,6 +920,12 @@ class SkyEngine implements SkyEngineApi {
       stop();
     }
     this.unsubscribe.length = 0;
+    this.arSeq += 1;
+    // The XR bridge first: an open session ends before the scene it renders goes away.
+    this.xr?.dispose();
+    this.xr = null;
+    this.arController?.dispose();
+    this.arController = null;
     this.controller.dispose();
     this.resizeObserver?.disconnect();
     this.labels.dispose();
@@ -767,6 +1000,16 @@ class SkyEngine implements SkyEngineApi {
     for (const ticker of this.tickers) {
       ticker.update(tt, nowMs);
     }
+    // The AR controller writes `setArPose` here (plan D116); the view subscription applies it
+    // to the camera before `scene.render`, in this same tick.
+    this.arController?.update(tt, nowMs);
+    // In a WebXR session the bridge corrects the rig cameras Babylon just posed and publishes the
+    // pose (plan D130) before the layers below read `view` and the roll; a no-op otherwise.
+    this.xr?.tick();
+    if (this.arFovDirty) {
+      this.arFovDirty = false;
+      this.applyArFov(state.actions);
+    }
     const publishNow = nowMs - this.lastPublishMs >= PUBLISH_INTERVAL_MS;
     if (publishNow) {
       this.lastPublishMs = nowMs;
@@ -793,7 +1036,7 @@ class SkyEngine implements SkyEngineApi {
 
     // The camera basis (frames.ts) and the Sun in ENU feed the background, the billboards and
     // the daylight model (SKY-7): B from the Sun altitude, on Earth with the atmosphere on.
-    cameraBasis(this.camForward, this.camRight, this.camUp, view.az, view.alt);
+    cameraBasis(this.camForward, this.camRight, this.camUp, view.az, view.alt, this.roll);
     rotate(this.sunEnu, current.horizonQ, current.sunDir);
     const sunAltDeg = altitudeDeg(this.sunEnu[0], this.sunEnu[1], this.sunEnu[2]);
     const atmosphereOn = options.atm && this.observer.body === 'earth';
@@ -806,7 +1049,8 @@ class SkyEngine implements SkyEngineApi {
     bg.sunAltDeg = sunAltDeg;
     bg.groundAlpha = groundAlpha(options.ground);
     this.background.update(bg);
-    this.background.setSkyVisible(atmosphereOn && this.skyB > 0);
+    // No sky quad over the camera video (plan D124); the daylight fade of the stars is kept.
+    this.background.setSkyVisible(atmosphereOn && this.skyB > 0 && this.arMode === 'off');
 
     if (this.catalog !== null) {
       const u = this.starUniforms;
@@ -834,9 +1078,10 @@ class SkyEngine implements SkyEngineApi {
       height,
       fovRad,
       pixelScale,
+      this.roll,
     );
     if (this.layers.minor) {
-      this.minor.update(current, view, this.refractionOn, this.refractionFactorValue);
+      this.minor.update(current, view, this.refractionOn, this.refractionFactorValue, this.roll);
     }
     this.dsoMagLimitValue = dsoMagnitudeLimit(view.fov, maglimOverride);
     this.dsoSizeLimitValue = dsoSizeLimitArcmin(view.fov);
@@ -868,7 +1113,7 @@ class SkyEngine implements SkyEngineApi {
   /** The <= 10 Hz work: rotating lines, constellations, labels, marker, follow, centring. */
   private overlayTick(nowMs: number): void {
     const current = this.current;
-    const { view, options } = this;
+    const { view } = this;
     const { actions } = this.store.getState();
     this.lines.updateDynamic(current);
     this.constellations.update(current, this.refractionOn, this.refractionFactorValue);
@@ -886,46 +1131,172 @@ class SkyEngine implements SkyEngineApi {
     t.height = this.canvas.clientHeight;
     t.refractionOn = this.refractionOn;
     t.refractionFactor = this.refractionFactorValue;
-    t.cullBelowHorizon = options.ground === 'opaque';
+    t.cullBelowHorizon = this.cullBelowHorizon();
     t.starMagLimit = this.starMagLimitEffective();
     t.dsoMagLimit = this.dsoMagLimitEffective();
     t.dsoSizeLimitArcmin = this.dsoSizeLimitValue;
-    this.labels.update(t);
+    t.roll = this.roll;
+    const inXr = this.arMode === 'xr';
+    if (inXr) {
+      // The DOM outside the overlay is not rendered in a session (plan D124, backlog B-80): the
+      // label root is hidden and the visible-label list is emptied once.
+      if (this.labelsClearPending) {
+        this.labelsClearPending = false;
+        actions.setVisibleLabels([]);
+      }
+    } else {
+      this.labels.update(t);
+    }
     this.stats.dso = this.layers.dso
       ? this.dso.countVisible(this.dsoMagLimitEffective(), this.dsoSizeLimitValue)
       : 0;
     this.stats.clinesSegments = this.constellations.segmentCount;
 
-    // Follow mode (VIEW-4): the camera re-centres on the selection.
-    const selection = this.selection;
-    if (
-      this.follow &&
-      selection !== null &&
-      this.resolver.directionOf(selection, this.scratchEnu)
-    ) {
-      const e = this.scratchEnu;
-      enuToAltAz(this.scratchAltAz, e[0], e[1], e[2]);
-      actions.setView({ az: this.scratchAltAz.az, alt: this.scratchAltAz.alt });
-    }
-    // A centre request (search, INFO-2) is served as soon as its object resolves, dropped after
-    // ten seconds or once the selection moved elsewhere.
-    const centre = this.centre;
-    if (centre !== null) {
+    // Follow and centring write the view: both are suspended while the sensors or the XR rig own
+    // it (plan D124; `requestAr` ends follow, a centre request waits or times out).
+    if (this.arMode === 'off') {
+      // Follow mode (VIEW-4): the camera re-centres on the selection.
+      const selection = this.selection;
       if (
-        nowMs - centre.sinceMs > CENTRE_TIMEOUT_MS ||
-        (selection !== null && selection !== centre.id && !centre.id.startsWith('con:'))
+        this.follow &&
+        selection !== null &&
+        this.resolver.directionOf(selection, this.scratchEnu)
       ) {
-        this.centre = null;
-        actions.clearCentre(centre.seq);
-      } else if (this.resolver.directionOf(centre.id, this.scratchEnu)) {
         const e = this.scratchEnu;
         enuToAltAz(this.scratchAltAz, e[0], e[1], e[2]);
         actions.setView({ az: this.scratchAltAz.az, alt: this.scratchAltAz.alt });
-        this.centre = null;
-        actions.clearCentre(centre.seq);
+      }
+      // A centre request (search, INFO-2) is served as soon as its object resolves, dropped after
+      // ten seconds or once the selection moved elsewhere.
+      const centre = this.centre;
+      if (centre !== null) {
+        if (
+          nowMs - centre.sinceMs > CENTRE_TIMEOUT_MS ||
+          (selection !== null && selection !== centre.id && !centre.id.startsWith('con:'))
+        ) {
+          this.centre = null;
+          actions.clearCentre(centre.seq);
+        } else if (this.resolver.directionOf(centre.id, this.scratchEnu)) {
+          const e = this.scratchEnu;
+          enuToAltAz(this.scratchAltAz, e[0], e[1], e[2]);
+          actions.setView({ az: this.scratchAltAz.az, alt: this.scratchAltAz.alt });
+          this.centre = null;
+          actions.clearCentre(centre.seq);
+        }
       }
     }
-    this.labels.publishIfChanged(nowMs, actions);
+    if (!inXr) {
+      this.labels.publishIfChanged(nowMs, actions);
+    }
+  }
+
+  /** `ground === 'opaque'` hides what lies below the horizon, except over the camera video (plan D124). */
+  private cullBelowHorizon(): boolean {
+    return this.options.ground === 'opaque' && this.arMode === 'off';
+  }
+
+  /**
+   * `ar.mode` changed (plan D116, D124): `requesting` loads and starts the controller, `off`
+   * disposes it; the camera controller's drag becomes the AR-3 offset in the sensor mode; the
+   * visuals follow. Runs inside the store listener, so nothing here writes the store.
+   */
+  private applyArMode(mode: ArMode): void {
+    const previous = this.arMode;
+    if (mode === previous) {
+      return;
+    }
+    this.arMode = mode;
+    this.arSeq += 1;
+    if (mode === 'requesting') {
+      void this.startAr(this.arSeq);
+    } else if (mode === 'off') {
+      this.arController?.dispose();
+      this.arController = null;
+      // Escape, the exit control or a hidden page while a WebXR session runs or starts: the
+      // session ends (the flow awaits a pending entry first); nothing is written here.
+      void this.xr?.exit();
+    }
+    // Offset drag in the sensor mode only: in `requesting` the controller's entry rule discards
+    // any offset (a headed source resets it, a relative one derives it from `view.az`), so the
+    // view drag is the harmless one; in `xr` the DOM overlay owns the pointer (`offsetDrag.ts`).
+    this.controller.setDragMode(mode === 'sensor' ? 'offset' : 'view');
+    this.applyArVisuals(mode, previous);
+    this.arFovDirty = true;
+  }
+
+  /** Load the AR chunk and start the controller unless the mode moved on meanwhile (plan D116). */
+  private async startAr(seq: number): Promise<void> {
+    let createArController: typeof import('../ar/arController').createArController;
+    try {
+      ({ createArController } = await import('../ar/arController'));
+    } catch (error: unknown) {
+      if (seq === this.arSeq && !this.disposed) {
+        // Offline or a stale deployment: the one AR-5 code that fits "AR could not start".
+        console.error('the augmented-reality chunk could not be loaded', error);
+        this.store.getState().actions.failAr('cameraUnavailable');
+      }
+      return;
+    }
+    if (seq !== this.arSeq || this.disposed || this.store.getState().ar.mode !== 'requesting') {
+      return;
+    }
+    this.arController = createArController({
+      store: this.store,
+      underlayRoot: this.underlayRoot,
+      preloadXr: () => this.preloadXr(),
+    });
+  }
+
+  /**
+   * The Babylon-side rules of plan D124: a transparent clear over the video, no sky or ground
+   * quad (the store's `options` untouched; `applyOptions` and `tick` restore them on exit), the
+   * label root hidden during an XR session with the visible-label list emptied at the next tick.
+   * They hold from `requesting` on, as D124 reads (`ar.mode !== 'off'`): during the permission
+   * prompts, before any video plays, the sky is drawn over the page background (`--color-sky-bg`,
+   * a near-black for a few seconds) instead of the opaque clear. Accepted: the AR chrome, the
+   * transparent scene and the debug hook's `arTransparent()` switch together on one rule.
+   */
+  private applyArVisuals(mode: ArMode, previous: ArMode): void {
+    const active = mode !== 'off';
+    this.scene.clearColor = active ? this.clearTransparent : this.clearOpaque;
+    this.background.setGroundVisible(!active && this.options.ground !== 'off');
+    if (active) {
+      this.background.setSkyVisible(false);
+    }
+    const inXr = mode === 'xr';
+    if (inXr !== (previous === 'xr')) {
+      this.labelRoot.hidden = inXr;
+      this.labelsClearPending = inXr;
+      if (!inXr) {
+        // The store's list was emptied by the engine in the session: publish the drawn set again.
+        this.labels.resetPublished();
+        this.labelsDirty = true;
+      }
+    }
+  }
+
+  /**
+   * AR-2 field matching (plan D123): while the sensor mode runs and the frame size is known,
+   * `view.fov` is the vertical field the camera model gives for the frame shown `object-fit:
+   * cover` in the canvas box (the third engine-side `setView` context beside follow and
+   * centring). The XR bridge owns `view.fov` during a session.
+   */
+  private applyArFov(actions: Pick<SkyActions, 'setView'>): void {
+    const { ar, view } = this.store.getState();
+    if (ar.mode === 'off' || ar.mode === 'xr' || ar.frame === null) {
+      return;
+    }
+    const fov = visibleVerticalFovDeg(
+      ar.cameraFovDeg,
+      ar.frame.width,
+      ar.frame.height,
+      this.canvas.clientWidth,
+      this.canvas.clientHeight,
+      view.fov,
+    );
+    if (fov !== view.fov) {
+      actions.setView({ fov });
+    }
   }
 
   private rebuildLabels(): void {
@@ -957,7 +1328,7 @@ class SkyEngine implements SkyEngineApi {
 
   private applyView(view: ViewState): void {
     this.view = view;
-    cameraRotationFor(this.rotation, view.az, view.alt);
+    cameraRotationFor(this.rotation, view.az, view.alt, this.roll);
     this.camera.rotation.set(this.rotation[0], this.rotation[1], this.rotation[2]);
     this.camera.fov = view.fov * DEG;
   }
@@ -991,7 +1362,7 @@ class SkyEngine implements SkyEngineApi {
       this.lines.setNight(options.night, level);
       this.constellations.setNight(options.night, level);
     }
-    this.background.setGroundVisible(options.ground !== 'off');
+    this.background.setGroundVisible(options.ground !== 'off' && this.arMode === 'off');
     if (options.labels !== previous.labels || options.lang !== previous.lang) {
       this.labelsDirty = true;
     }

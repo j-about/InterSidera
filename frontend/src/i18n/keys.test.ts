@@ -3,12 +3,16 @@ import i18next from 'i18next';
 
 import en from './en.json';
 import {
+  AR_ERROR_KEYS,
   BODY_KEYS,
+  COMPASS_LEVELS,
   KIND_KEYS,
   bodyKindKey,
   bodyName,
   constellationName,
+  isArErrorKey,
   isBodyKey,
+  isCompassLevel,
   isConstellationAbbr,
   isKindKey,
 } from './keys';
@@ -36,6 +40,22 @@ describe('keys', () => {
     expect(KIND_KEYS).toHaveLength(9);
     expect(isKindKey('dwarf_planet')).toBe(true);
     expect(isKindKey('galaxy')).toBe(false);
+  });
+
+  it('recognises the eleven AR error codes and the six compass levels (plan D115, D118)', () => {
+    expect(AR_ERROR_KEYS).toHaveLength(11);
+    expect(new Set(AR_ERROR_KEYS).size).toBe(11);
+    expect(isArErrorKey('noCamera')).toBe(true);
+    expect(isArErrorKey('orientationUnavailable')).toBe(true);
+    expect(isArErrorKey('xrFailed')).toBe(true);
+    expect(isArErrorKey('XrFailed')).toBe(false);
+    expect(isArErrorKey('')).toBe(false);
+    expect(COMPASS_LEVELS).toHaveLength(6);
+    expect(new Set(COMPASS_LEVELS).size).toBe(6);
+    expect(isCompassLevel('good')).toBe(true);
+    expect(isCompassLevel('manual')).toBe(true);
+    expect(isCompassLevel('none')).toBe(true);
+    expect(isCompassLevel('great')).toBe(false);
   });
 
   it('translates constellation names and falls back to the abbreviation', async () => {

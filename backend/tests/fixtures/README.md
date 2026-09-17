@@ -143,3 +143,26 @@ significant digits (2e-7″ on a unit vector); TT Julian Dates are written exact
   `step_s ≤ 3600` and |speed| ≤ 3600, refraction ≤ 1′ above −1°.
 
 Regenerate the three files together and commit them with the code change that made them move.
+
+## `device_orientation_cases.json`
+
+Frontend-only (plan D133, brief l.546): the reference for `frontend/src/sky/math/orientation.ts`,
+the device-orientation-to-camera math of the AR mode. No Skyfield and no data directory: an
+independent plain-Python implementation of the W3C Device Orientation rotation matrix
+(Appendix A `getRotationMatrix`, `R = Rz(alpha) Rx(beta) Ry(gamma)`), the Screen Orientation fold
+(`angle` counter-clockwise from natural) and the view rule (camera along device `-z`, page top
+`+y`, `az`/`alt`/`roll` in ENU with the gimbal band at 89.99°) writes the spec's worked examples,
+closed-form geometric poses (`cases`, with `forward_enu`, `up_enu`, `az`, `alt`, `roll` at
+`tolerance_deg` 1e-9; the generator re-checks each hand-derived expectation against the matrix),
+200 seeded round trips and 40 compass-correction cases (`round_trips`, `compass_cases`, 1e-7; the
+compass cases draw every screen angle and expect the correction on the device rotation, before
+the screen fold) and the `gimbal_rows` around the nadir and the zenith. `source`, `generator`, `generated_at`,
+`parameters` (seed 20260917, counts, tolerances) and `conventions` are in the header. Loaded by
+`frontend/src/test/fixtures.ts::loadOrientationCases()`; regenerate (deterministic apart from
+`generated_at`) with
+
+```sh
+uv run --directory backend python ../scripts/generate_fixtures.py orientation
+```
+
+and commit it with any change to the conventions of `orientation.ts`.

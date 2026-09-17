@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useStore } from 'zustand';
 
 import type { EngineTicker, SkyEngineApi, SkyEngineFactory } from './sky/engine/types';
 import type { FrameController } from './state/frameController';
 import type { SkyStore } from './state/storeTypes';
 import BootStatus from './ui/BootStatus';
 import SkyCanvas from './ui/SkyCanvas';
+import { focusArButton } from './ui/ar/ArButton';
 import Banners from './ui/components/Banners';
 import Toast from './ui/components/Toast';
 import GeoBanner from './ui/observer/GeoBanner';
@@ -24,6 +26,12 @@ import { installShortcuts } from './ui/shortcuts';
 // a bottom sheet on phones and a right column from `md` up) and the boot splash. The store,
 // the frame controller and the engine factory are injected by `main.tsx`; tests pass fakes, so
 // Babylon never runs under jsdom. The engine API reaches event handlers through `EngineProvider`.
+// While augmented reality runs (`ar.mode !== 'off'`, plan D127) the lazily loaded `ArOverlay`
+// (its own chunk, plan D131: nothing in the eager graph imports it statically) takes the top
+// bar's place in the chrome column, and when it leaves, the focus returns to the AR button of
+// the remounted top bar (the overlay focused its exit control on entry).
+
+const ArOverlay = lazy(() => import('./ui/ar/ArOverlay'));
 
 export interface AppProps {
   store: SkyStore;
@@ -46,6 +54,14 @@ export default function App({ store, frames, createEngine, tickers, onEngine }: 
     [onEngine],
   );
   useEffect(() => installShortcuts(store), [store]);
+  const arActive = useStore(store, (s) => s.ar.mode !== 'off');
+  const wasArActive = useRef(false);
+  useEffect(() => {
+    if (wasArActive.current && !arActive) {
+      focusArButton();
+    }
+    wasArActive.current = arActive;
+  }, [arActive]);
 
   return (
     <EngineProvider engine={engine}>
@@ -68,7 +84,13 @@ export default function App({ store, frames, createEngine, tickers, onEngine }: 
               toast or the hint is clickable whatever classes it carries; the sky between them
               keeps receiving the gestures. */}
           <div className="flex flex-col gap-2 p-2 *:pointer-events-auto">
-            <TopBar store={store} />
+            {arActive ? (
+              <Suspense fallback={null}>
+                <ArOverlay store={store} />
+              </Suspense>
+            ) : (
+              <TopBar store={store} />
+            )}
             <GeoBanner store={store} />
             <Banners store={store} />
             <Toast store={store} />

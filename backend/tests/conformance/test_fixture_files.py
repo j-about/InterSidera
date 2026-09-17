@@ -2,7 +2,10 @@
 
 Each file names its `source`, `generator` and `generated_at`, stays under 1 MB, and the
 Skyfield-generated frames equal a live recomputation, so a change in `skyapi.astro` that is not
-followed by `scripts/generate_fixtures.py skyfield` fails here rather than in M3's vitest.
+followed by `scripts/generate_fixtures.py skyfield` fails here rather than in M3's vitest. The
+frontend-only orientation fixture (`device_orientation_cases.json`, plan D133, written by
+`scripts/generate_fixtures.py orientation` without Skyfield) is checked for provenance and size
+only; its content is verified by `frontend/src/sky/math/orientation.test.ts`.
 """
 
 import json
@@ -31,6 +34,7 @@ FIXTURE_FILES = (
     "skyfield_stars.json",
     "skyfield_frames.json",
     "skyfield_refraction.json",
+    "device_orientation_cases.json",
 )
 MAX_BYTES = 1_000_000
 GENERATED_AT = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")

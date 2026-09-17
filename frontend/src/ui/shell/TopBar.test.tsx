@@ -17,6 +17,22 @@ describe('TopBar', () => {
     }
   });
 
+  it('mounts the AR button before About only where the AR-1 gate holds', () => {
+    const store = createSkyStore();
+    const { rerender } = render(<TopBar store={store} />);
+    expect(screen.queryByRole('button', { name: 'Augmented reality' })).toBeNull();
+    store.getState().actions.setArCapabilities({
+      secure: true,
+      camera: true,
+      orientation: true,
+      touch: true,
+      videoInput: true,
+    });
+    rerender(<TopBar store={store} />);
+    const names = screen.getAllByRole('button').map((button) => button.getAttribute('aria-label'));
+    expect(names.indexOf('Augmented reality')).toBe(names.indexOf('About InterSidera') - 1);
+  });
+
   it('opens the About dialog and closes it through the store', () => {
     const store = createSkyStore();
     render(<TopBar store={store} />);

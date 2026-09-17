@@ -24,8 +24,9 @@ PYRUN := $(UV) run --directory backend $(UV_ENV)
 PYNODE := $(NODE_EXEC) $(UV) run --directory backend
 GENERATED := docs/openapi.json frontend/src/api/schema.d.ts THIRD_PARTY_NOTICES.md frontend/src/data/credits.json
 # scripts/ lies outside the frontend ESLint base path (ESLint 10 refuses such files), so it is
-# gated by `node --check` and prettier. Config-free flags: the frontend .prettierrc names the
-# Tailwind plugin, which prettier resolves from the working directory (the repo root here).
+# gated by `node --check` and prettier (the whole directory, so check_chunks.mjs included).
+# Config-free flags: the frontend .prettierrc names the Tailwind plugin, which prettier resolves
+# from the working directory (the repo root here).
 SCRIPTS_PRETTIER := --no-config --print-width 100 --single-quote
 
 .PHONY: help setup data dev dev-api dev-web check check-backend check-frontend check-i18n \
@@ -80,6 +81,7 @@ check-frontend:
 
 check-i18n:
 	$(NODE) --check scripts/check_i18n.mjs
+	$(NODE) --check scripts/check_chunks.mjs
 	$(NPM) exec -- prettier $(SCRIPTS_PRETTIER) --check $(CURDIR)/scripts
 	$(NODE) scripts/check_i18n.mjs
 
@@ -101,9 +103,10 @@ test: ## Full test suites (pytest including slow and conformance, vitest)
 e2e: build-e2e ## Playwright end-to-end tests against a locally started stack (the CI project list)
 	$(NPM) run e2e -- --project=chromium-desktop --project=chromium-mobile
 
-build: ## Production frontend build (never contains the window.__sky debug hook)
+build: ## Production frontend build (never contains the window.__sky debug hook; AR, XR and WebGPU chunks lazy)
 	$(NPM) run build
 	! grep -rl "__sky" frontend/dist/assets
+	$(NODE) scripts/check_chunks.mjs $(CURDIR)/frontend/dist
 
 build-e2e: ## Test build exposing window.__sky for Playwright (vite build --mode e2e)
 	$(NPM) run build:e2e

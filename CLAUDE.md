@@ -58,6 +58,7 @@
 - No browser storage: no cookies, localStorage, sessionStorage or IndexedDB (OBS-8). The URL is the state.
 - Every UI string goes through `t()` with a key present in both `en.json` and `fr.json`; `scripts/check_i18n.mjs` fails on missing or unused keys and on a dynamic key without a literal prefix (`t(\`constellations.${abbr}\`)`; the dynamic keys are typed in `i18n/keys.ts`).
 - Documentation changes ship in the same commit as the code they describe.
+- Augmented reality (M5): `sky/ar/**` is Babylon-free and reached only through the dynamic import in `SkyEngine` (chunk `arController`); `sky/engine/xr/` is the only Babylon XR importer (chunk `XrBridge`); `App` loads `ui/ar/ArOverlay.tsx` with `lazy()`; the `ar` store slice is transient (no URL parameter); `make build` runs `scripts/check_chunks.mjs` to prove the split.
 
 ## Do not
 
@@ -71,6 +72,7 @@
 - Use `useEffect` for derived state or `forwardRef`; use `!` non-null assertions or leave floating promises anywhere in `frontend/src`.
 - Tint the UI with a CSS `filter` or a Babylon post-process for night mode; create a second store or write `<html>` attributes from React; hand-edit `frontend/src/data/credits.json`; route Nominatim through `api/client.ts`; test constellation membership client-side; import `sky/math` from `ui/**`.
 - Copy a `SKYAPI_*` value into a `VITE_*` variable.
+- Import `sky/ar/**`, `sky/engine/xr/**` or `ui/ar/ArOverlay.tsx` statically from the main graph (types excepted); add an `ar` URL parameter; call `Date.now()` or read a ref during a React render (the react-hooks compiler rules are on).
 - Let pytest inherit `.env` or the CI environment (`--env-file` only on run targets; the autouse `clean_env` fixture stays).
 - Call Nominatim or JPL Horizons from tests or CI.
 

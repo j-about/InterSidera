@@ -6,6 +6,13 @@ import type { CatalogBundle } from '../api/catalogs';
 import type { ProblemSlug } from '../api/client';
 import type { components } from '../api/schema';
 import type {
+  ArCapabilities,
+  ArError,
+  ArFrameSize,
+  ArHeading,
+  ArPermission,
+  ArState,
+  ArXrState,
   BootState,
   CatalogName,
   CatalogsStatus,
@@ -83,6 +90,8 @@ export interface SkyState {
   ui: UiState;
   /** The camera follows the selection (plan D93). */
   follow: boolean;
+  /** Augmented reality (AR-1..AR-5, plan D115): session-only, never in the URL (backlog B-73). */
+  ar: ArState;
   labels: { visible: readonly VisibleLabel[] };
   /** The engine's readout of the selection, `null` while nothing is selected or found. */
   readout: SelectionReadout | null;
@@ -164,6 +173,56 @@ export interface SkyActions {
   retryNow(): void;
   /** Apply a parsed URL (initial load, `popstate`); absent fields keep their current values. */
   applyUrl(url: UrlState, nowMs?: number): void;
+
+  // Augmented reality (plan D115). UI calls: `requestAr`, `setArPermission`, `exitAr`,
+  // `clearArError`, `setArOffset`, `nudgeArOffset`, `setArCameraFov`, `dismissArHint`; the
+  // capability probe (`main.tsx`) calls `setArCapabilities`; everything else is written by the
+  // AR controller or the engine only (rules/frontend.md).
+
+  /** The AR-1 probe result (`state/arCapabilities.ts`, re-run on `devicechange`). */
+  setArCapabilities(caps: ArCapabilities): void;
+  /**
+   * The tap: `off` -> `requesting` on Earth only (no-op otherwise, AR-1), the view remembered for
+   * the exit, follow ended, the sheet collapsed and any dialog closed (plan D127); a previous
+   * error is cleared.
+   */
+  requestAr(): void;
+  /**
+   * Outcome of the synchronous `DeviceOrientationEvent.requestPermission()` call (plan D126):
+   * the button writes `pending` first; the controller waits on `idle` and `pending`.
+   */
+  setArPermission(permission: ArPermission): void;
+  /** Controller/engine only: `requesting` -> `sensor`, `sensor` <-> `xr`; no-op otherwise. */
+  setArMode(mode: 'sensor' | 'xr'): void;
+  /**
+   * Any active mode -> `off`: the field of view returns to `viewBefore.fov` (direction kept),
+   * roll 0, frame null, heading none, `xr.phase` idle; the error is left for the banner.
+   */
+  exitAr(): void;
+  /**
+   * Controller/engine only: `exitAr` plus the error, except that an `xr*` code raised from the
+   * sensor or XR mode returns to the sensor mode and only resets the XR phase (plan D128).
+   */
+  failAr(code: ArError): void;
+  clearArError(): void;
+  /**
+   * Controller (sensor) or XR bridge (xr) only, once per engine frame: one `set` writing
+   * `view.az/alt` through the canonical view and `ar.roll`; no-op while AR is off.
+   */
+  setArPose(azDeg: number, altDeg: number, rollDeg: number): void;
+  /** Controller only, on change (never per sample). */
+  setArHeading(heading: ArHeading): void;
+  /** The AR-3 calibration offset, wrapped to `[-180, 180)`; non-finite values are ignored. */
+  setArOffset(deg: number): void;
+  /** Add to the calibration offset (the drag), wrapped to `[-180, 180)`. */
+  nudgeArOffset(deltaDeg: number): void;
+  /** The assumed diagonal camera field, clamped to `[50, 110]` (`NaN` -> the default). */
+  setArCameraFov(deg: number): void;
+  /** Controller only: the intrinsic video size, `null` when unknown. */
+  setArFrame(frame: ArFrameSize | null): void;
+  /** Controller (`support`) and engine (`phase`, `aligned`) only. */
+  setArXr(patch: Partial<ArXrState>): void;
+  dismissArHint(): void;
 }
 
 /** The store API both React and the engine use (zustand vanilla + `subscribeWithSelector`). */

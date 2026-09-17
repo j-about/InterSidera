@@ -1,0 +1,3423 @@
+{
+  "cases": [
+    {
+      "alpha": 90.0,
+      "alt": -90.0,
+      "az": 270.0,
+      "beta": 0.0,
+      "forward_enu": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "gamma": 0.0,
+      "id": "spec-flat-top-west",
+      "note": "W3C A.1: device flat, top pointing west, alpha 90 -> compass heading 270",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        -1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "alpha": 0.0,
+      "alt": 0.0,
+      "az": 0.0,
+      "beta": 90.0,
+      "forward_enu": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "gamma": 0.0,
+      "id": "spec-upright-north",
+      "note": "W3C: held vertical, top up, beta 90; the rear camera looks north",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "alpha": 270.0,
+      "alt": 0.0,
+      "az": 90.0,
+      "beta": 90.0,
+      "forward_enu": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "gamma": 0.0,
+      "id": "spec-upright-east",
+      "note": "W3C alpha is counter-clockwise from above: 270 turns the camera to the east",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "alpha": 70.0,
+      "alt": 0.0,
+      "az": 200.0,
+      "beta": 0.0,
+      "forward_enu": [
+        -0.34202014332566866,
+        -0.9396926207859084,
+        0.0
+      ],
+      "gamma": 90.0,
+      "id": "spec-landscape-top-right-heading200",
+      "note": "W3C: heading alpha with the screen top to the right is {270 - alpha, 0, 90}; the fold (angle 270) brings the page top back up, az = heading",
+      "roll": 0.0,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "alpha": 0.0,
+      "alt": 0.0,
+      "az": 0.0,
+      "beta": 90.0,
+      "forward_enu": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "gamma": 0.0,
+      "id": "upright-north",
+      "note": "upright portrait, camera horizontal",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "alpha": 0.0,
+      "alt": -90.0,
+      "az": 0.0,
+      "beta": 0.0,
+      "forward_enu": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "gamma": 0.0,
+      "id": "nadir-top-north",
+      "note": "flat, screen up: the camera looks at the ground, az = heading of the screen top",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "alpha": 180.0,
+      "alt": 90.0,
+      "az": 180.0,
+      "beta": -180.0,
+      "forward_enu": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "gamma": 0.0,
+      "id": "zenith-top-north",
+      "note": "screen down: the camera looks at the zenith, az = heading of the top + 180",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "alpha": 270.0,
+      "alt": 0.0,
+      "az": 90.0,
+      "beta": 90.0,
+      "forward_enu": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "gamma": 0.0,
+      "id": "upright-east",
+      "note": "upright portrait, camera horizontal",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "alpha": 270.0,
+      "alt": -90.0,
+      "az": 90.0,
+      "beta": 0.0,
+      "forward_enu": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "gamma": 0.0,
+      "id": "nadir-top-east",
+      "note": "flat, screen up: the camera looks at the ground, az = heading of the screen top",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "alpha": 90.0,
+      "alt": 90.0,
+      "az": 270.0,
+      "beta": -180.0,
+      "forward_enu": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "gamma": 0.0,
+      "id": "zenith-top-east",
+      "note": "screen down: the camera looks at the zenith, az = heading of the top + 180",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "alpha": 180.0,
+      "alt": 0.0,
+      "az": 180.0,
+      "beta": 90.0,
+      "forward_enu": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "gamma": 0.0,
+      "id": "upright-south",
+      "note": "upright portrait, camera horizontal",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "alpha": 180.0,
+      "alt": -90.0,
+      "az": 180.0,
+      "beta": 0.0,
+      "forward_enu": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "gamma": 0.0,
+      "id": "nadir-top-south",
+      "note": "flat, screen up: the camera looks at the ground, az = heading of the screen top",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        0.0,
+        -1.0,
+        0.0
+      ]
+    },
+    {
+      "alpha": 0.0,
+      "alt": 90.0,
+      "az": 0.0,
+      "beta": -180.0,
+      "forward_enu": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "gamma": 0.0,
+      "id": "zenith-top-south",
+      "note": "screen down: the camera looks at the zenith, az = heading of the top + 180",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        0.0,
+        -1.0,
+        0.0
+      ]
+    },
+    {
+      "alpha": 90.0,
+      "alt": 0.0,
+      "az": 270.0,
+      "beta": 90.0,
+      "forward_enu": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "gamma": 0.0,
+      "id": "upright-west",
+      "note": "upright portrait, camera horizontal",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "alpha": 90.0,
+      "alt": -90.0,
+      "az": 270.0,
+      "beta": 0.0,
+      "forward_enu": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "gamma": 0.0,
+      "id": "nadir-top-west",
+      "note": "flat, screen up: the camera looks at the ground, az = heading of the screen top",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        -1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "alpha": 270.0,
+      "alt": 90.0,
+      "az": 90.0,
+      "beta": -180.0,
+      "forward_enu": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "gamma": 0.0,
+      "id": "zenith-top-west",
+      "note": "screen down: the camera looks at the zenith, az = heading of the top + 180",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        -1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "alpha": 90.0,
+      "alt": 0.0,
+      "az": 0.0,
+      "beta": 0.0,
+      "forward_enu": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "gamma": -90.0,
+      "id": "landscape-ccw-north-angle90",
+      "note": "turned counter-clockwise, screen.orientation.angle 90 folds the page top back up",
+      "roll": 0.0,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "alpha": 90.0,
+      "alt": 0.0,
+      "az": 0.0,
+      "beta": 0.0,
+      "forward_enu": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "gamma": -90.0,
+      "id": "landscape-ccw-north-angle0",
+      "note": "the same device pose read without the screen fold: the device top points west",
+      "roll": -90.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        -1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "alpha": 90.0,
+      "alt": 0.0,
+      "az": 0.0,
+      "beta": -180.0,
+      "forward_enu": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "gamma": -90.0,
+      "id": "landscape-cw-north-angle270",
+      "note": "turned clockwise (angle 270 counter-clockwise); W3C triple on the gamma = -90 seam",
+      "roll": 0.0,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "alpha": 90.0,
+      "alt": 0.0,
+      "az": 0.0,
+      "beta": -180.0,
+      "forward_enu": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "gamma": -90.0,
+      "id": "landscape-cw-north-angle0",
+      "note": "the same pose without the fold: the device top points east, roll +90",
+      "roll": 90.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "alpha": 270.0,
+      "alt": 0.0,
+      "az": 0.0,
+      "beta": 0.0,
+      "forward_enu": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "gamma": 90.0,
+      "id": "landscape-cw-north-raw-gamma90",
+      "note": "the out-of-range twin of landscape-cw-north-angle270 (gamma 90): same rotation",
+      "roll": 0.0,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "alpha": 0.0,
+      "alt": 0.0,
+      "az": 90.0,
+      "beta": 0.0,
+      "forward_enu": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "gamma": -90.0,
+      "id": "landscape-ccw-east-angle90",
+      "note": "turned counter-clockwise facing east, the fold applied",
+      "roll": 0.0,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "alpha": 90.0,
+      "alt": 0.0,
+      "az": 0.0,
+      "beta": 120.0,
+      "forward_enu": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "gamma": -90.0,
+      "id": "upright-north-roll+30",
+      "note": "screen top leaning to the user's right for a positive roll",
+      "roll": 30.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        0.49999999999999994,
+        0.0,
+        0.8660254037844387
+      ]
+    },
+    {
+      "alpha": 90.0,
+      "alt": 0.0,
+      "az": 0.0,
+      "beta": 60.0,
+      "forward_enu": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "gamma": -90.0,
+      "id": "upright-north-roll-30",
+      "note": "screen top leaning to the user's right for a positive roll",
+      "roll": -30.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        -0.49999999999999994,
+        0.0,
+        0.8660254037844387
+      ]
+    },
+    {
+      "alpha": 90.0,
+      "alt": 0.0,
+      "az": 0.0,
+      "beta": -180.0,
+      "forward_enu": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "gamma": -90.0,
+      "id": "upright-north-roll+90",
+      "note": "screen top leaning to the user's right for a positive roll",
+      "roll": 90.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        1.0,
+        0.0,
+        6.123233995736766e-17
+      ]
+    },
+    {
+      "alpha": 90.0,
+      "alt": 0.0,
+      "az": 0.0,
+      "beta": 0.0,
+      "forward_enu": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "gamma": -90.0,
+      "id": "upright-north-roll-90",
+      "note": "screen top leaning to the user's right for a positive roll",
+      "roll": -90.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        -1.0,
+        0.0,
+        6.123233995736766e-17
+      ]
+    },
+    {
+      "alpha": 0.0,
+      "alt": -45.0,
+      "az": 0.0,
+      "beta": 45.0,
+      "forward_enu": [
+        0.0,
+        0.7071067811865476,
+        -0.7071067811865476
+      ],
+      "gamma": 0.0,
+      "id": "tilt-north-down45",
+      "note": "half way between flat and upright: the camera looks 45 degrees down",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        0.0,
+        0.7071067811865476,
+        0.7071067811865476
+      ]
+    },
+    {
+      "alpha": 0.0,
+      "alt": 45.0,
+      "az": 0.0,
+      "beta": 135.0,
+      "forward_enu": [
+        0.0,
+        0.7071067811865476,
+        0.7071067811865476
+      ],
+      "gamma": 0.0,
+      "id": "tilt-north-up45",
+      "note": "leaning back: the camera looks 45 degrees up",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        0.0,
+        -0.7071067811865476,
+        0.7071067811865476
+      ]
+    },
+    {
+      "alpha": 270.0,
+      "alt": 45.0,
+      "az": 90.0,
+      "beta": 135.0,
+      "forward_enu": [
+        0.7071067811865476,
+        0.0,
+        0.7071067811865476
+      ],
+      "gamma": 0.0,
+      "id": "tilt-east-up45",
+      "note": "leaning back facing east",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        -0.7071067811865476,
+        0.0,
+        0.7071067811865476
+      ]
+    },
+    {
+      "alpha": 0.0,
+      "alt": 0.0,
+      "az": 315.0,
+      "beta": 90.0,
+      "forward_enu": [
+        -0.7071067811865476,
+        0.7071067811865476,
+        0.0
+      ],
+      "gamma": 45.0,
+      "id": "upright-gamma-yaw45",
+      "note": "at beta 90 gamma turns about the vertical: Rx(90) Ry(g) = Rz(g) Rx(90)",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "alpha": 39.231520483592,
+      "alt": 45.0,
+      "az": 0.0,
+      "beta": 142.238756092965,
+      "forward_enu": [
+        0.0,
+        0.7071067811865476,
+        0.7071067811865476
+      ],
+      "gamma": -26.565051177078,
+      "id": "tilt-north-up45-roll+30",
+      "note": "leaning back 45 degrees with the top leaning 30 degrees to the right",
+      "roll": 30.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09,
+      "up_enu": [
+        0.49999999999999994,
+        -0.6123724356957946,
+        0.6123724356957946
+      ]
+    }
+  ],
+  "compass_cases": [
+    {
+      "alpha_rel": 87.048326321715,
+      "alt": 49.38874923827734,
+      "az": 233.544951869263,
+      "beta": -174.344633373946,
+      "compass_heading_back": 233.54495186926295,
+      "compass_heading_top": 150.1768619626029,
+      "gamma": 40.283318881369,
+      "roll": 171.29239708184275,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 57.22518828431781
+    },
+    {
+      "alpha_rel": 77.612414371598,
+      "alt": 23.555749632359692,
+      "az": 279.494353991958,
+      "beta": -162.370522144658,
+      "compass_heading_back": 279.494353991958,
+      "compass_heading_top": 1.530711466564034,
+      "gamma": -65.207371675907,
+      "roll": 109.29252188986891,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 259.14312583816195
+    },
+    {
+      "alpha_rel": 11.906209353459,
+      "alt": -68.52724700900785,
+      "az": 14.303395371484928,
+      "beta": 17.615988454231,
+      "compass_heading_back": 14.303395371484928,
+      "compass_heading_top": 50.47898847642867,
+      "gamma": 12.478339089894,
+      "roll": 124.23456802399943,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 62.38519782988777
+    },
+    {
+      "alpha_rel": 101.145743894455,
+      "alt": -4.707331794517856,
+      "az": 358.94685036912244,
+      "beta": 31.954150278782,
+      "compass_heading_back": 358.94685036912244,
+      "compass_heading_top": 271.89100245190133,
+      "gamma": -84.449550576613,
+      "roll": -147.92481158619026,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 13.036746346356786
+    },
+    {
+      "alpha_rel": 166.384403697082,
+      "alt": -41.58374199668282,
+      "az": 266.55303886018174,
+      "beta": 42.436638941474,
+      "compass_heading_back": 266.55303886018174,
+      "compass_heading_top": 230.77506724339273,
+      "gamma": -25.932191969138,
+      "roll": -115.56168847426935,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 37.15947094047433
+    },
+    {
+      "alpha_rel": 337.035343285794,
+      "alt": 42.27626339219654,
+      "az": 325.1281245526167,
+      "beta": 132.345331713508,
+      "compass_heading_back": 325.1281245526167,
+      "compass_heading_top": 149.11390755973096,
+      "gamma": 2.948042676775,
+      "roll": 87.31637035808103,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 306.14925084552516
+    },
+    {
+      "alpha_rel": 298.798851617593,
+      "alt": 52.98181568370791,
+      "az": 240.38929778156327,
+      "beta": -143.290604263485,
+      "compass_heading_back": 240.38929778156324,
+      "compass_heading_top": 248.9594392475094,
+      "gamma": -5.147514858325,
+      "roll": 83.13871258909109,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 7.758290865102588
+    },
+    {
+      "alpha_rel": 157.933821636582,
+      "alt": 71.08936843228551,
+      "az": 306.373638568836,
+      "beta": 163.956557248123,
+      "compass_heading_back": 306.373638568836,
+      "compass_heading_top": 159.29643988505887,
+      "gamma": 10.145430436456,
+      "roll": 148.51064110539005,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 137.23026152164064
+    },
+    {
+      "alpha_rel": 273.243724639029,
+      "alt": 64.73852086296236,
+      "az": 286.39821342454434,
+      "beta": -166.266567513691,
+      "compass_heading_back": 286.39821342454434,
+      "compass_heading_top": 227.590791078447,
+      "gamma": 21.410984759638,
+      "roll": 146.19904802016055,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 320.834515717476
+    },
+    {
+      "alpha_rel": 256.919359032427,
+      "alt": 69.36219019750115,
+      "az": 13.246340495673902,
+      "beta": -159.942408146554,
+      "compass_heading_back": 13.246340495673902,
+      "compass_heading_top": 359.0389742235946,
+      "gamma": 4.96256199321,
+      "roll": 103.3292289649367,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 75.95833325602128
+    },
+    {
+      "alpha_rel": 135.469770651449,
+      "alt": 53.872549935597874,
+      "az": 222.2095552939366,
+      "beta": 170.250120325427,
+      "compass_heading_back": 222.20955529393657,
+      "compass_heading_top": 118.59436701932702,
+      "gamma": 34.96076016927,
+      "roll": -73.30766572908034,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 74.06413767077653
+    },
+    {
+      "alpha_rel": 301.889174833839,
+      "alt": 35.01765979720787,
+      "az": 138.9592507529752,
+      "beta": -128.504568751977,
+      "compass_heading_back": 138.9592507529752,
+      "compass_heading_top": 167.23052215811052,
+      "gamma": -22.824197872381,
+      "roll": 162.8495657497898,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 289.1196969919499
+    },
+    {
+      "alpha_rel": 271.459900729783,
+      "alt": -20.582734165733015,
+      "az": 318.5905761978986,
+      "beta": -50.358123634506,
+      "compass_heading_back": 318.5905761978986,
+      "compass_heading_top": 75.54390544714877,
+      "gamma": 56.561263541371,
+      "roll": -34.65866781975001,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 347.0038061769314
+    },
+    {
+      "alpha_rel": 282.699412761937,
+      "alt": 13.729126764973728,
+      "az": 91.85678061233502,
+      "beta": 171.449180058006,
+      "compass_heading_back": 91.85678061233502,
+      "compass_heading_top": 359.75158690363196,
+      "gamma": 76.113473895299,
+      "roll": 8.80428347468856,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 102.45099966556943
+    },
+    {
+      "alpha_rel": 261.250205000239,
+      "alt": -17.60518939103021,
+      "az": 136.81241322606652,
+      "beta": -56.245291820023,
+      "compass_heading_back": 136.81241322606652,
+      "compass_heading_top": 18.465040176521253,
+      "gamma": -57.020435475417,
+      "roll": -60.724520271231995,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 279.71524517676016
+    },
+    {
+      "alpha_rel": 107.79745069028,
+      "alt": -24.024364509498483,
+      "az": 54.32655088432882,
+      "beta": 49.738553522475,
+      "compass_heading_back": 54.32655088432882,
+      "compass_heading_top": 356.0833017748062,
+      "gamma": -50.953196754759,
+      "roll": -33.33426328921897,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 103.88075246508585
+    },
+    {
+      "alpha_rel": 346.535938362689,
+      "alt": -74.36022957427329,
+      "az": 134.1019100184554,
+      "beta": -14.594400943598,
+      "compass_heading_back": 134.1019100184554,
+      "compass_heading_top": 292.54757419220476,
+      "gamma": 5.68402302264,
+      "roll": -20.825890249487827,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 279.08351255489356
+    },
+    {
+      "alpha_rel": 277.504146928792,
+      "alt": -60.08182731999316,
+      "az": 319.3579839751581,
+      "beta": -21.489007631603,
+      "compass_heading_back": 319.35798397515805,
+      "compass_heading_top": 92.52628522974948,
+      "gamma": 21.331978414629,
+      "roll": -132.7381421090268,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 10.030432158541554
+    },
+    {
+      "alpha_rel": 32.821058910644,
+      "alt": 35.29545813451328,
+      "az": 243.91480382805693,
+      "beta": -174.637840612249,
+      "compass_heading_back": 243.9148038280569,
+      "compass_heading_top": 330.1048929592513,
+      "gamma": -54.526066299621,
+      "roll": -83.42537007264802,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 182.92595186989547
+    },
+    {
+      "alpha_rel": 283.075526213838,
+      "alt": -23.118780948341794,
+      "az": 183.8191631537797,
+      "beta": -61.652507582313,
+      "compass_heading_back": 183.81916315377967,
+      "compass_heading_top": 41.510951523478255,
+      "gamma": -34.21589087942,
+      "roll": -73.12347651561116,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 324.5864777373167
+    },
+    {
+      "alpha_rel": 119.990215670654,
+      "alt": 56.111838573546066,
+      "az": 28.778502739947474,
+      "beta": -174.186738972558,
+      "compass_heading_back": 28.77850273994748,
+      "compass_heading_top": 110.06016910924232,
+      "gamma": -33.444644301528,
+      "roll": 100.46622872307415,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 50.05038477989665
+    },
+    {
+      "alpha_rel": 120.73854879095,
+      "alt": 67.51866347971225,
+      "az": 291.02482816248465,
+      "beta": -174.205565436607,
+      "compass_heading_back": 291.0248281624846,
+      "compass_heading_top": 6.830238442771504,
+      "gamma": -21.759273386326,
+      "roll": -74.69079863381306,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 307.5687872337213
+    },
+    {
+      "alpha_rel": 329.252825561802,
+      "alt": -26.751854159384294,
+      "az": 353.40701764452643,
+      "beta": -19.89215563078,
+      "compass_heading_back": 353.4070176445264,
+      "compass_heading_top": 93.91643363152308,
+      "gamma": 61.400224529919,
+      "roll": -157.60218325286797,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 63.169259193324606
+    },
+    {
+      "alpha_rel": 131.357349816554,
+      "alt": 62.822425719660174,
+      "az": 32.86894022803225,
+      "beta": 164.15937540129,
+      "compass_heading_back": 32.86894022803225,
+      "compass_heading_top": 156.416244950041,
+      "gamma": -22.375121532849,
+      "roll": 143.3004266293292,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 107.77359476659534
+    },
+    {
+      "alpha_rel": 350.226508759915,
+      "alt": 70.2068475885983,
+      "az": 348.4128449626989,
+      "beta": 170.818301221485,
+      "compass_heading_back": 348.4128449626989,
+      "compass_heading_top": 231.72482994762984,
+      "gamma": 17.610834199233,
+      "roll": 28.113284076059074,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 41.95133870754446
+    },
+    {
+      "alpha_rel": 357.61944454789,
+      "alt": 38.55837469843671,
+      "az": 81.53695311351134,
+      "beta": 155.810669730216,
+      "compass_heading_back": 81.53695311351134,
+      "compass_heading_top": 330.556289044731,
+      "gamma": 46.897268125411,
+      "roll": -148.39913372031023,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 148.17573359262127
+    },
+    {
+      "alpha_rel": 63.661070131541,
+      "alt": -77.05095176198881,
+      "az": 201.09082871079445,
+      "beta": -1.017573876012,
+      "compass_heading_back": 201.09082871079445,
+      "compass_heading_top": 295.52125612037344,
+      "gamma": 12.909685362568,
+      "roll": 94.54555596274054,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 359.1823262519145
+    },
+    {
+      "alpha_rel": 0.085478407584,
+      "alt": -26.69390798373817,
+      "az": 232.15696639475524,
+      "beta": 59.264637429327,
+      "compass_heading_back": 232.15696639475527,
+      "compass_heading_top": 199.89824487898127,
+      "gamma": -28.480291681898,
+      "roll": -105.8298815587567,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 199.98372328656558
+    },
+    {
+      "alpha_rel": 203.920557730417,
+      "alt": -43.25683339221726,
+      "az": 208.25476893679493,
+      "beta": -37.959290418205,
+      "compass_heading_back": 208.25476893679493,
+      "compass_heading_top": 71.02694302448037,
+      "gamma": -29.641414109012,
+      "roll": 122.3726105416651,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 274.9475007548975
+    },
+    {
+      "alpha_rel": 308.101867630593,
+      "alt": 18.24490073744643,
+      "az": 179.1880557234223,
+      "beta": 134.509994762555,
+      "compass_heading_back": 179.1880557234223,
+      "compass_heading_top": 69.59489281692642,
+      "gamma": 63.474463368052,
+      "roll": 138.6664048950966,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 197.69676044751898
+    },
+    {
+      "alpha_rel": 172.470694973598,
+      "alt": 26.083779329047786,
+      "az": 41.85697889503609,
+      "beta": -116.140971240426,
+      "compass_heading_back": 41.8569788950361,
+      "compass_heading_top": 37.78648614358893,
+      "gamma": 3.65532608973,
+      "roll": -88.20783331251027,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 30.257181117187308
+    },
+    {
+      "alpha_rel": 115.871231147315,
+      "alt": 78.85249278480694,
+      "az": 34.63613092222435,
+      "beta": 174.589881812312,
+      "compass_heading_back": 34.63613092222436,
+      "compass_heading_top": 153.36143595376657,
+      "gamma": -9.761220748778,
+      "roll": 150.81238744647527,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 89.23266710108206
+    },
+    {
+      "alpha_rel": 156.994883955896,
+      "alt": -65.54373815511559,
+      "az": 164.00837472570714,
+      "beta": 23.453165028617,
+      "compass_heading_back": 164.00837472570714,
+      "compass_heading_top": 146.54437263013293,
+      "gamma": -7.137079648535,
+      "roll": -15.98069460879546,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 303.5392565860291
+    },
+    {
+      "alpha_rel": 132.982362012859,
+      "alt": 64.37634447245495,
+      "az": 209.20003885396497,
+      "beta": 154.69040326289,
+      "compass_heading_back": 209.20003885396494,
+      "compass_heading_top": 19.59430392277255,
+      "gamma": -4.138241852798,
+      "roll": -171.3238119638541,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 332.5766659356311
+    },
+    {
+      "alpha_rel": 67.274577170107,
+      "alt": 8.782971417809705,
+      "az": 158.81657376162104,
+      "beta": 179.346993217348,
+      "compass_heading_back": 158.81657376162104,
+      "compass_heading_top": 68.71567726862868,
+      "gamma": 81.21645361118,
+      "roll": -89.33924473539386,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 315.9902544387356
+    },
+    {
+      "alpha_rel": 336.697037492837,
+      "alt": 20.683885246797544,
+      "az": 117.03116330393172,
+      "beta": 134.316918247129,
+      "compass_heading_back": 117.0311633039317,
+      "compass_heading_top": 229.7779003045212,
+      "gamma": -59.630128617613,
+      "roll": -49.8875745237668,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 26.474937797358706
+    },
+    {
+      "alpha_rel": 92.947044041021,
+      "alt": 48.61982020162006,
+      "az": 98.87434440361173,
+      "beta": -170.4471329083,
+      "compass_heading_back": 98.87434440361173,
+      "compass_heading_top": 177.861901013332,
+      "gamma": -40.457177098548,
+      "roll": 104.53968989076606,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 90.80894505435292
+    },
+    {
+      "alpha_rel": 357.158074761558,
+      "alt": 9.884830580628915,
+      "az": 200.57281948579563,
+      "beta": -153.970868571381,
+      "compass_heading_back": 200.57281948579563,
+      "compass_heading_top": 285.6910667817345,
+      "gamma": -78.986174173543,
+      "roll": -153.5484603856808,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 102.84914154329245
+    },
+    {
+      "alpha_rel": 102.602791856722,
+      "alt": 61.49432892805061,
+      "az": 241.88078618468208,
+      "beta": -154.196659952007,
+      "compass_heading_back": 241.8807861846821,
+      "compass_heading_top": 214.78787329562118,
+      "gamma": 12.553686520319,
+      "roll": -65.79359881278933,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 137.39066515234364
+    },
+    {
+      "alpha_rel": 95.255200236498,
+      "alt": -60.69070158383646,
+      "az": 222.07837038339727,
+      "beta": 12.193750857524,
+      "compass_heading_back": 222.07837038339727,
+      "compass_heading_top": 289.4391197295804,
+      "gamma": 26.859521252243,
+      "roll": 154.43868789318805,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07,
+      "yaw_offset_deg": 24.694319966078137
+    }
+  ],
+  "conventions": {
+    "device": "x right, y top, z out of the screen; the rear camera looks along -z",
+    "earth": "[E, N, U]; azimuth from north through east",
+    "gimbal": "|alt| >= 89.99: roll 0, az = heading of the screen top (nadir) or heading + 180 (zenith)",
+    "roll": "right-handed about the view axis, positive when the screen top leans to the user's right, (-180, 180]",
+    "screen_angle": "screen.orientation.angle, counter-clockwise from natural; page = device turned back by it"
+  },
+  "generated_at": "2026-09-17T16:41:06Z",
+  "generator": "scripts/generate_fixtures.py orientation",
+  "gimbal_rows": [
+    {
+      "alpha": 0.0,
+      "alt": -90.0,
+      "az": 0.0,
+      "beta": 0.0,
+      "gamma": 0.0,
+      "in_band": true,
+      "region": "nadir",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09
+    },
+    {
+      "alpha": 0.0,
+      "alt": -89.99500000003167,
+      "az": 0.0,
+      "beta": 0.005,
+      "gamma": 0.0,
+      "in_band": true,
+      "region": "nadir",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09
+    },
+    {
+      "alpha": 0.0,
+      "alt": -89.97999999999499,
+      "az": 0.0,
+      "beta": 0.02,
+      "gamma": 0.0,
+      "in_band": false,
+      "region": "nadir",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09
+    },
+    {
+      "alpha": 0.0,
+      "alt": -89.50000000000014,
+      "az": 0.0,
+      "beta": 0.5,
+      "gamma": 0.0,
+      "in_band": false,
+      "region": "nadir",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09
+    },
+    {
+      "alpha": 0.0,
+      "alt": 90.0,
+      "az": 0.0,
+      "beta": -180.0,
+      "gamma": 0.0,
+      "in_band": true,
+      "region": "zenith",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09
+    },
+    {
+      "alpha": 0.0,
+      "alt": 89.99500000003167,
+      "az": 0.0,
+      "beta": 179.995,
+      "gamma": 0.0,
+      "in_band": true,
+      "region": "zenith",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09
+    },
+    {
+      "alpha": 0.0,
+      "alt": 89.97999999999499,
+      "az": 0.0,
+      "beta": 179.98,
+      "gamma": 0.0,
+      "in_band": false,
+      "region": "zenith",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09
+    },
+    {
+      "alpha": 0.0,
+      "alt": 89.50000000000014,
+      "az": 0.0,
+      "beta": 179.5,
+      "gamma": 0.0,
+      "in_band": false,
+      "region": "zenith",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09
+    },
+    {
+      "alpha": 90.0,
+      "alt": -90.0,
+      "az": 270.0,
+      "beta": 0.0,
+      "gamma": 0.0,
+      "in_band": true,
+      "region": "nadir",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09
+    },
+    {
+      "alpha": 90.0,
+      "alt": -89.99500000003167,
+      "az": 270.0,
+      "beta": 0.005,
+      "gamma": 0.0,
+      "in_band": true,
+      "region": "nadir",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09
+    },
+    {
+      "alpha": 90.0,
+      "alt": -89.97999999999499,
+      "az": 270.0,
+      "beta": 0.02,
+      "gamma": 0.0,
+      "in_band": false,
+      "region": "nadir",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09
+    },
+    {
+      "alpha": 90.0,
+      "alt": -89.50000000000014,
+      "az": 270.0,
+      "beta": 0.5,
+      "gamma": 0.0,
+      "in_band": false,
+      "region": "nadir",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09
+    },
+    {
+      "alpha": 90.0,
+      "alt": 90.0,
+      "az": 270.0,
+      "beta": -180.0,
+      "gamma": 0.0,
+      "in_band": true,
+      "region": "zenith",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09
+    },
+    {
+      "alpha": 90.0,
+      "alt": 89.99500000003167,
+      "az": 270.0,
+      "beta": 179.995,
+      "gamma": 0.0,
+      "in_band": true,
+      "region": "zenith",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09
+    },
+    {
+      "alpha": 90.0,
+      "alt": 89.97999999999499,
+      "az": 270.0,
+      "beta": 179.98,
+      "gamma": 0.0,
+      "in_band": false,
+      "region": "zenith",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09
+    },
+    {
+      "alpha": 90.0,
+      "alt": 89.50000000000014,
+      "az": 270.0,
+      "beta": 179.5,
+      "gamma": 0.0,
+      "in_band": false,
+      "region": "zenith",
+      "roll": 0.0,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-09
+    }
+  ],
+  "parameters": {
+    "closed_form_tolerance_deg": 1e-09,
+    "compass_cases": 40,
+    "euler_decimals": 12,
+    "gimbal_alt_deg": 89.99,
+    "round_trip_tolerance_deg": 1e-07,
+    "round_trips": 200,
+    "seed": 20260917
+  },
+  "round_trips": [
+    {
+      "alpha": 122.063303504065,
+      "alt": 74.9407370970356,
+      "az": 133.27206992238084,
+      "beta": -176.103320298042,
+      "gamma": 14.557662720102,
+      "roll": -15.16252831922273,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 251.483697063966,
+      "alt": 34.40887830205638,
+      "az": 186.12221909914464,
+      "beta": 162.601013669398,
+      "gamma": -53.687417859172,
+      "roll": -111.25023288450272,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 204.756451590166,
+      "alt": 82.00219815496496,
+      "az": 280.3967339884044,
+      "beta": -175.375077939361,
+      "gamma": -6.532053384515,
+      "roll": 35.41724848262314,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 165.481450357875,
+      "alt": 53.84228992579065,
+      "az": 261.0261502853911,
+      "beta": 163.759181111479,
+      "gamma": -32.758941688664,
+      "roll": 61.70458375078627,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 281.436478211953,
+      "alt": -51.26471399929201,
+      "az": 264.9284668365023,
+      "beta": -38.562487447288,
+      "gamma": 3.977701479853,
+      "roll": -94.97294477431997,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 287.700266549362,
+      "alt": 20.081177021866196,
+      "az": 8.98748883512518,
+      "beta": 129.144462397505,
+      "gamma": 57.050567075177,
+      "roll": -34.33469384225177,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 128.027968000781,
+      "alt": 46.930902059896624,
+      "az": 310.4202264781193,
+      "beta": 169.397405501745,
+      "gamma": -41.993591319229,
+      "roll": 74.36899191620208,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 221.528975006884,
+      "alt": 46.08609069563141,
+      "az": 109.00226616548188,
+      "beta": 140.029337944887,
+      "gamma": 19.950264787642,
+      "roll": -112.14900607766248,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 307.311004673701,
+      "alt": -64.6398326826038,
+      "az": 220.7542670102093,
+      "beta": -24.878924393808,
+      "gamma": -5.081501563439,
+      "roll": -79.18688135288346,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 167.564210609383,
+      "alt": 53.87281600133795,
+      "az": 83.5768329651975,
+      "beta": -166.72412861499,
+      "gamma": 33.912717611539,
+      "roll": 67.07675435466746,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 75.50777551529,
+      "alt": 68.25961051306174,
+      "az": 126.77515875947417,
+      "beta": -159.746623884113,
+      "gamma": 8.073834722536,
+      "roll": -69.16142961848716,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 256.887997723746,
+      "alt": 48.89364713570791,
+      "az": 297.25116123047434,
+      "beta": -139.764865289753,
+      "gamma": 9.241874942808,
+      "roll": -169.25246872676738,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 224.10975193423,
+      "alt": 28.907476633906796,
+      "az": 125.51663828328824,
+      "beta": 119.308803839142,
+      "gamma": 9.06936677187,
+      "roll": 84.94308259495023,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 166.484088248437,
+      "alt": 13.821349611797416,
+      "az": 300.60932161529297,
+      "beta": -129.929212956072,
+      "gamma": -68.148427416402,
+      "roll": -127.84217811864634,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 214.013244538472,
+      "alt": -55.56888450267625,
+      "az": 276.8897145650545,
+      "beta": -24.173386053866,
+      "gamma": -25.299614400481,
+      "roll": -136.4061229270945,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 232.703738717974,
+      "alt": 82.31182053487026,
+      "az": 130.47530231567006,
+      "beta": 172.323510558731,
+      "gamma": -0.425083343017,
+      "roll": 93.15052189293493,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 143.805824092332,
+      "alt": 64.91974363992693,
+      "az": 9.973863719833922,
+      "beta": -157.224594362936,
+      "gamma": -10.794298560223,
+      "roll": 65.95997959387245,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 257.60130819487,
+      "alt": 85.62028035601858,
+      "az": 293.1500818515638,
+      "beta": -175.696871169767,
+      "gamma": 0.816259549509,
+      "roll": 100.72072302920827,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 325.866204262009,
+      "alt": -49.887945667258535,
+      "az": 297.4809677197229,
+      "beta": -5.57435370043,
+      "gamma": 39.787805727038,
+      "roll": -171.32857116531306,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 124.658715859764,
+      "alt": 31.282343694270494,
+      "az": 269.04930234724475,
+      "beta": 126.143716629097,
+      "gamma": -28.312482682097,
+      "roll": -70.89363045701585,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 355.320263541881,
+      "alt": -31.155519567591647,
+      "az": 350.3930148320398,
+      "beta": 58.041818814949,
+      "gamma": 12.191583234848,
+      "roll": 7.505290968074718,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 107.742910373195,
+      "alt": 56.06136159072631,
+      "az": 189.30284356586466,
+      "beta": 162.986293864251,
+      "gamma": 29.818265872297,
+      "roll": -148.39317293209808,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 178.497577374269,
+      "alt": -12.864017144737446,
+      "az": 76.05019400979604,
+      "beta": -49.399078762845,
+      "gamma": 69.994768506015,
+      "roll": -128.84843527989875,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 152.746006420819,
+      "alt": -58.73410089000858,
+      "az": 235.13898426790612,
+      "beta": 28.222106467375,
+      "gamma": -14.048332097857,
+      "roll": 65.66325288905568,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 314.517949887999,
+      "alt": 18.33941730278613,
+      "az": 172.83858610334227,
+      "beta": -118.647900236924,
+      "gamma": -48.981946856418,
+      "roll": 157.59918234578765,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 340.387329821316,
+      "alt": -20.945291620876787,
+      "az": 287.1661971632361,
+      "beta": -6.363280581103,
+      "gamma": 68.918695078631,
+      "roll": 6.815565913139267,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 278.252567095279,
+      "alt": 63.39075223262432,
+      "az": 271.8562608632104,
+      "beta": -153.748052084638,
+      "gamma": 4.508977254898,
+      "roll": -170.94311231754529,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 78.272750625023,
+      "alt": 44.035987359060016,
+      "az": 255.32299478448383,
+      "beta": 137.189907171203,
+      "gamma": 18.644633943211,
+      "roll": -19.040576422396157,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 150.545754642064,
+      "alt": 34.366658134487494,
+      "az": 56.430186463247985,
+      "beta": -127.500821781495,
+      "gamma": 21.989336143954,
+      "roll": -163.96948450135804,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 292.356741955403,
+      "alt": -61.661955591640634,
+      "az": 210.13674882333348,
+      "beta": -23.162169794824,
+      "gamma": -16.798410403349,
+      "roll": 124.04025444615604,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 153.963540152677,
+      "alt": 8.555334926890126,
+      "az": 289.0836436630982,
+      "beta": 141.177736626629,
+      "gamma": -78.992037196523,
+      "roll": -129.34295850839283,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 283.260457524818,
+      "alt": 4.893923429538262,
+      "az": 149.039652805787,
+      "beta": 105.728653839956,
+      "gamma": -71.656896634367,
+      "roll": 14.966213235288564,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 276.43437956122,
+      "alt": -60.86027328541822,
+      "az": 210.27728701250535,
+      "beta": -18.431572001286,
+      "gamma": -22.976792848923,
+      "roll": -40.48899950350133,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 87.88600707726,
+      "alt": -78.37411256660329,
+      "az": 83.60105939396439,
+      "beta": -11.501230300198,
+      "gamma": -1.70947923758,
+      "roll": 98.340766838771,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 130.646629513499,
+      "alt": 43.41388007161311,
+      "az": 88.39540761170743,
+      "beta": -140.616678456001,
+      "gamma": 27.229612896432,
+      "roll": -150.86599854585222,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 285.296074997652,
+      "alt": 8.511105122356838,
+      "az": 160.83951698752463,
+      "beta": 155.755255394383,
+      "gamma": -80.658558898063,
+      "roll": -114.53240475260947,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 312.925207209027,
+      "alt": 34.7106332374688,
+      "az": 293.733730438447,
+      "beta": -150.232003017993,
+      "gamma": 49.004835863151,
+      "roll": 52.84500649185952,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 151.143513131738,
+      "alt": -75.10844360357429,
+      "az": 115.97778945693761,
+      "beta": -0.765140397401,
+      "gamma": 14.872330688351,
+      "roll": 92.97856440416507,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 338.889845454774,
+      "alt": -45.03004493280137,
+      "az": 347.11337094319697,
+      "beta": 39.631551511691,
+      "gamma": 23.276502233131,
+      "roll": 115.50776040915582,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 262.189885847751,
+      "alt": -44.32723250951473,
+      "az": 34.84242607103617,
+      "beta": 24.95225492589,
+      "gamma": 39.583925565955,
+      "roll": 143.86282224235669,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 278.569641114383,
+      "alt": 25.36360818196924,
+      "az": 50.15032851338594,
+      "beta": 119.016519720193,
+      "gamma": 27.980579639953,
+      "roll": 75.41272736548345,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 211.199764749726,
+      "alt": -86.22521095526973,
+      "az": 135.952058219803,
+      "beta": 3.680541700539,
+      "gamma": 0.838816556146,
+      "roll": 12.821225512223833,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 232.730598171713,
+      "alt": 60.25690434677426,
+      "az": 67.90286172950991,
+      "beta": 163.767243240912,
+      "gamma": 25.269516109297,
+      "roll": 124.29554130595085,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 157.756286273283,
+      "alt": 75.73664067190325,
+      "az": 29.83024005235785,
+      "beta": -165.856462128202,
+      "gamma": 1.864034650319,
+      "roll": -82.64473889954924,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 80.516823163584,
+      "alt": 40.35041399742545,
+      "az": 139.11417981968088,
+      "beta": -137.806656012095,
+      "gamma": 29.084422999913,
+      "roll": 118.20093742882221,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 314.68007767751,
+      "alt": -67.96036943932717,
+      "az": 190.6192280141764,
+      "beta": -18.408816447275,
+      "gamma": -12.334850440484,
+      "roll": 32.69435982063308,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 99.284083842573,
+      "alt": -83.84226126593127,
+      "az": 46.03718281579106,
+      "beta": -5.070160189915,
+      "gamma": -3.499029013026,
+      "roll": 34.52376789715146,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 112.129271153621,
+      "alt": 62.064527283137295,
+      "az": 325.4951695228174,
+      "beta": 173.516389935751,
+      "gamma": -27.231784176414,
+      "roll": 166.05240722450253,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 178.139973908882,
+      "alt": 21.997476524589857,
+      "az": 264.17362573418563,
+      "beta": 161.680951949205,
+      "gamma": -66.761356512124,
+      "roll": 160.1848832067647,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 256.089617614117,
+      "alt": -68.16543410626441,
+      "az": 156.09142133728207,
+      "beta": 13.803001490398,
+      "gamma": -17.085908760519,
+      "roll": 129.90227080012994,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 345.420063985861,
+      "alt": -15.873457471219638,
+      "az": 268.1477378453945,
+      "beta": -44.850891346665,
+      "gamma": 67.306337234662,
+      "roll": 47.157305974257156,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 176.932406905432,
+      "alt": -33.083261357341854,
+      "az": 337.38508960832735,
+      "beta": -54.137196796078,
+      "gamma": -21.292110307108,
+      "roll": 104.7082000913723,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 35.559077864162,
+      "alt": 21.888582391824897,
+      "az": 34.31514721324062,
+      "beta": 139.422448516397,
+      "gamma": -60.604449890605,
+      "roll": 135.49172537799268,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 152.054420913625,
+      "alt": -35.89344257527159,
+      "az": 300.3599668291637,
+      "beta": -3.331403128928,
+      "gamma": -54.036336236786,
+      "roll": -94.11350746709599,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 184.640290776941,
+      "alt": -33.16620606776196,
+      "az": 228.63050879678548,
+      "beta": 42.460658363403,
+      "gamma": -42.136644760684,
+      "roll": -36.24775373902057,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 238.784418156951,
+      "alt": 86.5418665359665,
+      "az": 14.556771229439427,
+      "beta": -179.007544134332,
+      "gamma": 3.312826029131,
+      "roll": 163.31248891237283,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 58.104866732522,
+      "alt": -31.189535920524904,
+      "az": 220.42905481525787,
+      "beta": 13.773336259076,
+      "gamma": 57.777879069086,
+      "roll": -106.15927830951453,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 4.887551009385,
+      "alt": -37.29923537150116,
+      "az": 100.03969619941186,
+      "beta": -18.68284397913,
+      "gamma": -50.231649924506,
+      "roll": 66.25379396825352,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 111.80483998731,
+      "alt": -14.931636110229604,
+      "az": 319.9246344173472,
+      "beta": 49.615060561274,
+      "gamma": -66.566618458942,
+      "roll": -127.97052756459101,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 111.024888365927,
+      "alt": -3.316200762334134,
+      "az": 157.9982229170588,
+      "beta": -16.395856272928,
+      "gamma": 86.543060142896,
+      "roll": -163.5758646615394,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 173.187968044301,
+      "alt": 53.79419231227968,
+      "az": 161.21409416132408,
+      "beta": 146.567470557007,
+      "gamma": 14.785937760579,
+      "roll": 158.86518264595236,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 147.986830588442,
+      "alt": -80.78786543231423,
+      "az": 24.893504018448066,
+      "beta": -9.142308058226,
+      "gamma": -1.136932634999,
+      "roll": -172.97123691942113,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 19.651497467086,
+      "alt": 60.00621353502666,
+      "az": 37.21302547642743,
+      "beta": 162.488863356568,
+      "gamma": -24.746960462939,
+      "roll": -127.00576649843119,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 20.97462095441,
+      "alt": 47.06026030356426,
+      "az": 235.5456318928139,
+      "beta": -167.761403020976,
+      "gamma": 41.487952760475,
+      "roll": -18.13021597778166,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 30.95097053952,
+      "alt": -33.546589583480355,
+      "az": 214.0053736992724,
+      "beta": -32.555021346024,
+      "gamma": 49.032501861846,
+      "roll": 40.214503269366446,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 180.968229392668,
+      "alt": 35.587608075165804,
+      "az": 161.24770239922432,
+      "beta": 126.925381444264,
+      "gamma": 14.3819212674,
+      "roll": 169.42660812433195,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 256.943773021399,
+      "alt": 51.319836036116214,
+      "az": 207.18016158905334,
+      "beta": -168.946013462388,
+      "gamma": -37.306570322896,
+      "roll": 107.86574735936091,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 47.831614657517,
+      "alt": 39.693634541920574,
+      "az": 221.52556546789026,
+      "beta": -179.225608070341,
+      "gamma": 50.30202126967,
+      "roll": 178.99358304364517,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 12.262159535449,
+      "alt": 35.53114871440064,
+      "az": 307.40498354669654,
+      "beta": 133.130777256312,
+      "gamma": 31.783644522577,
+      "roll": -26.262672552806436,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 247.035649666995,
+      "alt": -44.4638064810609,
+      "az": 277.8833054887838,
+      "beta": -44.532185254213,
+      "gamma": -10.701497270085,
+      "roll": 100.68880729806341,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 161.423886463485,
+      "alt": -41.207016859575695,
+      "az": 233.31574992086203,
+      "beta": 43.181210613471,
+      "gamma": -25.386118360921,
+      "roll": -24.552654338702723,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 97.154014919649,
+      "alt": 5.422025737352115,
+      "az": 168.36305754761165,
+      "beta": -140.528918604875,
+      "gamma": 82.969000647657,
+      "roll": -39.68346259630346,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 68.619548360712,
+      "alt": -58.44530288127786,
+      "az": 237.18980072411506,
+      "beta": 19.76399077768,
+      "gamma": 25.112040368062,
+      "roll": -130.25314258706348,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 248.804825093011,
+      "alt": 7.105026958126572,
+      "az": 196.34644592311477,
+      "beta": 145.857836525692,
+      "gamma": -81.405182355004,
+      "roll": -34.443364424975414,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 59.783830801057,
+      "alt": -49.65176227303809,
+      "az": 38.45277997969318,
+      "beta": -6.93888521933,
+      "gamma": -39.848015545648,
+      "roll": 169.24558550977753,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 241.973217764093,
+      "alt": -73.08182222634223,
+      "az": 216.5049487712498,
+      "beta": -2.567681530663,
+      "gamma": -16.727826314348,
+      "roll": -98.85573825819895,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 49.002365066084,
+      "alt": -24.87973560347089,
+      "az": 3.5704403596458345,
+      "beta": 52.65402553253,
+      "gamma": -46.089635814224,
+      "roll": 61.20102316241062,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 7.528654513793,
+      "alt": 38.045030499170906,
+      "az": 17.900630595290664,
+      "beta": 130.909006065903,
+      "gamma": -19.764896991832,
+      "roll": -73.66848384957477,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 6.166292677012,
+      "alt": -27.707827714738926,
+      "az": 240.08769555289328,
+      "beta": -37.478952294531,
+      "gamma": 54.132843417781,
+      "roll": -46.58479489509489,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 229.859860280142,
+      "alt": 10.596352200773993,
+      "az": 229.68375482149048,
+      "beta": -138.451107829956,
+      "gamma": -75.776056705744,
+      "roll": -47.56404562803061,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 340.176589436187,
+      "alt": 56.58986801131158,
+      "az": 256.3387842145684,
+      "beta": -160.002145079671,
+      "gamma": 27.338252052617,
+      "roll": -38.395137489563865,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 15.635283097318,
+      "alt": -29.05358676651022,
+      "az": 250.7904749521927,
+      "beta": -6.402943985816,
+      "gamma": 60.746425314787,
+      "roll": 7.329369521462269,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 88.416925232062,
+      "alt": 30.442015130915536,
+      "az": 141.53581519810785,
+      "beta": -132.407775468814,
+      "gamma": 41.298502932293,
+      "roll": -58.91797848017025,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 180.197468645046,
+      "alt": 27.230604178769454,
+      "az": 292.908752548793,
+      "beta": -142.670944070894,
+      "gamma": -54.869321611418,
+      "roll": 42.99804552597837,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 64.026160990601,
+      "alt": 6.859445498223451,
+      "az": 204.37249478841696,
+      "beta": -166.921904372149,
+      "gamma": 82.956986991731,
+      "roll": -13.174072900777873,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 278.698940781815,
+      "alt": 81.33437749475385,
+      "az": 192.89372581406334,
+      "beta": -176.789825871051,
+      "gamma": -8.05330758972,
+      "roll": 111.81870339157331,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 265.209376711885,
+      "alt": -84.24035644404822,
+      "az": 99.15704235050094,
+      "beta": 5.743038362264,
+      "gamma": -0.437774509069,
+      "roll": -94.34446041958334,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 25.675154212105,
+      "alt": -79.0883429672487,
+      "az": 261.10607460268403,
+      "beta": 3.18575436459,
+      "gamma": 10.441640518225,
+      "roll": 162.927603161996,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 325.514567941454,
+      "alt": -42.04462792074769,
+      "az": 270.18161661497976,
+      "beta": -32.002935371101,
+      "gamma": 37.839530439145,
+      "roll": -134.46848428378274,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 334.704438322295,
+      "alt": 40.56771390047837,
+      "az": 208.99467764278486,
+      "beta": -130.626756566169,
+      "gamma": 2.8091623065,
+      "roll": 2.407636220431556,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 235.773625862996,
+      "alt": -12.742529156380868,
+      "az": 23.596217596710275,
+      "beta": -39.205100655081,
+      "gamma": 73.46220060795,
+      "roll": -49.60456059652711,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 49.556333289898,
+      "alt": 81.89518659323554,
+      "az": 204.9729732096235,
+      "beta": -177.824587685229,
+      "gamma": 7.8092845773,
+      "roll": -105.61919306964091,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 74.385219919283,
+      "alt": 73.39691834920427,
+      "az": 295.7439795854483,
+      "beta": 163.641763919189,
+      "gamma": -2.880476853435,
+      "roll": 99.71510258931983,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 197.112288871062,
+      "alt": 78.76567108198432,
+      "az": 269.6240491304664,
+      "beta": -176.726333897501,
+      "gamma": -10.752645964938,
+      "roll": -162.95549119425667,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 209.5943112152,
+      "alt": -67.46589039169538,
+      "az": 347.63679665748816,
+      "beta": -21.617879150356,
+      "gamma": 6.518495617581,
+      "roll": 164.01471078016738,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 299.419438736722,
+      "alt": 72.97074443743529,
+      "az": 267.0174798416012,
+      "beta": -164.663230523011,
+      "gamma": 7.491831262931,
+      "roll": 115.42677891288815,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 281.306772810928,
+      "alt": -54.54550485689982,
+      "az": 231.18297058656984,
+      "beta": -32.275585457382,
+      "gamma": -15.541260254644,
+      "roll": 112.9879686833687,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 297.248301333679,
+      "alt": -12.829626071935323,
+      "az": 151.59516348906584,
+      "beta": 5.064774428395,
+      "gamma": -77.119221768675,
+      "roll": 5.194807770283347,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 47.61064007693,
+      "alt": -30.048285252478074,
+      "az": 208.3916312020804,
+      "beta": -22.691765554419,
+      "gamma": 57.129550657674,
+      "roll": 26.466201265801658,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 288.837765241325,
+      "alt": 29.5241437018242,
+      "az": 130.5156138573452,
+      "beta": 138.010252325025,
+      "gamma": -48.470321424821,
+      "roll": 39.750891067348846,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 329.060533185272,
+      "alt": 19.74554345593633,
+      "az": 321.11525662052213,
+      "beta": 136.143342953308,
+      "gamma": 62.061259174281,
+      "roll": 47.40362280306047,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 252.551582607037,
+      "alt": -76.57335260987318,
+      "az": 20.477285314431537,
+      "beta": 0.722691858078,
+      "gamma": 13.407540597992,
+      "roll": -93.11381402653667,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 147.09916634008,
+      "alt": 46.8234105746717,
+      "az": 134.61489167775485,
+      "beta": 169.214412738176,
+      "gamma": 42.066938052271,
+      "roll": 15.871952571928148,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 354.778821008388,
+      "alt": -51.10608922165639,
+      "az": 140.1388633417852,
+      "beta": -29.666663234004,
+      "gamma": -26.398763307487,
+      "roll": -52.026200858093176,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 276.54046607905,
+      "alt": 24.211705098998507,
+      "az": 208.3832201474567,
+      "beta": -128.148181618486,
+      "gamma": -48.399521084024,
+      "roll": 149.57171167942187,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 109.107822869843,
+      "alt": -85.78908698328271,
+      "az": 233.27126354705254,
+      "beta": 4.013999620183,
+      "gamma": 1.273675967826,
+      "roll": -72.42372179271136,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 36.074467750037,
+      "alt": 11.768194307351152,
+      "az": 254.85189707700687,
+      "beta": 120.254486704748,
+      "gamma": 66.121710051798,
+      "roll": -28.073792367164174,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 162.449686699883,
+      "alt": -9.561580608522561,
+      "az": 286.9712009298965,
+      "beta": 3.433760534719,
+      "gamma": -80.421060822233,
+      "roll": -86.51780515541799,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 176.098736257382,
+      "alt": 24.317523089656817,
+      "az": 267.0847326697278,
+      "beta": 165.283333935829,
+      "gamma": -64.801182014513,
+      "roll": 163.81302842429506,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 79.336439927508,
+      "alt": 15.261994086933683,
+      "az": 203.61993153662385,
+      "beta": 140.589665488594,
+      "gamma": 70.08032608022,
+      "roll": 41.15351890327014,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 229.347655317781,
+      "alt": 4.398513175080453,
+      "az": 220.3895511004739,
+      "beta": 176.587586063436,
+      "gamma": -85.593658785652,
+      "roll": 86.57749394946467,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 241.483362338356,
+      "alt": 19.216450927315734,
+      "az": 256.952263541067,
+      "beta": -114.978761768368,
+      "gamma": -38.791951054735,
+      "roll": 163.72977576923523,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 91.058125320898,
+      "alt": 55.35913028476074,
+      "az": 354.03393611415373,
+      "beta": 176.617152110711,
+      "gamma": -34.495852158585,
+      "roll": -5.958482273420628,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 345.131947037607,
+      "alt": -76.43568085210072,
+      "az": 238.3675501469341,
+      "beta": -9.926795558058,
+      "gamma": 9.290661455779,
+      "roll": -42.69089073147751,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 79.357743372598,
+      "alt": -56.2868832173272,
+      "az": 260.9046619086371,
+      "beta": 32.130732632722,
+      "gamma": 10.803566278378,
+      "roll": -73.38210113078667,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 85.389971742612,
+      "alt": -4.912152189701445,
+      "az": 193.58962257820897,
+      "beta": 61.161476099877,
+      "gamma": 79.774327577729,
+      "roll": -61.54742570395226,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 126.989884552728,
+      "alt": -10.831211069504306,
+      "az": 311.5063120254837,
+      "beta": 46.188707992049,
+      "gamma": -74.249818417088,
+      "roll": -132.71705581795916,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 312.435523132935,
+      "alt": -14.036661907651649,
+      "az": 289.61242972727814,
+      "beta": -61.925882787943,
+      "gamma": 58.977425145448,
+      "roll": 65.43585742360699,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 66.626814788489,
+      "alt": -32.052164799903984,
+      "az": 211.39947148239824,
+      "beta": 12.571186098799,
+      "gamma": 57.06233673723,
+      "roll": -14.880106402503287,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 91.665151418448,
+      "alt": 21.248964616456334,
+      "az": 353.30520770091243,
+      "beta": 167.294647195816,
+      "gamma": -68.190721490978,
+      "roll": 76.35056590354571,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 335.189467885388,
+      "alt": -85.9334326534763,
+      "az": 67.58802676966235,
+      "beta": 2.987159634921,
+      "gamma": -2.760571385542,
+      "roll": -42.705502173562394,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 89.222475136124,
+      "alt": -50.349474916905905,
+      "az": 1.7613898892149393,
+      "beta": -0.815291267649,
+      "gamma": -39.643524830932,
+      "roll": 88.72225788814808,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 205.588298130147,
+      "alt": 81.04029759829149,
+      "az": 318.5872579909494,
+      "beta": -171.374649669042,
+      "gamma": -2.434014392615,
+      "roll": 74.35913954968157,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 207.05869726637,
+      "alt": -4.993915318833672,
+      "az": 46.813942307375775,
+      "beta": -72.537525336947,
+      "gamma": 73.136771388137,
+      "roll": -16.75452549428033,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 175.247471641177,
+      "alt": 51.506130638395206,
+      "az": 314.80066202107156,
+      "beta": -152.901370372876,
+      "gamma": -28.455329425528,
+      "roll": 47.041382268488576,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 283.45134903061,
+      "alt": -18.877873569012024,
+      "az": 349.58935935751714,
+      "beta": 8.817927328189,
+      "gamma": 70.887623430115,
+      "roll": 170.67644800341589,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 293.172286222591,
+      "alt": -41.564925994134555,
+      "az": 335.66243984162963,
+      "beta": -1.313778120475,
+      "gamma": 48.421713237756,
+      "roll": 91.75602912962808,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 351.532057767377,
+      "alt": 20.683196815409417,
+      "az": 258.60351325603085,
+      "beta": -138.011474391895,
+      "gamma": 61.628118034782,
+      "roll": -135.64891037034843,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 259.367406818706,
+      "alt": 15.457710045907518,
+      "az": 192.4712882075683,
+      "beta": -173.381562632834,
+      "gamma": -74.435965545744,
+      "roll": 6.868002698683426,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 304.80272584804,
+      "alt": -80.52062796945852,
+      "az": 157.66596454683202,
+      "beta": -2.064640673519,
+      "gamma": -9.253803850766,
+      "roll": -12.635801121266638,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 320.817879681871,
+      "alt": 14.922938330180656,
+      "az": 163.2838709455267,
+      "beta": -115.423777107381,
+      "gamma": -53.141165682658,
+      "roll": 69.17669308647848,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 199.146300666534,
+      "alt": 54.96186223841096,
+      "az": 37.79221710744896,
+      "beta": -159.06656268584,
+      "gamma": 28.76138971191,
+      "roll": 141.5147833851325,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 119.536949511862,
+      "alt": -48.97771337867039,
+      "az": 345.45092764395656,
+      "beta": -12.67967281155,
+      "gamma": -39.347619143839,
+      "roll": -109.53752024530282,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 99.793042781779,
+      "alt": -38.484481272853714,
+      "az": 113.76806030232329,
+      "beta": -46.34754372919,
+      "gamma": 25.641529576352,
+      "roll": -22.433194960781492,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 99.063990296391,
+      "alt": -63.60897852933509,
+      "az": 31.226580989431017,
+      "beta": -17.790429609985,
+      "gamma": -19.818970276016,
+      "roll": 136.57703386844287,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 27.381133015992,
+      "alt": 59.269630008452594,
+      "az": 163.52532554257587,
+      "beta": -149.726354090214,
+      "gamma": 5.548256241148,
+      "roll": 9.404510211375538,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 177.486589391608,
+      "alt": -73.16753022468939,
+      "az": 344.72617990486236,
+      "beta": -16.070330306495,
+      "gamma": -5.075020790218,
+      "roll": -72.92965295159395,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 1.864555688562,
+      "alt": -84.5772654487991,
+      "az": 100.08169847165017,
+      "beta": -1.125692563755,
+      "gamma": -5.304949527355,
+      "roll": 168.00159362254988,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 278.71413132005,
+      "alt": 81.40887002946215,
+      "az": 20.008701332149297,
+      "beta": 175.847398663739,
+      "gamma": 7.527468303086,
+      "roll": 28.99612734346607,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 131.749124751124,
+      "alt": 64.83309242849936,
+      "az": 274.47071272416326,
+      "beta": 161.991056851321,
+      "gamma": -17.880648621431,
+      "roll": 43.363759663231434,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 320.707463007038,
+      "alt": 78.16166528514478,
+      "az": 181.14501206878768,
+      "beta": -170.63945456519,
+      "gamma": -7.28005703967,
+      "roll": 142.44927902911775,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 101.246904314142,
+      "alt": 86.33165699333989,
+      "az": 175.29357415065908,
+      "beta": 179.581592490691,
+      "gamma": 3.644435722248,
+      "roll": 6.553789919724238,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 285.435604701544,
+      "alt": -60.828700684718825,
+      "az": 173.06951519594307,
+      "beta": -4.719640366502,
+      "gamma": -28.820159940225,
+      "roll": -99.71844350630415,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 351.858067357868,
+      "alt": -61.036223760613765,
+      "az": 44.012661524996425,
+      "beta": 24.156707087333,
+      "gamma": -16.484397137217,
+      "roll": 57.68010435011939,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 277.192968380332,
+      "alt": -44.7781296946749,
+      "az": 188.65568728823786,
+      "beta": -15.387999490934,
+      "gamma": -43.067234548905,
+      "roll": 158.0484320357133,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 149.355104102577,
+      "alt": 85.63601232256514,
+      "az": 279.96007631367877,
+      "beta": 178.455907933251,
+      "gamma": -4.082181275299,
+      "roll": -110.73985254354962,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 176.619733672183,
+      "alt": -72.2337394780649,
+      "az": 332.49525644081587,
+      "beta": -15.375200670947,
+      "gamma": -9.011382981942,
+      "roll": -150.3338588079518,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 167.227474849854,
+      "alt": -26.267797443553135,
+      "az": 332.1965743284498,
+      "beta": -56.985265378762,
+      "gamma": -35.682023012769,
+      "roll": -69.24309612673488,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 29.075396646695,
+      "alt": -1.5423563019516422,
+      "az": 61.2706991948397,
+      "beta": -12.644311842896,
+      "gamma": -88.419298776149,
+      "roll": 77.35102955077377,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 172.251539204091,
+      "alt": -29.730608807958596,
+      "az": 211.1400766162345,
+      "beta": 58.108546659115,
+      "gamma": -20.166742059856,
+      "roll": 167.89247843457412,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 244.457366269605,
+      "alt": 87.56884088321965,
+      "az": 19.02032016112703,
+      "beta": -179.723680566297,
+      "gamma": 2.415414552092,
+      "roll": 173.4718611662551,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 54.916038955693,
+      "alt": -50.92085875284445,
+      "az": 256.1667185984585,
+      "beta": 28.086741336945,
+      "gamma": 28.370156154514,
+      "roll": -48.31804802924222,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 104.603281683466,
+      "alt": -49.43102356596495,
+      "az": 249.27259581366687,
+      "beta": 40.407047561554,
+      "gamma": 3.978519585732,
+      "roll": -85.34047430808126,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 275.452498809838,
+      "alt": 85.00884417642098,
+      "az": 354.91126887689126,
+      "beta": 179.968231248151,
+      "gamma": 4.991054974227,
+      "roll": 90.36515225583543,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 20.789483170737,
+      "alt": 13.806593845928859,
+      "az": 54.161198419999494,
+      "beta": 133.424037046511,
+      "gamma": -69.685394539794,
+      "roll": 131.59159888310967,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 178.105186250006,
+      "alt": 57.90611910605011,
+      "az": 290.3535042311075,
+      "beta": -168.768938982108,
+      "gamma": -30.263232168427,
+      "roll": 111.5047571082149,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 214.304977943149,
+      "alt": 54.90943870500678,
+      "az": 257.27300463786656,
+      "beta": -165.512725476184,
+      "gamma": -32.315590059165,
+      "roll": 115.79595571166936,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 247.811865798321,
+      "alt": 55.15238126358648,
+      "az": 317.4637286730813,
+      "beta": -147.805669931415,
+      "gamma": 14.120997785209,
+      "roll": 21.181524474879723,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 338.772710025448,
+      "alt": -68.04455662755706,
+      "az": 264.0053433100621,
+      "beta": -10.448169319874,
+      "gamma": 19.41902750514,
+      "roll": -60.98550514369903,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 117.28408266075,
+      "alt": 45.04282660344984,
+      "az": 139.48612723029302,
+      "beta": -167.128061946046,
+      "gamma": 43.458223522246,
+      "roll": -18.37795301400061,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 171.614063396808,
+      "alt": -26.986695922319463,
+      "az": 291.752548475815,
+      "beta": -24.417042364059,
+      "gamma": -60.108693233105,
+      "roll": -27.63821845487223,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 126.591789257785,
+      "alt": -65.05267238495807,
+      "az": 295.0545219832821,
+      "beta": 12.45792206231,
+      "gamma": -21.788688403497,
+      "roll": 30.76056837329108,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 148.311129477284,
+      "alt": 9.684279460041651,
+      "az": 295.59557872282704,
+      "beta": 148.117689245051,
+      "gamma": -78.573759773955,
+      "roll": -122.39897566580848,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 246.02356065868,
+      "alt": -14.347145749164511,
+      "az": 268.7694069517578,
+      "beta": -74.214785476695,
+      "gamma": -24.368754914166,
+      "roll": -83.34701278457541,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 237.017850027235,
+      "alt": 44.100063441582165,
+      "az": 232.7660889393504,
+      "beta": -160.746842427858,
+      "gamma": -42.511537756118,
+      "roll": -62.66635033454145,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 164.46003868097,
+      "alt": -51.53834194801954,
+      "az": 94.17461007398622,
+      "beta": -8.896709454696,
+      "gamma": 37.574599839339,
+      "roll": -75.60277423552749,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 14.60932245127,
+      "alt": 67.69993236423812,
+      "az": 124.78812778030535,
+      "beta": -162.703984612868,
+      "gamma": -14.297327703268,
+      "roll": -128.416937844123,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 120.626482800523,
+      "alt": 33.72819126642035,
+      "az": 184.3299955298665,
+      "beta": 139.364028239156,
+      "gamma": 42.971568732333,
+      "roll": -128.45898756586863,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 65.840992666397,
+      "alt": 14.220715565356912,
+      "az": 217.88093826498468,
+      "beta": 136.892725733364,
+      "gamma": 70.337266712705,
+      "roll": 44.82704970092823,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 334.780793710437,
+      "alt": -83.2043462092538,
+      "az": 326.7767712611454,
+      "beta": 3.568688583176,
+      "gamma": 5.786943841736,
+      "roll": -121.73799747800271,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 17.537326249499,
+      "alt": 24.290242335281462,
+      "az": 221.27831207465672,
+      "beta": -131.075624766921,
+      "gamma": 51.239573674043,
+      "roll": -145.79788545622108,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 74.697948336649,
+      "alt": -12.952779275776535,
+      "az": 17.224650685783782,
+      "beta": -8.299018315567,
+      "gamma": -76.907724138568,
+      "roll": 171.482711486931,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 176.26572700339,
+      "alt": -28.40799412175707,
+      "az": 84.96687609351609,
+      "beta": -15.738226008234,
+      "gamma": 60.377921417566,
+      "roll": -162.03856940891305,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 325.344461841575,
+      "alt": 58.127200370432405,
+      "az": 204.73973801799056,
+      "beta": -148.512598090078,
+      "gamma": -5.21700022511,
+      "roll": -98.4441370056776,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 245.790407130256,
+      "alt": -70.71899979647323,
+      "az": 303.4332413770871,
+      "beta": -19.049775193966,
+      "gamma": 3.033941341646,
+      "roll": 81.2855296411633,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 201.593237812411,
+      "alt": 32.84426733600618,
+      "az": 102.67077636393893,
+      "beta": 138.907163803066,
+      "gamma": 43.974798644566,
+      "roll": 51.475300896983214,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 113.524690219294,
+      "alt": -11.744827515269847,
+      "az": 13.434922420391388,
+      "beta": -70.925193007511,
+      "gamma": -51.474433291726,
+      "roll": 105.13739291162949,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 114.66742313277,
+      "alt": 58.7685673968744,
+      "az": 129.85971543149455,
+      "beta": -165.383370934206,
+      "gamma": 27.910560904397,
+      "roll": 60.87632664771084,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 330.354811095157,
+      "alt": -1.102167511819971,
+      "az": 113.40730251610543,
+      "beta": 79.959237537461,
+      "gamma": -83.665870515716,
+      "roll": -99.98070388204884,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 286.411644003785,
+      "alt": -14.309818210502996,
+      "az": 118.57841049985448,
+      "beta": 70.166943612328,
+      "gamma": -43.239438269949,
+      "roll": -13.878633792843914,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 221.784034606247,
+      "alt": 7.465161474803367,
+      "az": 235.09454483616983,
+      "beta": -137.57253602264,
+      "gamma": -79.862189926101,
+      "roll": 42.87674715561039,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 110.918777388187,
+      "alt": -0.4113405339525684,
+      "az": 338.8515255918443,
+      "beta": 29.178980771402,
+      "gamma": -89.528872788523,
+      "roll": 29.17980530183044,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 24.02362309974,
+      "alt": -42.56976745015685,
+      "az": 254.10529687496503,
+      "beta": 8.751151576009,
+      "gamma": 46.80719255343,
+      "roll": -101.9225275503574,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 296.618477154179,
+      "alt": -2.7048289683403937,
+      "az": 344.03303062910277,
+      "beta": 75.662329160695,
+      "gamma": 79.01427160135,
+      "roll": -75.91452129693687,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 225.417738962892,
+      "alt": 49.79611780749369,
+      "az": 98.0137020768416,
+      "beta": 145.831220084087,
+      "gamma": 22.617938630986,
+      "roll": -119.53426465774783,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 108.047643627614,
+      "alt": 38.51018388069107,
+      "az": 308.6589801554739,
+      "beta": 145.400415664238,
+      "gamma": -40.848929874146,
+      "roll": 133.47508797434278,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 213.319353668702,
+      "alt": -74.76303350162115,
+      "az": 203.73973688402728,
+      "beta": 8.425215534037,
+      "gamma": -12.741925166738,
+      "roll": 33.88330294650024,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 36.034215502572,
+      "alt": 67.18066806966482,
+      "az": 223.27775959570772,
+      "beta": -175.538002169424,
+      "gamma": 22.401738401027,
+      "roll": 78.42797610434297,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 129.390244102494,
+      "alt": -29.741476824373414,
+      "az": 291.0847821320764,
+      "beta": 40.778558591968,
+      "gamma": -49.070790936105,
+      "roll": -41.2164261818466,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 242.633838170006,
+      "alt": 72.78909276123036,
+      "az": 84.74112580056348,
+      "beta": 165.378277436094,
+      "gamma": 9.179369572834,
+      "roll": -121.44487924885868,
+      "screen_angle": 270.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 196.982235508606,
+      "alt": 14.356244570653203,
+      "az": 39.653967559719966,
+      "beta": -114.956781876847,
+      "gamma": 54.009525654068,
+      "roll": -69.36595326719177,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 41.518687015892,
+      "alt": 29.09185740621392,
+      "az": 34.06496597898378,
+      "beta": 155.893696791575,
+      "gamma": -57.814281162227,
+      "roll": 152.1345328212479,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 233.89914435875,
+      "alt": -12.08539369286585,
+      "az": 220.87089525924102,
+      "beta": -21.224907961945,
+      "gamma": -77.020346040823,
+      "roll": -21.73014209270241,
+      "screen_angle": 90.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 276.174066046693,
+      "alt": 39.299801485337525,
+      "az": 352.0087011457578,
+      "beta": -177.78124163995,
+      "gamma": 50.665005325854,
+      "roll": -92.86767723720072,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 200.550307668712,
+      "alt": 84.25156159329646,
+      "az": 76.35991682540516,
+      "beta": 179.306086360044,
+      "gamma": 5.706541966796,
+      "roll": -83.05519030339735,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 255.388938657567,
+      "alt": 29.15981662964714,
+      "az": 206.99967085663786,
+      "beta": -158.967789867178,
+      "gamma": -58.531798844216,
+      "roll": -65.73368311466105,
+      "screen_angle": 180.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 262.459180050016,
+      "alt": 34.213348453545535,
+      "az": 209.12322711368668,
+      "beta": -151.587163153029,
+      "gamma": -50.261640757742,
+      "roll": 125.12718145541498,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 296.117741630624,
+      "alt": -88.79654568067909,
+      "az": 168.90577976109446,
+      "beta": -0.31199688619,
+      "gamma": -1.162313896998,
+      "roll": -105.02668612437967,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 165.925886557582,
+      "alt": -25.64378649247248,
+      "az": 280.16958191480336,
+      "beta": 8.073277506888,
+      "gamma": -64.080566773501,
+      "roll": -81.03773935434575,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    },
+    {
+      "alpha": 4.206969910938,
+      "alt": -77.0665399465663,
+      "az": 174.18113601998036,
+      "beta": -12.928514237131,
+      "gamma": -0.360727841035,
+      "roll": -178.42897787193812,
+      "screen_angle": 0.0,
+      "tolerance_deg": 1e-07
+    }
+  ],
+  "source": "W3C Device Orientation and Motion (Appendix A worked example and getRotationMatrix, R = Rz(alpha) Rx(beta) Ry(gamma)), W3C Screen Orientation (angle counter-clockwise from natural); geometric construction of the expected poses"
+}

@@ -19,7 +19,7 @@ import {
   urlStateOf,
 } from './store';
 import type { MetaResponse, MinorBodySummary } from './storeTypes';
-import { createSelectionReadout } from './types';
+import { createArState, createSelectionReadout } from './types';
 import { serializeUrlState } from './url';
 
 const T0 = 1_757_000_000_000;
@@ -1167,5 +1167,357 @@ describe('urlStateOf and defaultsUrlState', () => {
       lang: 'en',
       night: false,
     });
+  });
+});
+
+describe('augmented reality slice (plan D115)', () => {
+  it('starts off with the default slice, which never reaches the URL', () => {
+    const store = createSkyStore({}, T0);
+    expect(store.getState().ar).toEqual(createArState());
+    expect(store.getState().ar.cameraFovDeg).toBe(73);
+    const before = urlStateOf(store.getState());
+    const { actions } = store.getState();
+    actions.setArCapabilities({
+      secure: true,
+      camera: true,
+      orientation: true,
+      touch: true,
+      videoInput: true,
+    });
+    actions.setArPermission('granted');
+    actions.requestAr();
+    actions.setArMode('sensor');
+    actions.setArOffset(12);
+    actions.setArCameraFov(80);
+    actions.setArHeading({ source: 'absolute', accuracyDeg: null, level: 'good' });
+    actions.setArFrame({ width: 1280, height: 720 });
+    actions.setArXr({ support: 'supported', phase: 'entering' });
+    actions.dismissArHint();
+    expect(store.getState().ar.mode).toBe('sensor');
+    // `urlStateOf` picks explicit fields: nothing of the slice leaks (backlog B-73).
+    expect(urlStateOf(store.getState())).toEqual(before);
+    expect(serializeUrlState(urlStateOf(store.getState()), defaultsUrlState())).not.toMatch(
+      /(^|&)ar/,
+    );
+    expect(Object.keys(urlStateOf(store.getState()))).not.toContain('ar');
+  });
+
+  it('requestAr enters from off only: remembers the view, ends follow, collapses the sheet, closes the dialog and clears the error', () => {
+    const store = createSkyStore({ az: 123, alt: 10, fov: 45 }, T0);
+    const { actions } = store.getState();
+    actions.select('moon');
+    actions.setFollow(true);
+    actions.openPanel('time');
+    actions.openDialog('about');
+    actions.failAr('cameraDenied');
+    expect(store.getState().ar.error).toBe('cameraDenied');
+    const before = store.getState();
+
+    actions.requestAr();
+    const after = store.getState();
+    expect(after.ar.mode).toBe('requesting');
+    expect(after.ar.viewBefore).toEqual({ az: 123, alt: 10, fov: 45 });
+    expect(after.ar.error).toBeNull();
+    expect(after.follow).toBe(false);
+    expect(after.ui).toMatchObject({ panel: 'time', sheet: 'collapsed', dialog: null });
+    expect(after.selection).toBe('moon');
+    expect(after.view).toBe(before.view);
+
+    // Not from any other mode: the slice object is untouched.
+    actions.setView({ az: 200 });
+    actions.requestAr();
+    expect(store.getState().ar).toBe(after.ar);
+    actions.setArMode('sensor');
+    const sensor = store.getState().ar;
+    actions.requestAr();
+    expect(store.getState().ar).toBe(sensor);
+  });
+
+  it('requestAr is a no-op off Earth (AR-1 is Earth only)', () => {
+    const store = createSkyStore({}, T0);
+    const { actions } = store.getState();
+    actions.setObserver({ body: 'mars', lat: 0, lon: 0, elev: 0 });
+    actions.select('moon');
+    actions.setFollow(true);
+    actions.openDialog('about');
+    const before = store.getState();
+    actions.requestAr();
+    expect(store.getState()).toBe(before);
+    expect(before.ar.mode).toBe('off');
+    expect(before.follow).toBe(true);
+    expect(before.ui.dialog).toBe('about');
+
+    // Back on Earth the tap works again.
+    actions.setObserver({ body: 'earth', lat: 51.48, lon: 0, elev: 0 });
+    actions.requestAr();
+    expect(store.getState().ar.mode).toBe('requesting');
+    expect(store.getState().follow).toBe(false);
+  });
+
+  it('setArMode allows requesting -> sensor and sensor <-> xr only', () => {
+    const store = createSkyStore({}, T0);
+    const { actions } = store.getState();
+    const off = store.getState().ar;
+    actions.setArMode('sensor');
+    actions.setArMode('xr');
+    expect(store.getState().ar).toBe(off);
+
+    actions.requestAr();
+    actions.setArMode('xr');
+    expect(store.getState().ar.mode).toBe('requesting');
+    actions.setArMode('sensor');
+    expect(store.getState().ar.mode).toBe('sensor');
+    const sensor = store.getState().ar;
+    actions.setArMode('sensor');
+    expect(store.getState().ar).toBe(sensor);
+    actions.setArMode('xr');
+    expect(store.getState().ar.mode).toBe('xr');
+    const xr = store.getState().ar;
+    actions.setArMode('xr');
+    expect(store.getState().ar).toBe(xr);
+    actions.setArMode('sensor');
+    expect(store.getState().ar.mode).toBe('sensor');
+  });
+
+  it('setArPose writes the canonical view and the roll in one set, and is a no-op while off', () => {
+    const store = createSkyStore({ az: 0, alt: 20, fov: 60 }, T0);
+    const { actions } = store.getState();
+    let writes = 0;
+    const stop = store.subscribe(() => {
+      writes += 1;
+    });
+    actions.setArPose(90, 10, 5);
+    expect(writes).toBe(0);
+    expect(store.getState().view).toEqual({ az: 0, alt: 20, fov: 60 });
+    expect(store.getState().ar.roll).toBe(0);
+
+    actions.requestAr();
+    writes = 0;
+    actions.setArPose(370, 95, -12.5);
+    expect(writes).toBe(1);
+    expect(store.getState().view).toEqual({ az: 10, alt: 89.99, fov: 60 });
+    expect(store.getState().ar.roll).toBe(-12.5);
+    actions.setArMode('sensor');
+    actions.setArPose(-90, -10, 170);
+    expect(store.getState().view).toEqual({ az: 270, alt: -10, fov: 60 });
+    expect(store.getState().ar.roll).toBe(170);
+    stop();
+  });
+
+  it('exitAr restores the field of view, keeps the direction, resets the per-frame fields and keeps the error', () => {
+    const store = createSkyStore({ az: 0, alt: 20, fov: 60 }, T0);
+    const { actions } = store.getState();
+    const off = store.getState().ar;
+    actions.exitAr();
+    expect(store.getState().ar).toBe(off);
+
+    actions.requestAr();
+    actions.setArMode('sensor');
+    actions.setArPose(45, 30, 15);
+    actions.setView({ fov: 40 });
+    actions.setArFrame({ width: 640, height: 480 });
+    actions.setArHeading({ source: 'compass', accuracyDeg: 12, level: 'good' });
+    actions.setArXr({ support: 'supported', phase: 'active', aligned: true });
+    actions.setArOffset(-20);
+    actions.setArCameraFov(90);
+    actions.setArPermission('granted');
+    actions.exitAr();
+    const { ar, view } = store.getState();
+    expect(view).toEqual({ az: 45, alt: 30, fov: 60 });
+    expect(ar).toMatchObject({
+      mode: 'off',
+      viewBefore: null,
+      roll: 0,
+      frame: null,
+      heading: { source: 'none', accuracyDeg: null, level: 'none' },
+      xr: { support: 'supported', phase: 'idle', aligned: null },
+      error: null,
+      // Calibration, camera field and permission survive the exit for the next entry.
+      azOffsetDeg: -20,
+      cameraFovDeg: 90,
+      permission: 'granted',
+    });
+    // The error survives `exitAr` (the banner's dismiss clears it) and no `viewBefore` means the
+    // field of view is left alone.
+    actions.requestAr();
+    actions.failAr('trackEnded');
+    expect(store.getState().ar.error).toBe('trackEnded');
+    actions.requestAr();
+    expect(store.getState().ar.error).toBeNull();
+    actions.exitAr();
+    actions.failAr('noCamera');
+    expect(store.getState().ar.error).toBe('noCamera');
+    actions.exitAr();
+    expect(store.getState().ar.error).toBe('noCamera');
+  });
+
+  it('failAr exits with the error; an xr code from sensor or xr keeps the sensor mode', () => {
+    const store = createSkyStore({ az: 0, alt: 20, fov: 60 }, T0);
+    const { actions } = store.getState();
+    actions.requestAr();
+    actions.setArMode('sensor');
+    actions.setArPose(10, 10, 3);
+    actions.setView({ fov: 30 });
+    actions.setArXr({ support: 'supported', phase: 'entering', aligned: false });
+
+    actions.failAr('xrUnsupported');
+    expect(store.getState().ar).toMatchObject({
+      mode: 'sensor',
+      error: 'xrUnsupported',
+      roll: 3,
+      xr: { support: 'supported', phase: 'idle', aligned: null },
+    });
+    expect(store.getState().view.fov).toBe(30);
+
+    actions.setArMode('xr');
+    actions.setArXr({ phase: 'active', aligned: true });
+    actions.failAr('xrFailed');
+    expect(store.getState().ar).toMatchObject({
+      mode: 'sensor',
+      error: 'xrFailed',
+      xr: { support: 'supported', phase: 'idle', aligned: null },
+    });
+    expect(store.getState().view.fov).toBe(30);
+
+    // A sensor failure ends AR altogether, field of view restored.
+    actions.failAr('orientationUnavailable');
+    expect(store.getState().ar).toMatchObject({
+      mode: 'off',
+      error: 'orientationUnavailable',
+      roll: 0,
+      viewBefore: null,
+    });
+    expect(store.getState().view).toEqual({ az: 10, alt: 10, fov: 60 });
+
+    // An xr code while requesting (no session possible yet) is a full exit as well.
+    actions.requestAr();
+    actions.failAr('xrDenied');
+    expect(store.getState().ar).toMatchObject({ mode: 'off', error: 'xrDenied' });
+    // And while off it only records the error.
+    const view = store.getState().view;
+    actions.failAr('xrBusy');
+    expect(store.getState().ar).toMatchObject({ mode: 'off', error: 'xrBusy' });
+    expect(store.getState().view).toBe(view);
+    actions.clearArError();
+    expect(store.getState().ar.error).toBeNull();
+    const cleared = store.getState().ar;
+    actions.clearArError();
+    expect(store.getState().ar).toBe(cleared);
+  });
+
+  it('wraps the calibration offset to [-180, 180) and clamps the camera field', () => {
+    const store = createSkyStore({}, T0);
+    const { actions } = store.getState();
+    actions.setArOffset(190);
+    expect(store.getState().ar.azOffsetDeg).toBe(-170);
+    actions.setArOffset(-180);
+    expect(store.getState().ar.azOffsetDeg).toBe(-180);
+    actions.setArOffset(180);
+    expect(store.getState().ar.azOffsetDeg).toBe(-180);
+    actions.setArOffset(0);
+    expect(store.getState().ar.azOffsetDeg).toBe(0);
+    actions.nudgeArOffset(170);
+    actions.nudgeArOffset(20);
+    expect(store.getState().ar.azOffsetDeg).toBe(-170);
+    actions.nudgeArOffset(-15);
+    expect(store.getState().ar.azOffsetDeg).toBe(175);
+    const ar = store.getState().ar;
+    actions.setArOffset(NaN);
+    actions.nudgeArOffset(Infinity);
+    expect(store.getState().ar).toBe(ar);
+
+    actions.setArCameraFov(20);
+    expect(store.getState().ar.cameraFovDeg).toBe(50);
+    actions.setArCameraFov(200);
+    expect(store.getState().ar.cameraFovDeg).toBe(110);
+    actions.setArCameraFov(77.5);
+    expect(store.getState().ar.cameraFovDeg).toBe(77.5);
+    actions.setArCameraFov(NaN);
+    expect(store.getState().ar.cameraFovDeg).toBe(73);
+  });
+
+  it('updates the permission, heading, frame, XR patch, capabilities and hint', () => {
+    const store = createSkyStore({}, T0);
+    const { actions } = store.getState();
+    const initial = store.getState();
+    actions.setArPermission('pending');
+    expect(store.getState().ar.permission).toBe('pending');
+    actions.setArHeading({ source: 'compass', accuracyDeg: 25, level: 'fair' });
+    expect(store.getState().ar.heading).toEqual({
+      source: 'compass',
+      accuracyDeg: 25,
+      level: 'fair',
+    });
+    actions.setArFrame({ width: 1920, height: 1080 });
+    expect(store.getState().ar.frame).toEqual({ width: 1920, height: 1080 });
+    actions.setArFrame(null);
+    expect(store.getState().ar.frame).toBeNull();
+    actions.setArXr({ support: 'unsupported' });
+    expect(store.getState().ar.xr).toEqual({
+      support: 'unsupported',
+      phase: 'idle',
+      aligned: null,
+    });
+    actions.setArXr({ phase: 'exiting', aligned: false });
+    expect(store.getState().ar.xr).toEqual({
+      support: 'unsupported',
+      phase: 'exiting',
+      aligned: false,
+    });
+    const caps = { secure: true, camera: false, orientation: true, touch: true, videoInput: false };
+    actions.setArCapabilities(caps);
+    expect(store.getState().ar.capabilities).toBe(caps);
+    actions.dismissArHint();
+    expect(store.getState().ar.hintDismissed).toBe(true);
+    // Nothing else moved.
+    expect(store.getState().view).toBe(initial.view);
+    expect(store.getState().ui).toBe(initial.ui);
+    expect(store.getState().clock).toBe(initial.clock);
+  });
+
+  it('leaving Earth exits AR through setObserver and applyUrl (AR-1)', () => {
+    const store = createSkyStore({ az: 0, alt: 20, fov: 60 }, T0);
+    const { actions } = store.getState();
+    actions.requestAr();
+    actions.setArMode('sensor');
+    actions.setArPose(100, 5, 8);
+    actions.setView({ fov: 35 });
+    // A move on Earth keeps AR running.
+    actions.setObserver({ body: 'earth', lat: 48.85, lon: 2.35, elev: 35 });
+    expect(store.getState().ar.mode).toBe('sensor');
+    let writes = 0;
+    const stop = store.subscribe(() => {
+      writes += 1;
+    });
+    actions.setObserver({ body: 'mars', lat: 0, lon: 0, elev: 0 });
+    expect(writes).toBe(1);
+    expect(store.getState().observer.body).toBe('mars');
+    expect(store.getState().ar).toMatchObject({ mode: 'off', roll: 0, viewBefore: null });
+    expect(store.getState().view).toEqual({ az: 100, alt: 5, fov: 60 });
+    stop();
+
+    // Back on Earth, in AR again; a URL to the Moon exits in the same write and keeps its fov.
+    actions.setObserver({ body: 'earth', lat: 51.48, lon: 0, elev: 0 });
+    actions.requestAr();
+    actions.setArMode('sensor');
+    actions.setView({ fov: 35 });
+    actions.applyUrl({ body: 'moon', fov: 25 }, T0);
+    expect(store.getState().observer.body).toBe('moon');
+    expect(store.getState().ar.mode).toBe('off');
+    expect(store.getState().view.fov).toBe(25);
+    // Without a URL fov the entry value returns.
+    actions.setObserver({ body: 'earth', lat: 51.48, lon: 0, elev: 0 });
+    actions.requestAr();
+    actions.setView({ fov: 35 });
+    actions.applyUrl({ body: 'mars', az: 10 }, T0);
+    expect(store.getState().ar.mode).toBe('off');
+    // az from the URL, alt as the last pose left it, fov as it was at this entry.
+    expect(store.getState().view).toEqual({ az: 10, alt: 5, fov: 25 });
+    // A URL that stays on Earth or names no body leaves AR alone.
+    actions.setObserver({ body: 'earth', lat: 51.48, lon: 0, elev: 0 });
+    actions.requestAr();
+    actions.applyUrl({ lat: 40, body: 'earth' }, T0);
+    actions.applyUrl({ az: 20 }, T0);
+    expect(store.getState().ar.mode).toBe('requesting');
   });
 });

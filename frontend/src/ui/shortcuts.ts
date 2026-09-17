@@ -6,9 +6,12 @@ import { DEFAULT_SPEEDS, nextSpeed, speedList, stepDeltaOf } from '../state/time
 // last, the same memory the Play button uses), `,` and `.` move one index in the signed speed
 // list (from a pause: the first backward or forward speed), `[` and `]` step by `ui.stepUnit`,
 // `n` goes live, `t` opens the date-and-time editor. View: the arrows pan by a tenth of the
-// field of view, `+`/`=` and `-` zoom by 1.25 (the store clamps the field). Escape collapses the
-// sheet and keeps the chosen tab (on the desktop layout the column stays: `closePanel` would
-// send the tabs back to the default one); while a dialog is open the listener bails and the
+// field of view, `+`/`=` and `-` zoom by 1.25 (the store clamps the field); while augmented
+// reality runs (plan D124) the view keys are inert: the sensors own the direction and the camera
+// model owns the field. Escape collapses the sheet and keeps the chosen tab (on the desktop
+// layout the column stays: `closePanel` would send the tabs back to the default one), and with
+// the sheet collapsed leaves augmented reality (plan D127: one home for the key; the dialog and
+// the sheet own it first); while a dialog is open the listener bails and the
 // native `<dialog>` cancel handles Escape (`Dialog.tsx` `onClose` -> `closeDialog`), so the
 // dialog is closed exactly once. Ignored while the event is already
 // handled or carries a modifier, during IME composition, on key repeat, while a dialog is open,
@@ -44,13 +47,14 @@ export function installShortcuts(store: SkyStore, target: ShortcutTarget = windo
       return;
     }
     const state = store.getState();
-    const { actions, clock, view, ui } = state;
+    const { actions, clock, view, ui, ar } = state;
     if (ui.dialog !== null || !ui.shortcuts) {
       return;
     }
     const list = speedList(state.meta?.limits.speeds ?? DEFAULT_SPEEDS);
     const current = clock.mode === 'live' ? 1 : clock.mode === 'paused' ? 0 : clock.speed;
     const pan = view.fov / 10;
+    const inAr = ar.mode !== 'off';
     switch (event.key) {
       case ' ':
         if (clock.mode === 'paused') {
@@ -78,30 +82,52 @@ export function installShortcuts(store: SkyStore, target: ShortcutTarget = windo
         actions.openDialog('timeEditor');
         break;
       case 'ArrowLeft':
+        if (inAr) {
+          return;
+        }
         actions.setView({ az: view.az - pan });
         break;
       case 'ArrowRight':
+        if (inAr) {
+          return;
+        }
         actions.setView({ az: view.az + pan });
         break;
       case 'ArrowUp':
+        if (inAr) {
+          return;
+        }
         actions.setView({ alt: view.alt + pan });
         break;
       case 'ArrowDown':
+        if (inAr) {
+          return;
+        }
         actions.setView({ alt: view.alt - pan });
         break;
       case '+':
       case '=':
+        if (inAr) {
+          return;
+        }
         actions.setView({ fov: view.fov / 1.25 });
         break;
       case '-':
+        if (inAr) {
+          return;
+        }
         actions.setView({ fov: view.fov * 1.25 });
         break;
       case 'Escape':
-        if (ui.sheet === 'collapsed') {
-          return;
+        if (ui.sheet !== 'collapsed') {
+          actions.setUi({ sheet: 'collapsed' });
+          break;
         }
-        actions.setUi({ sheet: 'collapsed' });
-        break;
+        if (inAr) {
+          actions.exitAr();
+          break;
+        }
+        return;
       default:
         return;
     }

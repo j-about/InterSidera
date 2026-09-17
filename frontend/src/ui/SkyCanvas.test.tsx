@@ -16,8 +16,9 @@ import SkyCanvas, { backendOverride } from './SkyCanvas';
 
 // The single engine effect (plan D87, brief l.551): one factory call even under StrictMode's
 // double effect, disposal on unmount, disposal of an engine that resolves after the abort, the
-// `engine` slice of the store, the D93 seam (label host, text resolver, tickers, `onEngine`) and
-// the dev/e2e hash override. Fetch hangs so the boot never reaches the network.
+// `engine` slice of the store, the D93 seam (label host, text resolver, tickers, `onEngine`), the
+// D121 AR underlay before the canvas and the dev/e2e hash override. Fetch hangs so the boot never
+// reaches the network.
 
 /** A fake engine plus its `dispose` spy, kept apart so the assertions never unbind a method. */
 function fakeEngine(backend: 'webgl2' | 'webgpu' = 'webgl2'): {
@@ -29,6 +30,7 @@ function fakeEngine(backend: 'webgl2' | 'webgpu' = 'webgl2'): {
     backend,
     adapterInfo: null,
     current: createFrameEval(1),
+    underlayRoot: document.createElement('div'),
     setCatalog: () => undefined,
     currentTt: () => NaN,
     whenReady: () => new Promise<void>(() => undefined),
@@ -43,6 +45,10 @@ function fakeEngine(backend: 'webgl2' | 'webgpu' = 'webgl2'): {
     skyBrightness: () => 0,
     layerStats: () => ({ dso: 0, clinesSegments: 0 }),
     reducedMotion: () => false,
+    preloadXr: () => Promise.resolve(),
+    enterXr: () => Promise.reject(new Error('no XR in tests')),
+    exitXr: () => Promise.resolve(),
+    arTransparent: () => false,
     resize: () => undefined,
     dispose: () => {
       dispose();
@@ -228,6 +234,36 @@ describe('SkyCanvas', () => {
     expect(replacement).toHaveBeenCalledTimes(1);
     expect(replacement).toHaveBeenLastCalledWith(null);
     expect(onEngine).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the AR underlay before the canvas and hands it to the factory (plan D121)', async () => {
+    const store = createSkyStore();
+    const { engine } = fakeEngine();
+    const factory = vi.fn<SkyEngineFactory>(() => Promise.resolve(engine));
+    render(<SkyCanvas store={store} frames={fakeFrames()} createEngine={factory} />);
+    await waitFor(() => {
+      expect(factory).toHaveBeenCalledTimes(1);
+    });
+    const options = factory.mock.calls[0]?.[0];
+    if (options === undefined) {
+      throw new Error('the factory received no options');
+    }
+    const { underlayRoot, canvas, labelRoot } = options;
+    expect(underlayRoot).toBeInstanceOf(HTMLElement);
+    expect(underlayRoot.getAttribute('aria-hidden')).toBe('true');
+    expect(underlayRoot.hasAttribute('data-sky-underlay')).toBe(true);
+    expect(underlayRoot.parentElement).toBe(canvas.parentElement);
+    // DOM order: underlay, canvas, labels, so the video paints under the positioned canvas and
+    // the labels over it.
+    expect(underlayRoot.compareDocumentPosition(canvas) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(canvas.compareDocumentPosition(labelRoot) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(canvas.classList.contains('relative')).toBe(true);
+    // React leaves the underlay empty: its contents belong to the AR controller.
+    expect(underlayRoot.childElementCount).toBe(0);
   });
 
   it('labels the canvas for assistive technology', () => {

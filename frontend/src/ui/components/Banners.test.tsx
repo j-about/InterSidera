@@ -83,4 +83,35 @@ describe('Banners', () => {
     });
     expect(screen.queryByRole('alert')).toBeNull();
   });
+
+  it('warns when augmented reality stopped or was refused (AR-5) and clears on dismiss', () => {
+    const store = createSkyStore();
+    const { actions } = store.getState();
+    render(<Banners store={store} />);
+    act(() => {
+      actions.failAr('cameraDenied');
+    });
+    const alert = screen.getByRole('alert', { name: 'Augmented reality unavailable' });
+    expect(alert).toHaveTextContent('Camera access was denied');
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(store.getState().ar.error).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    // An XR failure keeps the sensor mode and shows the same home's message.
+    act(() => {
+      actions.setArCapabilities({
+        secure: true,
+        camera: true,
+        orientation: true,
+        touch: true,
+        videoInput: true,
+      });
+      actions.requestAr();
+      actions.setArMode('sensor');
+      actions.failAr('xrUnsupported');
+    });
+    expect(store.getState().ar.mode).toBe('sensor');
+    expect(screen.getByRole('alert', { name: 'Augmented reality unavailable' })).toHaveTextContent(
+      'Google Play Services for AR',
+    );
+  });
 });

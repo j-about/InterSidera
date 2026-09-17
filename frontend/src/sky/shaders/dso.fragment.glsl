@@ -2,9 +2,12 @@
 // procedural outline per type from the quad corner (vSymbol = type, minor/major ratio, on-screen
 // angle of the major axis, stroke width in corner units). Galaxy: ellipse ring with the ratio and
 // the angle; open cluster: dashed ring; globular cluster: ring and a plus; planetary nebula: ring
-// and a centre dot; nebula: square outline; other: diamond outline. The material blends with
-// ALPHA_ADD (COLOR = SRC_ALPHA * SRC + DEST): the colour is written premultiplied with alpha 1,
-// faded by the daylight (vFade). Night mode (UX-3, plan D108): red luminance only.
+// and a centre dot; nebula: square outline; other: diamond outline. The colour is premultiplied,
+// faded by the daylight (vFade), and the alpha is the coverage max(r, g, b) (plan D122): the
+// material blends with ALPHA_PREMULTIPLIED_PORTERDUFF (COLOR = SRC + (1 - SRC_ALPHA) * DEST,
+// ALPHA = SRC_ALPHA + (1 - SRC_ALPHA) * DEST_ALPHA), the defined "over" of premultiplied colour
+// on the transparent AR canvas, the 2D export canvas and the black sky alike. Night mode (UX-3,
+// plan D108): red luminance only.
 precision highp float;
 
 uniform vec2 uNight;
@@ -90,5 +93,5 @@ void main(void) {
   if (uNight.x > 0.5) {
     rgb = vec3(dot(rgb, LUMA), 0.0, 0.0) * uNight.y;
   }
-  gl_FragColor = vec4(rgb, 1.0);
+  gl_FragColor = vec4(rgb, max(rgb.r, max(rgb.g, rgb.b)));
 }

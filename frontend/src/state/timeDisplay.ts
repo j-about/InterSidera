@@ -19,7 +19,8 @@ import {
   utcJdFromTt,
 } from '../sky/math/time';
 import type { CalendarFields } from '../sky/math/time';
-import type { StepUnit } from './types';
+import { liveControl, ttAt } from './clock';
+import type { ClockState, StepUnit } from './types';
 
 export type { CalendarFields } from '../sky/math/time';
 
@@ -353,4 +354,59 @@ export function shiftYears(tt: number, years: number, ttMinusUtcS: number): numb
 /** The TT instant one step of `delta` lands on from `tt`, as `stepTime` computes it. */
 export function stepTargetTt(tt: number, delta: StepDelta, ttMinusUtcS: number): number {
   return typeof delta === 'number' ? tt + delta / DAY_S : shiftYears(tt, delta.years, ttMinusUtcS);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Time offset from now (AR-1, brief l.237; plan D127): the badge of the augmented-reality
+// overlay, where a paused or time-lapsed sky is drawn over a live camera picture.
+
+export interface TimeOffsetParts {
+  /** `0` when the offset is under a minute either way (or the mirror is unknown). */
+  sign: -1 | 0 | 1;
+  /** 365.25-day years. */
+  years: number;
+  days: number;
+  hours: number;
+  minutes: number;
+}
+
+const MINUTES_PER_DAY = 1440;
+const MINUTES_PER_YEAR = 365.25 * MINUTES_PER_DAY;
+
+/**
+ * The simulation time against the live time at `nowMs` (`ttAt` of the live control block, the
+ * same rule the transport's "Now" applies), floored to the whole minute and split into 365.25-day
+ * years, days, hours and minutes, of which only the two leading non-zero units are kept
+ * (`+3 h 12 min`, `-2 yr 10 d`, `+2 yr 5 h` for two years and five hours); under a minute, or
+ * with a NaN mirror, every field is zero and `sign` is `0`.
+ */
+export function timeOffsetParts(clock: ClockState, nowMs: number): TimeOffsetParts {
+  const deltaDays = clock.tt - ttAt(liveControl(nowMs), nowMs, clock.ttMinusUtc);
+  const totalMinutes = Math.floor(Math.abs(deltaDays) * MINUTES_PER_DAY);
+  if (!Number.isFinite(totalMinutes) || totalMinutes === 0) {
+    return { sign: 0, years: 0, days: 0, hours: 0, minutes: 0 };
+  }
+  let rest = totalMinutes;
+  const years = Math.floor(rest / MINUTES_PER_YEAR);
+  rest -= years * MINUTES_PER_YEAR;
+  const days = Math.floor(rest / MINUTES_PER_DAY);
+  rest -= days * MINUTES_PER_DAY;
+  const hours = Math.floor(rest / 60);
+  const minutes = rest - hours * 60;
+  // Keep the two leading non-zero units; the rest reads as zero.
+  let kept = 0;
+  const keep = (value: number): number => {
+    if (value === 0 || kept >= 2) {
+      return 0;
+    }
+    kept += 1;
+    return value;
+  };
+  return {
+    sign: deltaDays < 0 ? -1 : 1,
+    years: keep(years),
+    days: keep(days),
+    hours: keep(hours),
+    minutes: keep(minutes),
+  };
 }

@@ -127,8 +127,11 @@ export class DsoLayer {
         shaderLanguage: wgsl ? ShaderLanguage.WGSL : ShaderLanguage.GLSL,
       },
     );
-    // Additive outlines: no depth, no culling (the quads face the camera by construction).
-    this.material.alphaMode = Constants.ALPHA_ADD;
+    // Premultiplied "over" (plan D122, the star layer's rule): the fragment writes a coverage
+    // alpha max(rgb) and mode 8 composites it over the transparent AR canvas and in the export
+    // canvas by definition; a lone outline on the black sky is unchanged. No depth, no culling
+    // (the quads face the camera by construction).
+    this.material.alphaMode = Constants.ALPHA_PREMULTIPLIED_PORTERDUFF;
     this.material.disableDepthWrite = true;
     this.material.depthFunction = Constants.ALWAYS;
     this.material.backFaceCulling = false;

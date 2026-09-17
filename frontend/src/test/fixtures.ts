@@ -248,6 +248,144 @@ export function loadHorizonsCases(observer: string, target: string): HorizonsCas
   return rows;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Device orientation (plan D133): `device_orientation_cases.json` from
+// `scripts/generate_fixtures.py orientation`, an independent Python implementation of the W3C
+// matrix; frontend-only, no Skyfield.
+
+/** A W3C triple (degrees) with a screen angle and the camera pose it must produce. */
+export interface OrientationPoseFixture {
+  alpha: number;
+  beta: number;
+  gamma: number;
+  screen_angle: number;
+  az: number;
+  alt: number;
+  roll: number;
+  tolerance_deg: number;
+}
+
+/** A closed-form pose: the spec's worked examples and the geometric constructions. */
+export interface OrientationCaseFixture extends OrientationPoseFixture {
+  id: string;
+  forward_enu: Vec3;
+  up_enu: Vec3;
+  note: string;
+}
+
+/** A true pose seen through an arbitrary yaw, with the compass heading of two device axes. */
+export interface OrientationCompassFixture {
+  alpha_rel: number;
+  beta: number;
+  gamma: number;
+  screen_angle: number;
+  yaw_offset_deg: number;
+  compass_heading_top: number;
+  compass_heading_back: number;
+  az: number;
+  alt: number;
+  roll: number;
+  tolerance_deg: number;
+}
+
+/** One step of an approach to the nadir or the zenith (`in_band`: the gimbal rule applies). */
+export interface OrientationGimbalRowFixture extends OrientationPoseFixture {
+  region: 'nadir' | 'zenith';
+  in_band: boolean;
+}
+
+export interface OrientationCasesFixture {
+  parameters: {
+    seed: number;
+    round_trips: number;
+    compass_cases: number;
+    gimbal_alt_deg: number;
+    closed_form_tolerance_deg: number;
+    round_trip_tolerance_deg: number;
+  };
+  cases: OrientationCaseFixture[];
+  round_trips: OrientationPoseFixture[];
+  compass_cases: OrientationCompassFixture[];
+  gimbal_rows: OrientationGimbalRowFixture[];
+}
+
+function hasNumbers(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  return keys.every((key) => typeof value[key] === 'number');
+}
+
+const POSE_KEYS = ['alpha', 'beta', 'gamma', 'screen_angle', 'az', 'alt', 'roll', 'tolerance_deg'];
+
+function isOrientationPose(value: unknown): value is OrientationPoseFixture {
+  return isRecord(value) && hasNumbers(value, POSE_KEYS);
+}
+
+function isOrientationCase(value: unknown): value is OrientationCaseFixture {
+  return (
+    isOrientationPose(value) &&
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.note === 'string' &&
+    isNumberArray(value.forward_enu, 3) &&
+    isNumberArray(value.up_enu, 3)
+  );
+}
+
+function isOrientationCompassCase(value: unknown): value is OrientationCompassFixture {
+  return (
+    isRecord(value) &&
+    hasNumbers(value, [
+      'alpha_rel',
+      'beta',
+      'gamma',
+      'screen_angle',
+      'yaw_offset_deg',
+      'compass_heading_top',
+      'compass_heading_back',
+      'az',
+      'alt',
+      'roll',
+      'tolerance_deg',
+    ])
+  );
+}
+
+function isOrientationGimbalRow(value: unknown): value is OrientationGimbalRowFixture {
+  return (
+    isOrientationPose(value) &&
+    isRecord(value) &&
+    (value.region === 'nadir' || value.region === 'zenith') &&
+    typeof value.in_band === 'boolean'
+  );
+}
+
+function isOrientationCasesFixture(value: unknown): value is OrientationCasesFixture {
+  if (!isRecord(value) || !isRecord(value.parameters)) {
+    return false;
+  }
+  return (
+    hasNumbers(value.parameters, [
+      'seed',
+      'round_trips',
+      'compass_cases',
+      'gimbal_alt_deg',
+      'closed_form_tolerance_deg',
+      'round_trip_tolerance_deg',
+    ]) &&
+    Array.isArray(value.cases) &&
+    value.cases.every(isOrientationCase) &&
+    Array.isArray(value.round_trips) &&
+    value.round_trips.every(isOrientationPose) &&
+    Array.isArray(value.compass_cases) &&
+    value.compass_cases.every(isOrientationCompassCase) &&
+    Array.isArray(value.gimbal_rows) &&
+    value.gimbal_rows.every(isOrientationGimbalRow)
+  );
+}
+
+export function loadOrientationCases(): OrientationCasesFixture {
+  return readFixture('device_orientation_cases.json', isOrientationCasesFixture);
+}
+
 /** The TT epochs of the Horizons cases (`epochs_tt`), calendar strings on the TT scale. */
 export function loadHorizonsEpochs(): HorizonsEpochFixture[] {
   const doc: unknown = JSON.parse(

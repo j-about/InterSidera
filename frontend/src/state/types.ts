@@ -1,6 +1,8 @@
 // Shared state types (plan D80). This is a leaf module: it imports only the pure tuple types,
 // so `debug/skyDebugApi.ts` and the Playwright specs (type-checked by tsconfig.node.json) can
-// reach it without dragging the store, the API schema or Babylon along.
+// reach it without dragging the store, the API schema or Babylon along. It stays import-free
+// (values included): tsconfig.node.json resolves under `nodenext`, where the extensionless
+// imports of `sky/math/*` do not resolve, so even a constant is restated here rather than imported.
 
 import type { Quat, Vec3 } from '../sky/math/typed.ts';
 
@@ -447,5 +449,147 @@ export function createFrameEval(capacity: number, minorCapacity = 0): FrameEval 
     minorPhase: new Float64Array(minorCapacity),
     minorDiamDeg: new Float64Array(minorCapacity),
     minorDrawn: new Uint8Array(minorCapacity),
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Augmented reality (AR-1..AR-5, brief l.237-241; plan D115): one session-only `ar` slice, never
+// serialized (backlog B-73): the URL parameter set of UX-2 is closed, a gesture-gated permission
+// cannot self-restore from a link, and a link opening a camera prompt on another phone would be a
+// privacy surprise. `view.az/alt/fov` keep flowing to the URL while AR runs.
+
+/**
+ * `off` outside AR; `requesting` between the tap and the first pose (permission, camera and
+ * sensors starting); `sensor` is the camera-plus-orientation mode (AR-1, AR-2); `xr` the WebXR
+ * session (AR-4 [S]). Only the AR controller and the engine move it past `requesting`.
+ */
+export type ArMode = 'off' | 'requesting' | 'sensor' | 'xr';
+
+/**
+ * Outcome of `DeviceOrientationEvent.requestPermission()` run synchronously inside the tap
+ * (plan D126): `pending` while the promise is open, `notRequired` when the static is absent
+ * (Firefox Android), `prompt` when the browser answered so (Chromium >= 152) and the events decide.
+ */
+export type ArPermission = 'idle' | 'pending' | 'granted' | 'denied' | 'prompt' | 'notRequired';
+
+/**
+ * Where the heading comes from (AR-2, plan D118): `absolute` events (Android), the iOS
+ * `webkitCompassHeading` (`compass`), relative events aligned by the user's drag (`relative`,
+ * AR-3), or nothing yet. Both platforms give magnetic north (backlog B-74).
+ */
+export type HeadingSource = 'absolute' | 'compass' | 'relative' | 'none';
+
+/**
+ * The compass-accuracy indicator (AR-2): `good` for an absolute source or a compass within 15
+ * degrees, `fair` up to 35, `poor` beyond, `invalid` for a negative iOS accuracy (calibrate),
+ * `manual` for the relative source, `none` before the first sample. Computed by the controller
+ * (`ui/**` may not import `sky/math`).
+ */
+export type CompassLevel = 'good' | 'fair' | 'poor' | 'invalid' | 'manual' | 'none';
+
+/**
+ * Why AR stopped or could not start (AR-5): rendered by `ui/components/Banners.tsx` through
+ * `ar.error.<code>`, cleared by `clearArError`. The `xr*` codes leave the session but keep the
+ * sensor mode (plan D128).
+ */
+export type ArError =
+  | 'noCamera'
+  | 'noRearCamera'
+  | 'cameraDenied'
+  | 'cameraUnavailable'
+  | 'trackEnded'
+  | 'orientationDenied'
+  | 'orientationUnavailable'
+  | 'xrUnsupported'
+  | 'xrDenied'
+  | 'xrBusy'
+  | 'xrFailed';
+
+/**
+ * The AR-1 gate (plan D125): secure context, `navigator.mediaDevices` present (the literal
+ * `getUserMedia` is reserved to the lazy camera chunk, D131), `DeviceOrientationEvent`, a touch or
+ * coarse pointer, and a `videoinput` device. The button renders only when every flag holds and the
+ * observer stands on Earth; the rear facing is verified at entry (backlog B-76).
+ */
+export interface ArCapabilities {
+  secure: boolean;
+  camera: boolean;
+  orientation: boolean;
+  touch: boolean;
+  videoInput: boolean;
+}
+
+/** `navigator.xr.isSessionSupported('immersive-ar')` on the WebGL2 backend (plan D129). */
+export type XrSupport = 'unknown' | 'unsupported' | 'supported';
+
+export type XrPhase = 'idle' | 'entering' | 'active' | 'exiting';
+
+/** The WebXR sub-state (AR-4): `aligned` says whether the session's north came from a heading. */
+export interface ArXrState {
+  support: XrSupport;
+  phase: XrPhase;
+  /** `null` outside a session; `false` when the user must align north by hand (plan D130). */
+  aligned: boolean | null;
+}
+
+/** The heading source and its quality, written by the controller on change only (AR-2). */
+export interface ArHeading {
+  source: HeadingSource;
+  /** Raw `webkitCompassAccuracy` in degrees, `null` when the platform gives none; negative = invalid. */
+  accuracyDeg: number | null;
+  level: CompassLevel;
+}
+
+/** Intrinsic size of the camera video (`videoWidth` x `videoHeight`), for the field model. */
+export interface ArFrameSize {
+  width: number;
+  height: number;
+}
+
+/** The session-only augmented-reality slice (plan D115). */
+export interface ArState {
+  mode: ArMode;
+  /** `null` until `state/arCapabilities.ts` ran (main.tsx); re-run on `devicechange`. */
+  capabilities: ArCapabilities | null;
+  permission: ArPermission;
+  /** The last failure (AR-5); survives `exitAr` and is cleared by `clearArError`. */
+  error: ArError | null;
+  heading: ArHeading;
+  /** AR-3 calibration offset added to the sensor azimuth, degrees, wrapped to `[-180, 180)`. */
+  azOffsetDeg: number;
+  /** Assumed DIAGONAL field of the rear camera in degrees (AR-2, plan D123): default 73, [50, 110]. */
+  cameraFovDeg: number;
+  frame: ArFrameSize | null;
+  /**
+   * Camera roll about the view axis in degrees (plan D119): right-handed in ENU, positive when
+   * the screen top leans to the user's right; 0 outside AR. The one per-frame field.
+   */
+  roll: number;
+  /** The view at entry; its `fov` is restored on exit, the direction is kept (plan D115). */
+  viewBefore: ViewState | null;
+  /** The manual-north / calibration hint was dismissed (AR-3). */
+  hintDismissed: boolean;
+  xr: ArXrState;
+}
+
+/**
+ * The slice as a fresh page load sees it: AR off, nothing probed, no error, the default diagonal
+ * field of 73 degrees (the same literal as `sky/math/cameraFov.ts::DEFAULT_CAMERA_DIAGONAL_FOV_DEG`,
+ * pinned equal by `cameraFov.test.ts`; see the module header for why it is not imported).
+ */
+export function createArState(): ArState {
+  return {
+    mode: 'off',
+    capabilities: null,
+    permission: 'idle',
+    error: null,
+    heading: { source: 'none', accuracyDeg: null, level: 'none' },
+    azOffsetDeg: 0,
+    cameraFovDeg: 73,
+    frame: null,
+    roll: 0,
+    viewBefore: null,
+    hintDismissed: false,
+    xr: { support: 'unknown', phase: 'idle', aligned: null },
   };
 }

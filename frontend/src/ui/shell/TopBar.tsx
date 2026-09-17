@@ -6,6 +6,7 @@ import IconButton from '../components/IconButton';
 import LanguageToggle from '../controls/LanguageToggle';
 import SearchBox from '../controls/SearchBox';
 import ShareButton from '../controls/ShareButton';
+import ArButton from '../ar/ArButton';
 import AboutDialog from '../panels/AboutDialog';
 import TimeReadout from '../time/TimeReadout';
 import TransportBar from '../time/TransportBar';
@@ -16,9 +17,11 @@ import { DESKTOP_QUERY, useMediaQuery } from './useMediaQuery';
 
 // The top bar (VIEW-5, plan D112): the `banner` landmark holding search, the time readout and
 // the transport (desktop only: the phone shows them in the sheet strip), the field-of-view
-// presets, night mode, share, language, export and About. It wraps on narrow screens and floats
-// over the sky; the empty space around it lets gestures through (the parent is
-// `pointer-events-none`, the bar itself `pointer-events-auto`).
+// presets, night mode, share, language, export, the AR button (rendered only where the AR-1 gate
+// holds, plan D125) and About. It wraps on narrow screens and floats over the sky; the empty
+// space around it lets gestures through (the parent is `pointer-events-none`, the bar itself
+// `pointer-events-auto`). While augmented reality runs, `App` mounts `ui/ar/ArOverlay` in its
+// place (plan D127).
 
 export interface TopBarProps {
   store: SkyStore;
@@ -42,6 +45,7 @@ export default function TopBar({ store }: TopBarProps) {
       <ShareButton store={store} />
       <LanguageToggle store={store} />
       <ExportButton store={store} />
+      <ArButton store={store} />
       <IconButton
         icon={Info}
         label={t('about.title')}

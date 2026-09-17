@@ -17,8 +17,11 @@ import type { Backend } from '../state/types';
 // the engine reads the store through subscriptions and React never drives the canvas (l.409).
 // Resizing is the engine's business as well: `SkyEngine` observes its own canvas (plan D85), so
 // the component keeps no `ResizeObserver` of its own. The labels host is an `aria-hidden` sibling
-// of the canvas handed to the engine with the text resolver (plan D93); React reaches the engine
-// API only through `onEngine`, for event handlers such as the snapshot.
+// of the canvas handed to the engine with the text resolver (plan D93); the AR underlay is its
+// twin rendered BEFORE the canvas (plan D121: the AR controller appends the camera video to it,
+// the canvas is `relative` so positioned siblings paint in DOM order, and React never writes into
+// either). React reaches the engine API only through `onEngine`, for event handlers such as the
+// snapshot.
 
 export interface SkyCanvasProps {
   store: SkyStore;
@@ -71,6 +74,7 @@ export default function SkyCanvas({
 }: SkyCanvasProps) {
   const { t } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const underlayRef = useRef<HTMLDivElement>(null);
   const labelRootRef = useRef<HTMLDivElement>(null);
   // The latest callback, read by the engine effect without being one of its dependencies: a new
   // function identity on a parent re-render must not tear the GPU context down.
@@ -88,8 +92,9 @@ export default function SkyCanvas({
 
   useEffect(() => {
     const canvas = canvasRef.current;
+    const underlayRoot = underlayRef.current;
     const labelRoot = labelRootRef.current;
-    if (canvas === null || labelRoot === null) {
+    if (canvas === null || underlayRoot === null || labelRoot === null) {
       return;
     }
     const controller = new AbortController();
@@ -115,6 +120,7 @@ export default function SkyCanvas({
           store,
           frames,
           labelRoot,
+          underlayRoot,
           labelText,
           tickers: tickersRef.current,
           signal,
@@ -173,7 +179,17 @@ export default function SkyCanvas({
 
   return (
     <div className="absolute inset-0 overflow-hidden">
-      <canvas ref={canvasRef} aria-label={t('canvas.label')} className="block h-full w-full" />
+      <div
+        aria-hidden="true"
+        data-sky-underlay
+        className="pointer-events-none absolute inset-0 overflow-hidden"
+        ref={underlayRef}
+      />
+      <canvas
+        ref={canvasRef}
+        aria-label={t('canvas.label')}
+        className="relative block h-full w-full"
+      />
       <div
         aria-hidden="true"
         data-sky-labels

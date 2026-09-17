@@ -30,4 +30,5 @@ The permutation P that realises the mapping has determinant -1: it is a reflecti
 ## Revisit trigger
 
 - WebXR at M5: the XR camera is reset to the origin on session start and the sky must follow its position while ignoring translation (brief l.543). If parenting the sky meshes to the XR camera requires an unfrozen world matrix, P moves to a parent `TransformNode` (still one matrix, still defined in `frames.ts`).
+  - Note (2026-09-17, M5, plan D130): no parenting was needed. Babylon poses the XR rig cameras before the engine's render loop, so `sky/engine/xr/XrBridge.ts::tick` zeroes every rig position each frame (the parent `WebXRCamera` untouched, `worldScalingFactor` 1) and composes the north-alignment yaw into the rig quaternion in place; the sky meshes keep their frozen world matrix P and the relabelling stays in `frames.ts` (`basisFromBabylonQuaternion`). Status unchanged.
 - A Babylon.js release that changes `freezeWorldMatrix` semantics or makes `worldViewProjection` unavailable to `ShaderMaterial` on either backend.

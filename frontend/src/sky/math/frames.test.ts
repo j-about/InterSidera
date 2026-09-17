@@ -17,11 +17,14 @@ import {
   altitudeDeg,
   azimuthDeg,
   babylonToEnu,
+  basisFromBabylonQuaternion,
+  cameraBasis,
   cameraRotationFor,
   clampCameraAltDeg,
   clampFovDeg,
   dirFromRaDec,
   directionToScreen,
+  dragDeltaDeg,
   eclipticPoleIcrf,
   enuToAltAz,
   enuToBabylon,
@@ -29,9 +32,10 @@ import {
   raDecFromDir,
   screenToDirection,
   wrapAzimuthDeg,
+  wrapSignedDeg,
 } from './frames';
-import { rotate } from './quaternion';
-import type { Vec3 } from './typed';
+import { fromAxisAngle, multiplyQ, rotate } from './quaternion';
+import type { Quat, Vec3 } from './typed';
 import { at, vec3 } from './typed';
 import { arcsecBetween3, length3 } from './vec3';
 
@@ -317,5 +321,258 @@ describe('eclipticPoleIcrf', () => {
     // Perpendicular to the equinox axis, tilted toward -Y.
     expect(pole[0]).toBe(0);
     expect(pole[1]).toBeLessThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Roll (plan D119): the trailing `rollDeg` of the camera functions, the Babylon quaternion basis
+// pinned against `cameraRotationFor`, the drag rule and the signed wrap.
+
+describe('roll (plan D119)', () => {
+  it('cameraRotationFor writes z = -roll in radians and +0 for a zero roll', () => {
+    const r = cameraRotationFor(vec3(), 45, 10, 30);
+    expect(r[0]).toBeCloseTo(-10 * DEG, 15);
+    expect(r[1]).toBeCloseTo(45 * DEG, 15);
+    expect(r[2]).toBeCloseTo(-30 * DEG, 15);
+    expect(Object.is(cameraRotationFor(vec3(), 45, 10, 0)[2], 0)).toBe(true);
+    expect(Object.is(cameraRotationFor(vec3(), 45, 10)[2], 0)).toBe(true);
+    expect(cameraRotationFor(vec3(), 0, 0, -90)[2]).toBeCloseTo(Math.PI / 2, 15);
+  });
+
+  it('roll 90 looking north points the screen top east and the screen right down', () => {
+    const f = vec3();
+    const right = vec3();
+    const up = vec3();
+    cameraBasis(f, right, up, 0, 0, 90);
+    expectVec(f, [0, 1, 0]);
+    expectVec(up, [1, 0, 0]);
+    expectVec(right, [0, 0, -1]);
+    // Roll 0 keeps today's basis exactly: right east, up the zenith.
+    cameraBasis(f, right, up, 0, 0);
+    expectVec(right, [1, 0, 0]);
+    expectVec(up, [0, 0, 1]);
+    cameraBasis(f, right, up, 0, 0, 0);
+    expectVec(right, [1, 0, 0]);
+    expectVec(up, [0, 0, 1]);
+    // Roll 180 flips both axes; -90 mirrors +90.
+    cameraBasis(f, right, up, 0, 0, 180);
+    expectVec(right, [-1, 0, 0]);
+    expectVec(up, [0, 0, -1]);
+    cameraBasis(f, right, up, 0, 0, -90);
+    expectVec(up, [-1, 0, 0]);
+    expectVec(right, [0, 0, 1]);
+  });
+
+  it('keeps the basis orthonormal with up = right x forward for random views and rolls', () => {
+    const next = rng(31);
+    const f = vec3();
+    const right = vec3();
+    const up = vec3();
+    const f0 = vec3();
+    const right0 = vec3();
+    const up0 = vec3();
+    for (let k = 0; k < 200; k += 1) {
+      const az = next() * 360;
+      const alt = next() * 179.98 - 89.99;
+      const roll = next() * 360 - 180;
+      cameraBasis(f, right, up, az, alt, roll);
+      cameraBasis(f0, right0, up0, az, alt);
+      expect(length3(f)).toBeCloseTo(1, 12);
+      expect(length3(right)).toBeCloseTo(1, 12);
+      expect(length3(up)).toBeCloseTo(1, 12);
+      expect(f[0] * right[0] + f[1] * right[1] + f[2] * right[2]).toBeCloseTo(0, 12);
+      expect(f[0] * up[0] + f[1] * up[1] + f[2] * up[2]).toBeCloseTo(0, 12);
+      expect(right[0] * up[0] + right[1] * up[1] + right[2] * up[2]).toBeCloseTo(0, 12);
+      // The roll leaves forward alone and rotates right and up in their own plane: the
+      // convention `roll = atan2(up . right0, up . up0)` of plan D117 recovers the input.
+      expectVec(f, f0);
+      const dotR = up[0] * right0[0] + up[1] * right0[1] + up[2] * right0[2];
+      const dotU = up[0] * up0[0] + up[1] * up0[1] + up[2] * up0[2];
+      expect(Math.atan2(dotR, dotU) * RAD).toBeCloseTo(roll, 9);
+    }
+  });
+
+  it('with roll +90 the zenith side of the field lands on the left edge, with -90 on the right', () => {
+    // Square canvas, 60 degree field, looking north at the horizon: a direction 30 degrees up
+    // (the top edge without roll) sits exactly on a side edge once the camera is rolled.
+    const p: ScreenPoint = { x: NaN, y: NaN };
+    expect(directionToScreen(p, 30, 0, 600, 600, 60, 0, 0)).toBe(true);
+    expect(p.x).toBeCloseTo(300, 9);
+    expect(p.y).toBeCloseTo(0, 9);
+    expect(directionToScreen(p, 30, 0, 600, 600, 60, 0, 0, 90)).toBe(true);
+    expect(p.x).toBeCloseTo(0, 9);
+    expect(p.y).toBeCloseTo(300, 9);
+    expect(directionToScreen(p, 30, 0, 600, 600, 60, 0, 0, -90)).toBe(true);
+    expect(p.x).toBeCloseTo(600, 9);
+    expect(p.y).toBeCloseTo(300, 9);
+    // The nadir side goes the other way, and the view centre stays put under any roll.
+    expect(directionToScreen(p, -30, 0, 600, 600, 60, 0, 0, 90)).toBe(true);
+    expect(p.x).toBeCloseTo(600, 9);
+    expect(directionToScreen(p, 0, 0, 600, 600, 60, 0, 0, 123)).toBe(true);
+    expect(p.x).toBeCloseTo(300, 9);
+    expect(p.y).toBeCloseTo(300, 9);
+    // The same through screenToDirection: the left edge centre is the zenith side with roll +90.
+    const d: AltAz = { alt: 0, az: 0 };
+    screenToDirection(d, 0, 300, 600, 600, 60, 0, 0, 90);
+    expect(d.alt).toBeCloseTo(30, 9);
+    expect(d.az).toBeCloseTo(0, 9);
+  });
+
+  it('round-trips screenToDirection and directionToScreen within 1e-9 under a random roll', () => {
+    const next = rng(32);
+    const dir: AltAz = { alt: 0, az: 0 };
+    const p: ScreenPoint = { x: 0, y: 0 };
+    for (let k = 0; k < 500; k += 1) {
+      const w = 320 + Math.floor(next() * 2000);
+      const h = 240 + Math.floor(next() * 1400);
+      const fov = 1 + next() * 119;
+      const viewAz = next() * 360;
+      const viewAlt = next() * 179.98 - 89.99;
+      const roll = next() * 360 - 180;
+      const px = next() * w;
+      const py = next() * h;
+      screenToDirection(dir, px, py, w, h, fov, viewAz, viewAlt, roll);
+      expect(directionToScreen(p, dir.alt, dir.az, w, h, fov, viewAz, viewAlt, roll)).toBe(true);
+      expect(Math.abs(p.x - px)).toBeLessThan(1e-9);
+      expect(Math.abs(p.y - py)).toBeLessThan(1e-9);
+    }
+  });
+});
+
+describe('basisFromBabylonQuaternion (plan D119, D130)', () => {
+  /**
+   * Babylon 9.25 `Quaternion.RotationYawPitchRollToRef` transcribed from `Maths/math.vector.ts`:
+   * the reference the composition below is pinned against (yaw about +Y, pitch about +X, roll
+   * about +Z, in Babylon's left-handed frame).
+   */
+  function babylonYawPitchRoll(yaw: number, pitch: number, roll: number): Quat {
+    const halfRoll = roll * 0.5;
+    const halfPitch = pitch * 0.5;
+    const halfYaw = yaw * 0.5;
+    const sinRoll = Math.sin(halfRoll);
+    const cosRoll = Math.cos(halfRoll);
+    const sinPitch = Math.sin(halfPitch);
+    const cosPitch = Math.cos(halfPitch);
+    const sinYaw = Math.sin(halfYaw);
+    const cosYaw = Math.cos(halfYaw);
+    return [
+      cosYaw * sinPitch * cosRoll + sinYaw * cosPitch * sinRoll,
+      sinYaw * cosPitch * cosRoll - cosYaw * sinPitch * sinRoll,
+      cosYaw * cosPitch * sinRoll - sinYaw * sinPitch * cosRoll,
+      cosYaw * cosPitch * cosRoll + sinYaw * sinPitch * sinRoll,
+    ];
+  }
+
+  /** The Hamilton composition `qy(yaw) qx(pitch) qz(roll)` of a `cameraRotationFor` triple. */
+  function cameraQuaternion(rotation: Vec3): Quat {
+    const qy = fromAxisAngle([0, 0, 0, 1], [0, 1, 0], rotation[1]);
+    const qx = fromAxisAngle([0, 0, 0, 1], [1, 0, 0], rotation[0]);
+    const qz = fromAxisAngle([0, 0, 0, 1], [0, 0, 1], rotation[2]);
+    return multiplyQ([0, 0, 0, 1], multiplyQ([0, 0, 0, 1], qy, qx), qz);
+  }
+
+  it('the Hamilton order qy(yaw) qx(pitch) qz(roll) reproduces Babylon RotationYawPitchRoll', () => {
+    const next = rng(33);
+    for (let k = 0; k < 100; k += 1) {
+      const yaw = (next() * 2 - 1) * Math.PI;
+      const pitch = (next() * 2 - 1) * (Math.PI / 2);
+      const roll = (next() * 2 - 1) * Math.PI;
+      const reference = babylonYawPitchRoll(yaw, pitch, roll);
+      const composed = cameraQuaternion([pitch, yaw, roll]);
+      for (let i = 0; i < 4; i += 1) {
+        expect(at(composed, i)).toBeCloseTo(at(reference, i), 14);
+      }
+    }
+  });
+
+  it('returns north, east and the zenith for the three cardinal camera rotations', () => {
+    const f = vec3();
+    const right = vec3();
+    const up = vec3();
+    const out: AltAz = { alt: 0, az: 0 };
+    basisFromBabylonQuaternion(f, right, up, cameraQuaternion(cameraRotationFor(vec3(), 0, 0)));
+    expectVec(f, [0, 1, 0]);
+    expectVec(right, [1, 0, 0]);
+    expectVec(up, [0, 0, 1]);
+    basisFromBabylonQuaternion(f, right, up, cameraQuaternion(cameraRotationFor(vec3(), 90, 0)));
+    expectVec(f, [1, 0, 0]);
+    expectVec(right, [0, -1, 0]);
+    expectVec(up, [0, 0, 1]);
+    basisFromBabylonQuaternion(f, right, up, cameraQuaternion(cameraRotationFor(vec3(), 0, 90)));
+    // The pitch is clamped to 89.99 degrees by `cameraRotationFor`.
+    enuToAltAz(out, f[0], f[1], f[2]);
+    expect(out.alt).toBeCloseTo(MAX_CAMERA_ALT_DEG, 9);
+    expect(out.az).toBeCloseTo(0, 9);
+    expect(f[2]).toBeCloseTo(1, 7);
+    expectVec(right, [1, 0, 0]);
+    // up0 = right0 x forward = (0, -sin alt, cos alt) when looking north.
+    expectVec(up, [0, -Math.sin(MAX_CAMERA_ALT_DEG * DEG), Math.cos(MAX_CAMERA_ALT_DEG * DEG)]);
+    // The identity quaternion is the identity camera: north, east, zenith.
+    basisFromBabylonQuaternion(f, right, up, [0, 0, 0, 1]);
+    expectVec(f, [0, 1, 0]);
+    expectVec(right, [1, 0, 0]);
+    expectVec(up, [0, 0, 1]);
+  });
+
+  it('matches cameraBasis(az, alt, roll) within 1e-9 degrees for random rotations', () => {
+    const next = rng(34);
+    const f = vec3();
+    const right = vec3();
+    const up = vec3();
+    const f0 = vec3();
+    const right0 = vec3();
+    const up0 = vec3();
+    const out: AltAz = { alt: 0, az: 0 };
+    for (let k = 0; k < 200; k += 1) {
+      const az = next() * 360;
+      const alt = next() * 179 - 89.5;
+      const roll = next() * 360 - 180;
+      basisFromBabylonQuaternion(
+        f,
+        right,
+        up,
+        cameraQuaternion(cameraRotationFor(vec3(), az, alt, roll)),
+      );
+      cameraBasis(f0, right0, up0, az, alt, roll);
+      expectVec(f, f0, 9);
+      expectVec(right, right0, 9);
+      expectVec(up, up0, 9);
+      enuToAltAz(out, f[0], f[1], f[2]);
+      expect(out.az).toBeCloseTo(az, 9);
+      expect(out.alt).toBeCloseTo(alt, 9);
+    }
+  });
+});
+
+describe('dragDeltaDeg (plan D120)', () => {
+  it('turns a drag to the right into a negative azimuth change scaled by fov / height', () => {
+    expect(dragDeltaDeg(100, 60, 600)).toBeCloseTo(-10, 12);
+    expect(dragDeltaDeg(-30, 60, 600)).toBeCloseTo(3, 12);
+    expect(dragDeltaDeg(50, 20, 400)).toBeCloseTo(-2.5, 12);
+    expect(Object.is(dragDeltaDeg(0, 60, 600), 0)).toBe(true);
+  });
+
+  it('gives 0 for a zero, negative or unknown height', () => {
+    expect(dragDeltaDeg(100, 60, 0)).toBe(0);
+    expect(dragDeltaDeg(100, 60, -5)).toBe(0);
+    expect(dragDeltaDeg(100, 60, NaN)).toBe(0);
+  });
+});
+
+describe('wrapSignedDeg', () => {
+  it('wraps into [-180, 180) and never returns -0', () => {
+    expect(wrapSignedDeg(190)).toBe(-170);
+    expect(wrapSignedDeg(-190)).toBe(170);
+    expect(wrapSignedDeg(180)).toBe(-180);
+    expect(wrapSignedDeg(-180)).toBe(-180);
+    expect(wrapSignedDeg(540)).toBe(-180);
+    expect(wrapSignedDeg(359)).toBe(-1);
+    expect(wrapSignedDeg(45)).toBe(45);
+    expect(wrapSignedDeg(-45)).toBe(-45);
+    expect(wrapSignedDeg(360)).toBe(0);
+    expect(Object.is(wrapSignedDeg(0), 0)).toBe(true);
+    expect(Object.is(wrapSignedDeg(-0), 0)).toBe(true);
+    expect(Object.is(wrapSignedDeg(720), 0)).toBe(true);
+    expect(wrapSignedDeg(179.999)).toBeCloseTo(179.999, 9);
   });
 });

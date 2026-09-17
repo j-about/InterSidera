@@ -1,14 +1,17 @@
-// The WebGL2 set of Babylon.js modules (plan D81, D90; brief l.406, l.539). This file and
-// `webgpu.ts` are the ONLY places with side-effect imports: Babylon 9's `X.js` entries re-export
-// `X.pure.js` and run `RegisterX()`; a missing registration degrades silently to a stub (visible
-// only with `SetMissingSideEffectWarningsEnabled(true)`, which `createEngine` turns on in dev and
-// e2e builds). Everything else in `sky/engine/` imports Babylon through this module, always from
+// The WebGL2 set of Babylon.js modules (plan D81, D90; brief l.406, l.539). This file,
+// `webgpu.ts` (the lazy WebGPU chunk) and `xr/babylonXr.ts` (the lazy WebXR set, plan D128) are
+// the ONLY places with side-effect imports: Babylon 9's `X.js` entries re-export `X.pure.js` and
+// run `RegisterX()`; a missing registration degrades silently to a stub (visible only with
+// `SetMissingSideEffectWarningsEnabled(true)`, which `createEngine` turns on in dev and e2e
+// builds). Everything else in `sky/engine/` imports Babylon through this module, always from
 // `@babylonjs/core/<module>` subpaths (never the root, never `Legacy/legacy`).
 //
 // Each re-export below evaluates the module and its registrations; the reason for each:
 
 // WebGL Engine plus its extension registrations (alpha modes, dynamic vertex buffers, uniform
 // buffers, render targets, textures, DOM helpers). `webGLVersion` decides the UX-6 fallback.
+// Load-bearing for the WebXR bridge too (plan D132, risk R88): `Engines/engine` pulls Babylon's
+// WebXR ambient type declarations into the program, which `xr/XrBridge.ts` types against.
 export { Engine } from '@babylonjs/core/Engines/engine';
 // Scene (rendering groups, transparent sorting, `whenReadyAsync`); its constructor attaches the
 // input manager, which `SkyEngine` detaches again (the camera controller owns the DOM events).

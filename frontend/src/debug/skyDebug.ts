@@ -76,7 +76,7 @@ export function installSkyDebug(deps: SkyDebugDeps): SkyDebugApi {
     if (!engine.directionOf(id, enu)) {
       return null;
     }
-    const { view } = store.getState();
+    const { view, ar } = store.getState();
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
     if (width <= 0 || height <= 0) {
@@ -92,6 +92,7 @@ export function installSkyDebug(deps: SkyDebugDeps): SkyDebugApi {
       view.fov,
       view.az,
       view.alt,
+      ar.roll,
     );
     return inFront ? { x: screen.x, y: screen.y } : null;
   }
@@ -136,6 +137,33 @@ export function installSkyDebug(deps: SkyDebugDeps): SkyDebugApi {
       layers: s.layers,
       reducedMotion: engine.reducedMotion(),
       ui: { panel: s.ui.panel, sheet: s.ui.sheet, dialog: s.ui.dialog },
+      ar: {
+        mode: s.ar.mode,
+        permission: s.ar.permission,
+        capabilities: s.ar.capabilities,
+        error: s.ar.error,
+        heading: s.ar.heading,
+        azOffsetDeg: s.ar.azOffsetDeg,
+        cameraFovDeg: s.ar.cameraFovDeg,
+        frame: s.ar.frame,
+        roll: s.ar.roll,
+        viewBeforeFov: s.ar.viewBefore?.fov ?? null,
+        transparent: engine.arTransparent(),
+        xr: s.ar.xr,
+      },
+    };
+  }
+
+  /** The camera video the AR controller attached to the engine's underlay, if any. */
+  function arVideo(): { playing: boolean; width: number; height: number } | null {
+    const video = engine.underlayRoot.querySelector('video');
+    if (video === null) {
+      return null;
+    }
+    return {
+      playing: !video.paused && video.readyState >= 2,
+      width: video.videoWidth,
+      height: video.videoHeight,
     };
   }
 
@@ -277,6 +305,7 @@ export function installSkyDebug(deps: SkyDebugDeps): SkyDebugApi {
     setFollow: (on) => {
       store.getState().actions.setFollow(on);
     },
+    arVideo,
     selfTest,
   };
   window.__sky = api;

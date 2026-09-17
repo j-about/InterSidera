@@ -113,6 +113,8 @@ export interface LabelTickInputs {
   /** The effective `dso.ts` limits the DSO shader draws to; objects it hides get no label. */
   dsoMagLimit: number;
   dsoSizeLimitArcmin: number;
+  /** Camera roll in degrees (`ar.roll`, plan D119): positions rotate, the text stays upright. */
+  roll: number;
 }
 
 interface Slot {
@@ -612,6 +614,7 @@ export class LabelLayer {
           t.view.fov,
           t.view.az,
           t.view.alt,
+          t.roll,
         )
       ) {
         continue;
@@ -699,6 +702,7 @@ export class LabelLayer {
         t.view.fov,
         t.view.az,
         t.view.alt,
+        t.roll,
       )
     ) {
       this.hideMarker();
@@ -793,6 +797,16 @@ export class LabelLayer {
       });
     }
     actions.setVisibleLabels(list);
+  }
+
+  /**
+   * Forget what was published: the engine emptied the store's list itself during a WebXR session
+   * (plan D124, backlog B-80), so the next `publishIfChanged` must compare against nothing and
+   * publish the drawn set again even when it did not change.
+   */
+  resetPublished(): void {
+    this.publishedIds.length = 0;
+    this.dirty = true;
   }
 
   private kindOf(value: string | undefined): LabelKind {

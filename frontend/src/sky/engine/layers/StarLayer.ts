@@ -113,8 +113,13 @@ export class StarLayer {
         shaderLanguage: wgsl ? ShaderLanguage.WGSL : ShaderLanguage.GLSL,
       },
     );
-    // Additive soft discs: no depth, no culling (the quads face the camera by construction).
-    this.material.alphaMode = Constants.ALPHA_ADD;
+    // Premultiplied "over" (plan D122): the fragment writes (rgb, max(rgb)), a coverage alpha, and
+    // mode 8 blends rgb ONE / ONE_MINUS_SRC_ALPHA and alpha ONE / ONE_MINUS_SRC_ALPHA, the one
+    // compositing every WebGL/WebGPU compositor and the 2D export canvas define for the
+    // transparent canvas of the AR mode. On the black sky a lone disc is unchanged (the
+    // destination is 0); where two discs overlap the sum `rgb + dst` becomes `rgb + (1 - a) dst`.
+    // No depth, no culling (the quads face the camera by construction).
+    this.material.alphaMode = Constants.ALPHA_PREMULTIPLIED_PORTERDUFF;
     this.material.disableDepthWrite = true;
     this.material.depthFunction = Constants.ALWAYS;
     this.material.backFaceCulling = false;

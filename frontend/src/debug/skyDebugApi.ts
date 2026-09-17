@@ -4,6 +4,13 @@
 
 import type {
   AdapterInfo,
+  ArCapabilities,
+  ArError,
+  ArFrameSize,
+  ArHeading,
+  ArMode,
+  ArPermission,
+  ArXrState,
   Backend,
   ClockMode,
   DialogId,
@@ -15,6 +22,24 @@ import type {
   PanelId,
   ViewState,
 } from '../state/types.ts';
+
+/** The `ar` slice as the hook mirrors it (plan D115), plus what only the engine knows. */
+export interface SkyDebugArState {
+  mode: ArMode;
+  permission: ArPermission;
+  capabilities: ArCapabilities | null;
+  error: ArError | null;
+  heading: ArHeading;
+  azOffsetDeg: number;
+  cameraFovDeg: number;
+  frame: ArFrameSize | null;
+  roll: number;
+  /** `viewBefore.fov`, the field of view the exit restores; `null` outside AR. */
+  viewBeforeFov: number | null;
+  /** The scene is cleared transparent (`SkyEngineApi.arTransparent`). */
+  transparent: boolean;
+  xr: ArXrState;
+}
 
 export interface SkyDebugState {
   tt: number;
@@ -41,6 +66,7 @@ export interface SkyDebugState {
   /** `prefers-reduced-motion` as the page sees it. */
   reducedMotion: boolean;
   ui: { panel: PanelId | null; sheet: 'collapsed' | 'expanded'; dialog: DialogId | null };
+  ar: SkyDebugArState;
 }
 
 /** A label on screen: its CSS-pixel box relative to the canvas. */
@@ -128,6 +154,12 @@ export interface SkyDebugApi {
   /** Sky background brightness in `[0, 1]` (0 = night sky, 1 = full daylight). */
   skyBrightness(): number;
   setFollow(on: boolean): void;
+  /**
+   * The camera video of the AR underlay (`underlayRoot`), `null` when none is attached:
+   * `playing` = not paused with at least the current frame decoded (`readyState >= 2`),
+   * `width`/`height` the intrinsic size (never hardcoded in a spec, plan R92).
+   */
+  arVideo(): { playing: boolean; width: number; height: number } | null;
   /**
    * The M3 sanity checks run inside the page (for real-browser runs, docs/testing.md): waits
    * `seconds` (default 10) of rendering after `ready`, then reports the frame rate, Polaris and

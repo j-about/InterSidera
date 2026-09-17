@@ -4,7 +4,8 @@ import { installShortcuts, isInteractiveTarget } from './shortcuts';
 
 // The keyboard shortcuts (TIME-5, plan D99) against the real store under jsdom: every key, the
 // ignore rules (interactive targets, modifiers, repeat, composition, an open dialog, the switch
-// off) and the uninstall.
+// off), the augmented-reality rules (view keys inert, Escape exits; plan D124, D127) and the
+// uninstall.
 
 const T0 = 1_757_000_000_000;
 const TT = 2460409.25;
@@ -160,6 +161,43 @@ describe('installShortcuts', () => {
     expect(isInteractiveTarget(null)).toBe(false);
     expect(isInteractiveTarget(input)).toBe(true);
     expect(isInteractiveTarget(canvas)).toBe(false);
+  });
+
+  it('leaves the view keys alone while augmented reality runs and keeps the time keys', () => {
+    const s = setup();
+    uninstall = s.uninstall;
+    const { actions } = s.store.getState();
+    actions.requestAr();
+    actions.setArMode('sensor');
+    const before = s.store.getState().view;
+    for (const key of ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', '+', '=', '-']) {
+      expect(press(key)).toBe(false);
+    }
+    expect(s.store.getState().view).toBe(before);
+    expect(press(' ')).toBe(true);
+    expect(s.store.getState().clock.mode).toBe('playing');
+  });
+
+  it('exits augmented reality with Escape once the sheet is collapsed', () => {
+    const s = setup();
+    uninstall = s.uninstall;
+    const { actions } = s.store.getState();
+    actions.requestAr();
+    actions.setArMode('sensor');
+    // requestAr collapses the sheet; an expanded sheet is collapsed first and AR stays.
+    actions.setUi({ sheet: 'expanded' });
+    expect(press('Escape')).toBe(true);
+    expect(s.store.getState().ui.sheet).toBe('collapsed');
+    expect(s.store.getState().ar.mode).toBe('sensor');
+    expect(press('Escape')).toBe(true);
+    expect(s.store.getState().ar.mode).toBe('off');
+    expect(press('Escape')).toBe(false);
+    // A dialog owns Escape even in AR.
+    actions.requestAr();
+    actions.setArMode('sensor');
+    actions.openDialog('about');
+    expect(press('Escape')).toBe(false);
+    expect(s.store.getState().ar.mode).toBe('sensor');
   });
 
   it('removes the listener on uninstall', () => {

@@ -57,6 +57,12 @@ export interface SkyEngineOptions {
   frames: FrameSource;
   /** The `aria-hidden` sibling of the canvas the labels are drawn into (plan D93). */
   labelRoot: HTMLElement;
+  /**
+   * The `aria-hidden` sibling rendered BEFORE the canvas (plan D121): the AR controller appends
+   * the camera `<video>` to it and owns its contents, the twin of `labelRoot`; React never
+   * writes into it.
+   */
+  underlayRoot: HTMLElement;
   labelText: (key: LabelTextKey) => string;
   /** Pulled by `tick` after `frames.update` (the details controller); none by default. */
   tickers?: readonly EngineTicker[];
@@ -89,11 +95,34 @@ export interface LayerStats {
   clinesSegments: number;
 }
 
+/**
+ * What the lazily imported AR controller (`sky/ar/arController.ts`, Babylon-free) receives from
+ * the engine that hosts it (plan D116).
+ */
+export interface ArHost {
+  store: SkyStore;
+  /** Where the camera video lives (`SkyEngineOptions.underlayRoot`). */
+  underlayRoot: HTMLElement;
+  /** Load the WebXR chunk ahead of the tap (`SkyEngineApi.preloadXr`). */
+  preloadXr(): Promise<void>;
+}
+
+/** The AR controller as the engine ticks it after the other tickers (plan D116). */
+export interface ArController {
+  update(tt: number, nowMs: number): void;
+  /** The camera video element once it plays, `null` before and after. */
+  video(): HTMLVideoElement | null;
+  /** Stops every track, removes the listeners and detaches the video; idempotent. */
+  dispose(): void;
+}
+
 export interface SkyEngineApi {
   readonly backend: Backend;
   readonly adapterInfo: AdapterInfo | null;
   /** The evaluation rendered by the last animation frame (reused, never copied). */
   readonly current: Readonly<FrameEval>;
+  /** The AR underlay host (`SkyEngineOptions.underlayRoot`), read by the debug hook. */
+  readonly underlayRoot: HTMLElement;
   setCatalog(catalog: StarCatalogInput): void;
   currentTt(): number;
   /** Resolves after the catalog and a frame window have been rendered at least once. */
@@ -114,6 +143,21 @@ export interface SkyEngineApi {
   pick(xCss: number, yCss: number): string | null;
   /** A PNG of the current frame (rejects when disposed, failed or too slow). */
   snapshot(): Promise<Blob>;
+  /**
+   * Load the WebXR chunk (`sky/engine/xr/XrBridge.ts`) without entering a session; called by the
+   * AR controller when `ar.xr.support` becomes `supported` (plan D128, R86).
+   */
+  preloadXr(): Promise<void>;
+  /**
+   * Event-time call (plan D93, D128): start an `immersive-ar` session with `overlay` as the DOM
+   * overlay root; resolves once the session is active. Failures reach the store through `failAr`
+   * and the promise rejects.
+   */
+  enterXr(overlay: HTMLElement): Promise<void>;
+  /** End the WebXR session and return to the sensor mode (the full exit is the store's `exitAr`). */
+  exitXr(): Promise<void>;
+  /** The scene is cleared transparent (the camera video shows through, plan D122). */
+  arTransparent(): boolean;
   /** The labels currently drawn (a fresh array; dev and e2e hook). */
   labelBoxes(): LabelBox[];
   /** Sky background brightness B in `[0, 1]` of the last frame (0 with the atmosphere off). */

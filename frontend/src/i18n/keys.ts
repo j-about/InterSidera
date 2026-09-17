@@ -8,6 +8,7 @@
 import type { TFunction } from 'i18next';
 
 import type { components } from '../api/schema';
+import type { ArError, CompassLevel } from '../state/types';
 import en from './en.json';
 
 type BodyMeta = components['schemas']['BodyMeta'];
@@ -56,6 +57,53 @@ export type KindKey = (typeof KIND_KEYS)[number];
 
 export function isKindKey(value: string): value is KindKey {
   return (KIND_KEYS as readonly string[]).includes(value);
+}
+
+/** `true` only when `A` and `B` are the same union (the `state/frames.ts` idiom). */
+type MutuallyAssignable<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type Assert<T extends true> = T;
+
+/**
+ * Every `ArError` code (plan D115): the `ar.error.*` keys of the resource files (area D adds
+ * them; the banner keeps the literal prefix `t(\`ar.error.${code}\`)`). `satisfies` refuses a
+ * stranger and `ArErrorKeysComplete` a missing one.
+ */
+export const AR_ERROR_KEYS = [
+  'noCamera',
+  'noRearCamera',
+  'cameraDenied',
+  'cameraUnavailable',
+  'trackEnded',
+  'orientationDenied',
+  'orientationUnavailable',
+  'xrUnsupported',
+  'xrDenied',
+  'xrBusy',
+  'xrFailed',
+] as const satisfies readonly ArError[];
+export type ArErrorKeysComplete = Assert<
+  MutuallyAssignable<ArError, (typeof AR_ERROR_KEYS)[number]>
+>;
+
+export function isArErrorKey(value: string): value is ArError {
+  return (AR_ERROR_KEYS as readonly string[]).includes(value);
+}
+
+/** Every `CompassLevel` (plan D118): the `ar.compass.*` keys of the resource files (area D). */
+export const COMPASS_LEVELS = [
+  'good',
+  'fair',
+  'poor',
+  'invalid',
+  'manual',
+  'none',
+] as const satisfies readonly CompassLevel[];
+export type CompassLevelsComplete = Assert<
+  MutuallyAssignable<CompassLevel, (typeof COMPASS_LEVELS)[number]>
+>;
+
+export function isCompassLevel(value: string): value is CompassLevel {
+  return (COMPASS_LEVELS as readonly string[]).includes(value);
 }
 
 /** `kinds.*` key of a body: the Sun is a `star` in `/meta.bodies` but reads as "Sun". */
