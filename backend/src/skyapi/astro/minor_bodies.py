@@ -151,7 +151,10 @@ def load_minor_body_index(cache: CachePaths) -> MinorBodyIndex:
     is_comet = np.asarray(table["kind"].to_numpy(dtype=object) == "comet", dtype=np.bool_)
     h_mag = table["h_mag"].to_numpy(dtype=np.float64)
     magnitude_g = table["magnitude_g"].to_numpy(dtype=np.float64)
-    brightness = np.where(is_comet, magnitude_g, h_mag)
+    # H for asteroids, g for comets (numpy 2.5.3 types the three-argument `np.where` as
+    # unknown under pyright strict, so the comet rows are masked in instead).
+    brightness = h_mag.copy()
+    brightness[is_comet] = magnitude_g[is_comet]
     elements_epoch_tt = table["elements_epoch_tt"].to_numpy(dtype=np.float64)
     comet_rows = np.flatnonzero(is_comet).astype(np.intp)
     comet_perihelion_tt = table["perihelion_tt"].to_numpy(dtype=np.float64)[comet_rows]
