@@ -28,7 +28,10 @@
 // `viewFromAxes` (the same rule as the sensors), and `view.fov` mirrors the rig's projection once
 // per session from a posed rig (`fovAspectFromProjection`). Every frame's math is pure and
 // allocation-free; the ENU <-> Babylon relabelling stays in `frames.ts`. The AR-3 drag runs on
-// the overlay root (`sky/ar/offsetDrag.ts`) for the session's duration.
+// the overlay root (`sky/ar/offsetDrag.ts`) for the session's duration. `create` takes the
+// experience factory as a test-only seam (plan D161, Q65, backlog B-93): `XrBridge.test.ts` runs
+// this class on Babylon's `NullEngine` with a fake experience around a real `WebXRCamera`, the
+// one sanctioned Babylon-under-Vitest exception; the default is `WebXRDefaultExperience.CreateAsync`.
 
 import type { SkyActions, SkyStore } from '../../../state/storeTypes';
 import type { HeadingSource } from '../../../state/types';
@@ -52,7 +55,7 @@ import {
   WebXRState,
   WebXRTrackingState,
 } from './babylonXr';
-import type { WebXRExperienceHelper } from './babylonXr';
+import type { WebXRExperienceHelper, WebXRSessionManager } from './babylonXr';
 import type { XrBridgeHooks, XrBridgeLike } from './xrFlow';
 
 export { XrFlow } from './xrFlow';
@@ -60,6 +63,41 @@ export type { XrBridgeHooks, XrBridgeLike, XrFlowDeps } from './xrFlow';
 
 /** `local`: the origin near the viewer, tracking tuned for staying in place (plan D128, B-81). */
 const REFERENCE_SPACE: XRReferenceSpaceType = 'local';
+
+/** The options `create` hands to the experience factory. */
+export type XrExperienceOptions = NonNullable<
+  Parameters<typeof WebXRDefaultExperience.CreateAsync>[1]
+>;
+
+/**
+ * What the bridge uses of Babylon's experience helper: `WebXRDefaultExperience` provides it in
+ * full; the test seam provides just this around a real `WebXRCamera` on a `NullEngine`.
+ */
+export type XrHelperLike = Pick<
+  WebXRExperienceHelper,
+  'camera' | 'onStateChangedObservable' | 'state' | 'enterXRAsync' | 'exitXRAsync'
+> & {
+  sessionManager: Pick<WebXRSessionManager, 'onXRSessionEnded'>;
+  featuresManager: Pick<WebXRExperienceHelper['featuresManager'], 'enableFeature'>;
+};
+
+/**
+ * What the bridge uses of the default experience. `baseExperience` is typed non-optional by
+ * Babylon but is `undefined` after a swallowed creation failure: optional here so that case is
+ * handled without a cast.
+ */
+export type XrExperienceLike = Pick<WebXRDefaultExperience, 'renderTarget' | 'dispose'> & {
+  baseExperience?: XrHelperLike | undefined;
+};
+
+/** `WebXRDefaultExperience.CreateAsync`, or a test's fake (plan D161, Q65). */
+export type XrExperienceFactory = (
+  scene: Scene,
+  options: XrExperienceOptions,
+) => Promise<XrExperienceLike>;
+
+const createDefaultExperience: XrExperienceFactory = (scene, options) =>
+  WebXRDefaultExperience.CreateAsync(scene, options);
 
 function endedBeforeFirstFrame(): DOMException {
   return new DOMException('the WebXR session ended before its first frame', 'AbortError');
@@ -71,8 +109,8 @@ function toError(error: unknown): Error {
 }
 
 export class XrBridge implements XrBridgeLike {
-  private readonly xr: WebXRDefaultExperience;
-  private readonly helper: WebXRExperienceHelper;
+  private readonly xr: XrExperienceLike;
+  private readonly helper: XrHelperLike;
   private readonly store: SkyStore;
   private readonly hooks: XrBridgeHooks;
   private readonly removeObservers: (() => void)[] = [];
@@ -99,8 +137,8 @@ export class XrBridge implements XrBridgeLike {
   private readonly fovAspect: FovAspect = { fovRad: 0, aspect: 1 };
 
   private constructor(
-    xr: WebXRDefaultExperience,
-    helper: WebXRExperienceHelper,
+    xr: XrExperienceLike,
+    helper: XrHelperLike,
     store: SkyStore,
     hooks: XrBridgeHooks,
   ) {
@@ -121,15 +159,17 @@ export class XrBridge implements XrBridgeLike {
    * Create the default experience on `scene` once per engine (plan D128); the XR camera takes
    * the sky camera's depth range (`minZ` 1, `maxZ` 2000: the sphere sits at 1000). Babylon
    * swallows its own creation error and returns a result without `baseExperience`: that is the
-   * `XrUnavailableError` (-> `xrUnsupported`) rather than a later `TypeError`.
+   * `XrUnavailableError` (-> `xrUnsupported`) rather than a later `TypeError`. `createExperience`
+   * is the test-only seam of plan D161 (Q65): production never passes it.
    */
   static async create(
     scene: Scene,
     skyCamera: TargetCamera,
     store: SkyStore,
     hooks: XrBridgeHooks,
+    createExperience: XrExperienceFactory = createDefaultExperience,
   ): Promise<XrBridge> {
-    const xr = await WebXRDefaultExperience.CreateAsync(scene, {
+    const xr = await createExperience(scene, {
       disableDefaultUI: true,
       disablePointerSelection: true,
       disableTeleportation: true,
@@ -141,8 +181,8 @@ export class XrBridge implements XrBridgeLike {
       // `collectForeignRequests` in ar.spec.ts. Meshes and the repository stay off.
       inputOptions: { doNotLoadControllerMeshes: true, disableOnlineControllerRepository: true },
     });
-    // Typed non-optional by Babylon, undefined after a swallowed failure (never `!`).
-    const helper = (xr as { baseExperience?: WebXRExperienceHelper }).baseExperience;
+    // Typed non-optional by Babylon, undefined after a swallowed failure (`XrExperienceLike`).
+    const helper = xr.baseExperience;
     if (helper === undefined) {
       xr.dispose();
       throw new XrUnavailableError();

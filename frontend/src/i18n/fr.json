@@ -9,17 +9,17 @@
   "boot": {
     "connecting": "Connexion au service du ciel…",
     "starting": "Le service du ciel démarre…",
-    "downloading": "Téléchargement de {{file}} ({{percent}} %)…",
+    "downloading": "Téléchargement de {{file}} ({{percent}} %)…",
     "downloadingBytes": "Téléchargement de {{file}} ({{mb}} Mo reçus)…",
-    "failed": "Le service du ciel a échoué : {{detail}}",
+    "failed": "Le service du ciel a échoué : {{detail}}",
     "meta": "Lecture de la description du service du ciel…",
     "catalogs": "Chargement des catalogues d'étoiles…",
     "frame": "Calcul des premières positions du ciel…",
-    "unreachable": "Le service du ciel est injoignable ; nouvel essai dans {{seconds}} s…",
+    "unreachable": "Le service du ciel est injoignable ; nouvel essai dans {{seconds}} s…",
     "label": "Chargement du ciel"
   },
   "engine": {
-    "unsupported": "Ce navigateur n'offre ni WebGPU ni WebGL2 : le ciel ne peut pas être affiché. Utilisez un navigateur récent avec l'accélération matérielle activée."
+    "unsupported": "Ce navigateur n'offre ni WebGPU ni WebGL2 : le ciel ne peut pas être affiché. Utilisez un navigateur récent avec l'accélération matérielle activée."
   },
   "shell": {
     "skipToPanel": "Aller au panneau de commandes",
@@ -47,7 +47,7 @@
   },
   "export": {
     "button": "Exporter la vue en PNG",
-    "failed": "L'export a échoué : le ciel n'a pas pu être capturé."
+    "failed": "L'export a échoué : le ciel n'a pas pu être capturé."
   },
   "hint": {
     "title": "Pour commencer",
@@ -211,7 +211,7 @@
     "sectionMinor": "Petits corps",
     "manualMaglim": "Fixer la magnitude limite à la main",
     "maglim": "Magnitude la plus faible",
-    "maglimAuto": "Automatique : la limite suit le champ de vision.",
+    "maglimAuto": "Automatique : la limite suit le champ de vision.",
     "ground": "Sol",
     "groundOpaque": "Opaque",
     "groundDim": "Translucide",
@@ -227,7 +227,7 @@
     "showMore": "Afficher tous les petits corps par défaut",
     "pinned": "Petits corps épinglés",
     "unpin": "Désépingler {{name}}",
-    "noPins": "Aucun petit corps épinglé : recherchez-en un pour l'épingler."
+    "noPins": "Aucun petit corps épinglé : recherchez-en un pour l'épingler."
   },
   "kinds": {
     "star": "Étoile",
@@ -261,11 +261,11 @@
     "hip": "HIP {{n}}",
     "messier": "M {{n}}",
     "authoritative": "Valeurs du serveur à {{time}} UTC",
-    "unknown": "Cet objet est inconnu du service du ciel ; la sélection a été effacée.",
+    "unknown": "Cet objet est inconnu du service du ciel ; la sélection a été effacée.",
     "invalid": "Le service du ciel a refusé cette sélection.",
-    "outsideCoverage": "Hors de la couverture des données : valide de {{start}} à {{end}}.",
+    "outsideCoverage": "Hors de la couverture des données : valide de {{start}} à {{end}}.",
     "dataMissing": "Les données de cet objet manquent sur ce serveur.",
-    "unreachable": "Les valeurs de référence n'ont pas pu être récupérées ; les valeurs interpolées sont affichées.",
+    "unreachable": "Les valeurs de référence n'ont pas pu être récupérées ; les valeurs interpolées sont affichées.",
     "centre": "Centrer la vue",
     "follow": "Suivre"
   },
@@ -278,20 +278,20 @@
     "minorSearching": "Recherche parmi les petits corps…",
     "minorUnavailable": "La recherche de petits corps est indisponible sur ce serveur.",
     "minorNoResults": "Aucun petit corps ne correspond.",
-    "minorError": "La recherche de petits corps a échoué ; réessayez plus tard.",
-    "minorCapReached": "Le nombre de petits corps épinglés est au maximum ; désépinglez-en un d'abord.",
+    "minorError": "La recherche de petits corps a échoué ; réessayez plus tard.",
+    "minorCapReached": "Le nombre de petits corps épinglés est au maximum ; désépinglez-en un d'abord.",
     "resultsCount_one": "{{count}} résultat",
     "resultsCount_other": "{{count}} résultats"
   },
   "share": {
     "button": "Copier un lien vers cette vue",
     "copied": "Lien copié dans le presse-papiers.",
-    "failed": "Le lien n'a pas pu être copié ; sélectionnez-le et copiez-le depuis le champ.",
+    "failed": "Le lien n'a pas pu être copié ; sélectionnez-le et copiez-le depuis le champ.",
     "urlLabel": "Lien à partager"
   },
   "degraded": {
     "unreachableTitle": "Service du ciel injoignable",
-    "unreachable": "Les positions du ciel ne peuvent pas être actualisées ; nouvel essai dans {{seconds}} s.",
+    "unreachable": "Les positions du ciel ne peuvent pas être actualisées ; nouvel essai dans {{seconds}} s.",
     "retryNow": "Réessayer maintenant",
     "staleTitle": "Catalogues mis à jour",
     "stale": "Le service du ciel sert désormais des catalogues plus récents que ceux chargés par cette page.",
@@ -299,7 +299,7 @@
     "coverageStopTitle": "Limite des données",
     "coverageStop": "Le temps s'est arrêté à la limite des éphémérides ({{start}} à {{end}}).",
     "engineFailedTitle": "Rendu interrompu",
-    "engineFailed": "Le rendu du ciel a échoué ; rechargez la page pour le relancer.",
+    "engineFailed": "Le rendu du ciel a échoué ; rechargez la page pour le relancer.",
     "dsoMissing": "Les données du ciel profond manquent sur ce serveur.",
     "constellationsMissing": "Les données des constellations manquent sur ce serveur.",
     "mpcMissing": "Les données des petits corps manquent sur ce serveur."
@@ -351,20 +351,20 @@
       "geodetic": "Latitude géodésique (WGS84)",
       "planetocentric": "Latitude planétocentrique"
     },
-    "coverage": "Couverture des éphémérides : {{start}} à {{end}}"
+    "coverage": "Couverture des éphémérides : {{start}} à {{end}}"
   },
   "geo": {
-    "explain": "Votre navigateur demande votre position pour afficher le ciel depuis l'endroit où vous êtes ; elle est arrondie à 0,01° et jamais enregistrée.",
-    "denied": "L'accès à la position a été refusé. Le ciel est affiché depuis Greenwich ; saisissez un lieu ou des coordonnées ci-dessous.",
-    "unavailable": "Votre position n'a pas pu être déterminée. Le ciel est affiché depuis Greenwich ; saisissez un lieu ou des coordonnées ci-dessous.",
-    "timeout": "La localisation a pris trop de temps. Le ciel est affiché depuis Greenwich ; saisissez un lieu ou des coordonnées ci-dessous.",
-    "unsupported": "Ce navigateur n'offre pas de géolocalisation. Le ciel est affiché depuis Greenwich ; saisissez un lieu ou des coordonnées ci-dessous.",
-    "insecure": "La géolocalisation exige une connexion sécurisée (https). Le ciel est affiché depuis Greenwich ; saisissez un lieu ou des coordonnées ci-dessous.",
+    "explain": "Votre navigateur demande votre position pour afficher le ciel depuis l'endroit où vous êtes ; elle est arrondie à 0,01° et jamais enregistrée.",
+    "denied": "L'accès à la position a été refusé. Le ciel est affiché depuis Greenwich ; saisissez un lieu ou des coordonnées ci-dessous.",
+    "unavailable": "Votre position n'a pas pu être déterminée. Le ciel est affiché depuis Greenwich ; saisissez un lieu ou des coordonnées ci-dessous.",
+    "timeout": "La localisation a pris trop de temps. Le ciel est affiché depuis Greenwich ; saisissez un lieu ou des coordonnées ci-dessous.",
+    "unsupported": "Ce navigateur n'offre pas de géolocalisation. Le ciel est affiché depuis Greenwich ; saisissez un lieu ou des coordonnées ci-dessous.",
+    "insecure": "La géolocalisation exige une connexion sécurisée (https). Le ciel est affiché depuis Greenwich ; saisissez un lieu ou des coordonnées ci-dessous.",
     "useMyLocation": "Utiliser ma position",
     "title": "Votre position"
   },
   "coords": {
-    "preview": "Envoyé au service du ciel comme {{lat}}°, {{lon}}°, {{elev}} m (arrondi à 0,01°).",
+    "preview": "Envoyé au service du ciel comme {{lat}}°, {{lon}}°, {{elev}} m (arrondi à 0,01°).",
     "error": {
       "empty": "Saisissez une valeur.",
       "syntax": "Saisissez des degrés décimaux ou des degrés, minutes et secondes.",
@@ -378,7 +378,7 @@
     "query": "Nom du lieu",
     "submit": "Rechercher",
     "results": "Lieux trouvés",
-    "blocked": "Le service de recherche de lieux a refusé la requête ; patientez un instant avant de réessayer.",
+    "blocked": "Le service de recherche de lieux a refusé la requête ; patientez un instant avant de réessayer.",
     "unavailable": "Le service de recherche de lieux est injoignable.",
     "invalid": "Le service de recherche de lieux a répondu quelque chose d'inattendu.",
     "no_results": "Aucun lieu ne correspond à ce nom.",
@@ -386,7 +386,7 @@
   },
   "presets": {
     "title": "Sites d'atterrissage et repères",
-    "note": "Coordonnées approximatives d'après le Gazetteer of Planetary Nomenclature de l'USGS ; altitude 0 m.",
+    "note": "Coordonnées approximatives d'après le Gazetteer of Planetary Nomenclature de l'USGS ; altitude 0 m.",
     "moon": {
       "tranquility": "Base de la Tranquillité (Statio Tranquillitatis)",
       "tycho": "Cratère Tycho",
@@ -407,7 +407,7 @@
   },
   "time": {
     "readout": "Temps de la simulation",
-    "local": "Local",
+    "local": "Heure locale",
     "utc": "UTC",
     "ut": "UT",
     "tt": "TT (JJ)",
@@ -422,12 +422,12 @@
     "paused": "En pause",
     "backward": "{{speed}}, en arrière",
     "speedUnit": {
-      "s_one": "{{count}} s/s",
-      "s_other": "{{count}} s/s",
-      "min_one": "{{count}} min/s",
-      "min_other": "{{count}} min/s",
-      "h_one": "{{count}} h/s",
-      "h_other": "{{count}} h/s",
+      "s_one": "{{count}} s/s",
+      "s_other": "{{count}} s/s",
+      "min_one": "{{count}} min/s",
+      "min_other": "{{count}} min/s",
+      "h_one": "{{count}} h/s",
+      "h_other": "{{count}} h/s",
       "d_one": "{{count}} jour/s",
       "d_other": "{{count}} jours/s",
       "wk_one": "{{count}} semaine/s",
@@ -446,8 +446,8 @@
     },
     "stepLegend": "Avancer ou reculer le temps",
     "stepUnit": "Pas de [ et ]",
-    "stepBack": "Reculer : {{unit}}",
-    "stepForward": "Avancer : {{unit}}",
+    "stepBack": "Reculer : {{unit}}",
+    "stepForward": "Avancer : {{unit}}",
     "editor": "Régler la date et l'heure",
     "year": "Année",
     "month": "Mois",
@@ -457,7 +457,7 @@
     "second": "Seconde",
     "useLocal": "Heure locale",
     "apply": "Appliquer",
-    "range": "Plage valide : {{start}} à {{end}}",
+    "range": "Plage valide : {{start}} à {{end}}",
     "gregorianNotice": "Les dates antérieures au 15 octobre 1582 suivent le calendrier grégorien proleptique.",
     "snapshot": "Mode instantané",
     "error": {
@@ -471,21 +471,21 @@
     "delta_t_approximate": "ΔT (TT − UT) est extrapolé à cette date.",
     "proper_motion_extrapolated": "Les positions des étoiles sont extrapolées à plus de {{years}} ans de J2000.",
     "mpc_extrapolation": "Les orbites des petits corps sont extrapolées à {{years}} ans de leurs éléments.",
-    "mpc_unreliable": "Les orbites des petits corps ne sont pas fiables à {{years}} ans de leurs éléments ; rien n'est dessiné.",
+    "mpc_unreliable": "Les orbites des petits corps ne sont pas fiables à {{years}} ans de leurs éléments ; rien n'est dessiné.",
     "validRange": "Valide de {{start}} à {{end}}."
   },
   "shortcuts": {
     "title": "Raccourcis clavier",
     "toggle": "Raccourcis à une touche activés",
-    "space": "Espace : lecture ou pause",
-    "slower": ", (virgule) : plus lent",
-    "faster": ". (point) : plus rapide",
-    "stepBack": "[ : reculer d'un pas",
-    "stepForward": "] : avancer d'un pas",
-    "now": "N : temps réel",
-    "editor": "T : régler la date et l'heure",
-    "view": "Flèches : regarder autour ; + et − : zoom",
-    "escape": "Échap : fermer"
+    "space": "Espace : lecture ou pause",
+    "slower": ", (virgule) : plus lent",
+    "faster": ". (point) : plus rapide",
+    "stepBack": "[ : reculer d'un pas",
+    "stepForward": "] : avancer d'un pas",
+    "now": "N : temps réel",
+    "editor": "T : régler la date et l'heure",
+    "view": "Flèches : regarder autour ; + et − : zoom",
+    "escape": "Échap : fermer"
   },
   "ar": {
     "button": "Réalité augmentée",
@@ -495,40 +495,42 @@
     "requesting": "Autorisez la caméra et les capteurs de mouvement lorsque le navigateur le demande.",
     "mode": {
       "label": "État de la réalité augmentée",
-      "sensor": "Réalité augmentée active : le ciel suit le téléphone.",
+      "sensor": "Réalité augmentée active : le ciel suit le téléphone.",
       "xr": "Réalité augmentée immersive active."
     },
     "errorTitle": "Réalité augmentée indisponible",
     "error": {
-      "noCamera": "Aucune caméra n'a été trouvée ; la vue normale est affichée.",
-      "noRearCamera": "Aucune caméra arrière n'a été trouvée ; la vue normale est affichée.",
+      "noCamera": "Aucune caméra n'a été trouvée ; la vue normale est affichée.",
+      "noRearCamera": "Aucune caméra arrière n'a été trouvée ; la vue normale est affichée.",
       "cameraDenied": "L'accès à la caméra a été refusé. Autorisez la caméra pour ce site dans les réglages du navigateur pour utiliser la réalité augmentée.",
-      "cameraUnavailable": "La caméra ou la réalité augmentée n'a pas pu démarrer ; la vue normale est affichée.",
-      "trackEnded": "Le flux de la caméra s'est interrompu ; la vue normale est affichée.",
-      "orientationDenied": "L'accès aux capteurs de mouvement a été refusé ; la réalité augmentée a besoin de l'orientation de l'appareil.",
-      "orientationUnavailable": "Aucun capteur d'orientation n'a répondu pendant trois secondes ; la vue normale est affichée.",
-      "xrUnsupported": "Aucune session de RA immersive n'est disponible sur cet appareil, ou elle a été refusée (sur Android, les Services Google Play pour la RA peuvent manquer) ; le mode capteurs reste actif.",
-      "xrDenied": "La session immersive a été refusée par le navigateur ou l'utilisateur ; le mode capteurs reste actif.",
-      "xrBusy": "Une session immersive est déjà en cours ; le mode capteurs reste actif.",
-      "xrFailed": "La session immersive n'a pas pu démarrer ; le mode capteurs reste actif."
+      "cameraUnavailable": "La caméra ou la réalité augmentée n'a pas pu démarrer ; la vue normale est affichée.",
+      "trackEnded": "Le flux de la caméra s'est interrompu ; la vue normale est affichée.",
+      "orientationDenied": "L'accès aux capteurs de mouvement a été refusé ; la réalité augmentée a besoin de l'orientation de l'appareil.",
+      "orientationUnavailable": "Aucun capteur d'orientation n'a répondu pendant trois secondes ; la vue normale est affichée.",
+      "xrUnsupported": "Aucune session de RA immersive n'est disponible sur cet appareil, ou elle a été refusée (sur Android, les Services Google Play pour la RA peuvent manquer) ; le mode capteurs reste actif.",
+      "xrDenied": "La session immersive a été refusée par le navigateur ou l'utilisateur ; le mode capteurs reste actif.",
+      "xrBusy": "Une session immersive est déjà en cours ; le mode capteurs reste actif.",
+      "xrFailed": "La session immersive n'a pas pu démarrer ; le mode capteurs reste actif."
     },
     "offset": {
       "label": "Décalage temporel par rapport à maintenant",
       "now": "Maintenant",
       "value": "Décalage d'azimut {{deg}}",
       "reset": "Réinitialiser l'alignement",
+      "left": "Tourner le ciel de 1° vers la gauche",
+      "right": "Tourner le ciel de 1° vers la droite",
       "years_one": "{{count}} a",
       "years_many": "{{count}} a",
       "years_other": "{{count}} a",
       "days_one": "{{count}} j",
       "days_many": "{{count}} j",
       "days_other": "{{count}} j",
-      "hours_one": "{{count}} h",
-      "hours_many": "{{count}} h",
-      "hours_other": "{{count}} h",
-      "minutes_one": "{{count}} min",
-      "minutes_many": "{{count}} min",
-      "minutes_other": "{{count}} min"
+      "hours_one": "{{count}} h",
+      "hours_many": "{{count}} h",
+      "hours_other": "{{count}} h",
+      "minutes_one": "{{count}} min",
+      "minutes_many": "{{count}} min",
+      "minutes_other": "{{count}} min"
     },
     "compass": {
       "label": "Boussole",
@@ -536,15 +538,15 @@
       "fair": "Cap boussole (moyen)",
       "poor": "Cap boussole (imprécis)",
       "invalid": "Boussole à étalonner",
-      "manual": "Pas de boussole : alignez le nord en faisant glisser",
+      "manual": "Pas de boussole : alignez le nord en faisant glisser",
       "none": "En attente des capteurs…",
       "accuracy": "±{{deg}}",
-      "magnetic": "Nord magnétique ; faites glisser latéralement pour absorber la déclinaison"
+      "magnetic": "Nord magnétique ; faites glisser latéralement pour absorber la déclinaison"
     },
     "hint": {
       "title": "Aligner le ciel",
-      "manualNorth": "Pas de boussole sur cet appareil : pointez le téléphone vers le nord, puis faites glisser latéralement pour aligner le ciel.",
-      "waiting": "En attente des capteurs de mouvement ; si aucune boussole ne répond, pointez le téléphone vers le nord et faites glisser latéralement pour aligner le ciel."
+      "manualNorth": "Pas de boussole sur cet appareil : pointez le téléphone vers le nord, puis faites glisser latéralement pour aligner le ciel.",
+      "waiting": "En attente des capteurs de mouvement ; si aucune boussole ne répond, pointez le téléphone vers le nord et faites glisser latéralement pour aligner le ciel."
     },
     "fov": "Champ de la caméra",
     "enterXr": "Mode immersif (WebXR)",

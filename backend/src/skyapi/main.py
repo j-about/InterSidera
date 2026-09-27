@@ -12,6 +12,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from skyapi.api.v1 import router as v1_router
 from skyapi.data.registry import Registry
 from skyapi.lifespan import make_lifespan
+from skyapi.middleware.headers import SecurityHeadersMiddleware
 from skyapi.middleware.logging import RequestContextMiddleware
 from skyapi.middleware.problem import problem_schema_components, register_exception_handlers
 from skyapi.settings import Settings
@@ -93,14 +94,21 @@ def create_app(settings: Settings | None = None, *, registry: Registry | None = 
         openapi_url="/api/v1/openapi.json",
         docs_url="/api/v1/docs",
         redoc_url=None,
+        # No OAuth flow (plan D150): left at its default, FastAPI registers `/docs/oauth2-redirect`
+        # at the ROOT path (outside the base path, `include_in_schema=False`), an HTML page whose
+        # inline script the deny-everything policy of `middleware/headers.py` refuses.
+        swagger_ui_oauth2_redirect_url=None,
     )
     app.include_router(v1_router)
     register_exception_handlers(app)
-    # D63: the last `add_middleware` call is the outermost layer. GZip innermost (compresses
-    # every body incl. problem documents), CORS around it, the request context outermost so
-    # every response, preflights included, carries `X-Request-Id` and one access record.
-    # Starlette's ServerErrorMiddleware wraps them all: a 500 problem document therefore skips
-    # CORS and GZip; the request id is echoed by the handler itself (`middleware/problem.py`).
+    # D63, amended by D149: the last `add_middleware` call is the outermost layer. GZip
+    # innermost (compresses every body incl. problem documents), CORS around it (it answers
+    # preflights itself, without calling the inner app), the security headers outside CORS so
+    # that preflights, problem documents and 304s carry `nosniff` and the deny-everything CSP
+    # too (`middleware/headers.py`, backlog B-87), the request context outermost so every
+    # response carries `X-Request-Id` and one access record. Starlette's ServerErrorMiddleware
+    # wraps them all: a 500 problem document therefore skips CORS and GZip; the request id and
+    # the two security headers are added by the handler itself (`middleware/problem.py`).
     app.add_middleware(
         GZipMiddleware,
         minimum_size=GZIP_MINIMUM_SIZE,
@@ -115,6 +123,7 @@ def create_app(settings: Settings | None = None, *, registry: Registry | None = 
         expose_headers=CORS_EXPOSE_HEADERS,
         max_age=600,
     )
+    app.add_middleware(SecurityHeadersMiddleware, docs_path=app.docs_url)
     app.add_middleware(RequestContextMiddleware)
     app.openapi = _with_problem_schema(app.openapi)  # type: ignore[method-assign]
     return app

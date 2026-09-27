@@ -1,0 +1,41 @@
+# ADR-0011: Frame fetch policy: shape-keyed backoff, snapshot mode and the coverage guard
+
+- Status: Accepted
+- Date: 2026-09-24 (records decisions taken at M3 on 2026-09-06 and M4 on 2026-09-09, amended at M6 on 2026-09-23; recording form)
+
+## Context
+
+The brief fixes the frame model (l.67-70): one `/sky/frame` window of `n` samples spaced `step_s` apart, interpolated every animation frame, prefetched at 70 % consumption in the direction of travel, invalidated on an observer change, a speed sign change or a > 10x ratio, a body-set change or a jump; extrapolation from the last two samples while a request is in flight; snapshot mode (`n = 1`, <= 4 Hz) when the window would cover under 5 s of real time. The API answers 422 with the valid range when the window leaves the coverage (l.169), canonicalizes `tt` to 1e-8 day (l.102) and the client retries with exponential backoff while it keeps propagating (l.281). Two facts shaped the M3 design: a moving aligned `tt0` would abort an in-flight request on every alignment bucket, and the advertised coverage bounds were not on the API's 1e-8 grid, so a window flush with a bound was refused about half of the time (backlog B-52). M6 closed two deferred rows: B-56 (with `n = 32` the window ends up to 31 steps past `tt`, so the clock stopped up to 31 steps early) and plan R70 (the UX-6 banner appeared only after the client's whole retry ladder, up to 7.5 s).
+
+## Options considered
+
+1. One request per frame or server push. Rejected: the contract is GET-only and cache-keyed (l.101, l.534); windows share cache keys across users.
+2. Request identity by the exact query. Rejected at the M3 review: a moving alignment bucket aborted the pending request of the same shape; identity is the shape (the query without `tt`).
+3. At the bound (M6): keep stopping at the 422 (M4), shrink `n`, or shift `tt0` so the window ends flush with the bound (chosen, B-56); place the advertised bounds on the grid in the backend (chosen, B-52) while keeping the client guard.
+4. Banner timing (M6): wait for the ladder (M4) or publish from the first retry through a hook (chosen, R70).
+
+## Decision
+
+Records plan rows D74, D76, D77, D100, D111 and the M6 amendments B-52, B-56 and R70 (plan D161).
+
+- D74 (evaluation): cubic Hermite with Catmull-Rom tangents on the uniform grid of the echoed `time.tt0/step_s/n`, slerp for the two quaternion series, linear `sun_dir` and `observer_velocity_au_d`, `lst_hours` unwrapped on 24 h, extrapolation from the two boundary samples while a request is in flight (`sky/math/interpolation.ts`, `state/frames.ts`).
+- D76 (pure policy, `state/frames.ts`): `bodies=all`, coordinates rounded to 0.01 degree with `lon` wrapped (OBS-7), `step_s` clamped through `/meta.bodies[].step_class`, `n = 32`, `tt0` aligned (`alignTt0`) and placed so the time sits near the end for negative speeds, `PREFETCH_FRACTION = 0.7`, `SPEED_RATIO_LIMIT = 10`, snapshot `n = 1` at `SNAPSHOT_MIN_INTERVAL_MS = 250` with `SNAPSHOT_TT_TOLERANCE_D = 1e-8`; request identity is `shapeKey` (the query without `tt`); a 503 with `Retry-After >= 30 s` and other 4xx block the shape, other errors back off per shape while the engine extrapolates; the client guard `COVERAGE_GUARD_D = 1e-6` day (`state/frames.ts` l.73) keeps the stopped time one guard inside the bound.
+- D77 (client, `api/client.ts`): typed from the generated `paths`; `backoffDelayMs` = `Retry-After` when sent (capped at 60 s) else full jitter over `500 * 2^attempt` capped at 30 s (`api/client.ts` l.331-341); retries on 429, 502, 503, 504 and network errors up to `maxAttempts: 5`.
+- D100 and D111 (M4): the six warning codes become badges (`state/warnings.ts`); `frames.coverageStop` (set by `stopAtBound`, ADR-0010) renders as a status banner; `frames.failing` renders as the UX-6 alert with a retry; the splash maps a refused first frame to an `http` error.
+- B-52 (M6, backend): `astro/loader.py` moves the advertised bounds inward onto the API's grid with `ceil_to_grid` / `floor_to_grid` (l.111-131): the grid is what `round(value, COVERAGE_GRID_DECIMALS = 8)` returns (the canonical form of `api/canonical.py::TT_DECIMALS`); a bound becomes the nearest grid point unless that lies outward, then the next point inward; never outward, inward by less than one step (0.86 ms). The plan's `math.ceil(value * 1e8) / 1e8` form was rejected by area D's sweep: it pushed 33 % of grid doubles one step further. de440s advertises `[2396753.50000001, 2506351.49999999]` (moved by +8e-9 and -5e-9 day); a frame at the bound answers 200, one grid step beyond 422 with `range_tt` equal to the advertised coverage (area D final report, section 3). The client guard stays.
+- B-56 (M6, `state/frameController.ts` l.354-372): on a 422 whose `reason !== 'bound'`, `boundedRequest(request, rangeTt)` is computed first; when it exists, `clampInsideCoverage(lastTt, rangeTt) === lastTt` (the time itself is inside) and `requestKey(bounded) !== state.current?.key`, the bounded window is started with reason `'bound'` without `stopAtBound` and the refused key is remembered in `failedKey`; otherwise the M4 rules apply and the engine's clamp branch alone stops the clock at `clampInsideCoverage`. A settled `'bound'` window whose `current` still covers the time lands as `next` and takes over at the seam like a prefetch (`frameController.ts` l.318-322). The loop guard (plan R107) has three parts: the key inequality, `decide` never prefetching while `next` exists, and the backoff ladder throttling the re-issued refusal. A bounded request that fails transiently clears `failedKey` (`frameController.ts` l.429-435), so the next decision past the backoff re-issues the refused request, the API answers 422 again at once (one cheap 422 per retry) and the bounded form follows: the banner's countdown is honoured instead of waiting for the seam. `e2e/time.spec.ts` l.260 asserts the stop at `end - COVERAGE_GUARD_D` within 1e-7 day.
+- R70 (M6): `RequestOptions.onRetry?(attempt, delayMs, cause)` (`api/client.ts` l.76-99) is called before each retry sleep of `requestWithRetry`; the controller's default fetcher publishes `frames.failing: { status, attempts, nextRetryMs }` from the first retry, never `status: 'error'` while a window exists; `attempts` counts the client's retries and the controller's rounds together (`state/types.ts` l.218-223). Measured: the alert 1.4-1.5 s after the first failed request on both CI projects, 8 requests in the first 12 s of a 502 stream while playing (`e2e/degraded.spec.ts` waits 10 s instead of 30).
+
+## Consequences
+
+- Users watching the same sky share cache keys (l.102); memory is bounded to two windows; the coverage stop is a banner, not an error, and the picture stays valid while a window exists.
+- The guard remains 1e-6 day even though the bounds now lie on the grid: the stopped time is covered on both sides of the rounding, and dropping it is a separate decision (backlog B-52 closure note).
+- Backlog rows B-52 and B-56 and plan risk R70 close at M6 with this evidence; R107 stays recorded with its three-part guard.
+- The failing banner is a post-boot signal: `ui/components/Banners.tsx` renders the `frames.failing` alert only while `boot.phase === 'ready'`, because R70 publishes `failing` from the first retry and would otherwise show the alert over the splash 0.5 s into a transient failure of the boot's first frame; the splash keeps the boot error path (`state/boot.ts::firstFrameBlocked` watches `lastError`, unchanged) and `Banners.test.tsx` proves both sides (no alert before `ready`, the alert after).
+- The three closures are unit-tested with a fake clock for both speed signs (`state/frameController.test.ts`, the five B-56 cases from l.467, the transient-retry rule at l.670) and proven on the API (`backend/tests/unit/test_loader.py::test_advertised_bounds_lie_on_the_api_grid`, `tests/api/test_sky_frame.py`).
+
+## Revisit trigger
+
+- `/sky/events` ([L]) or a push channel changes the request model; a contract change to `Retry-After` semantics; a maintainer decision to drop the client guard now that B-52 is closed.
+
+Pointers: `docs/architecture.md` ("Data flow", "Fetch policy additions"), `docs/api.md` (coverage bounds), `docs/plan.md` section 3 (the rows above), section 8 (R70, R107), `docs/backlog.md` (B-52, B-56).

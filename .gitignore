@@ -29,5 +29,8 @@ test-results/
 *.tsbuildinfo
 .vite/
 
+# Lighthouse and perf reports (make lighthouse, the manual `perf` Playwright project), never committed.
+/reports/
+
 # OS
 .DS_Store

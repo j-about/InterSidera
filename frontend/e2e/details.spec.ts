@@ -1,11 +1,11 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 
 import {
   ARCMIN_DEG,
   LAT,
   appUrl,
+  canvasBox,
   collectErrors,
-  collectForeignRequests,
   debugState,
   definitionOf,
   isAltAzRow,
@@ -19,12 +19,32 @@ import {
 // designations and constellation (Latin in English, "Grand Chien" in French), the horizontal
 // coordinates agree with `/sky/altaz` at the rendered instant within an arcminute, the
 // equatorial coordinates of both epochs are shown, and an unknown `sel` raises the toast and
-// leaves the URL. Page-side functions reach the hook through `window.__sky` directly.
+// leaves the URL. The SKY-5 highlight follows the selection's `constellation` field of
+// `/sky/altaz` (plan D114) through `stats().clinesHighlight` (plan D163: `'CMa'` while Sirius
+// is selected, `null` once nothing is), and a constellation found through the search is centred
+// (`screenOf('con:Ori')` within 3 px of the canvas centre) without touching the selection.
+// Page-side functions reach the hook through `window.__sky` directly.
 
 const ENGINE = 'webgl2';
 const SIRIUS = 'hip:32349';
+/** The centred constellation's label point stays within this many CSS pixels of the centre. */
+const CENTRE_TOLERANCE_PX = 3;
 
 test.describe.configure({ timeout: 180_000 });
+
+async function highlightOf(page: Parameters<typeof debugState>[0]): Promise<string | null> {
+  return page.evaluate(() => window.__sky?.stats().clinesHighlight ?? null);
+}
+
+/** Distance of an object from the canvas centre in CSS pixels, `Infinity` when unresolved. */
+async function centreDistance(page: Parameters<typeof debugState>[0], id: string): Promise<number> {
+  const point = await page.evaluate((target) => window.__sky?.screenOf(target) ?? null, id);
+  if (point === null) {
+    return Infinity;
+  }
+  const box = await canvasBox(page);
+  return Math.hypot(point.x - box.width / 2, point.y - box.height / 2);
+}
 
 function withParams(url: string, params: string): string {
   return url.replace('#engine', `&${params}#engine`);
@@ -38,7 +58,6 @@ test('Sirius: names, constellation, authoritative coordinates; an unknown sel is
   page,
 }) => {
   const errors = collectErrors(page);
-  const foreign = collectForeignRequests(page);
   await page.goto(withParams(appUrl(ENGINE, true), `sel=${SIRIUS}`));
   await waitReady(page);
 
@@ -91,6 +110,33 @@ test('Sirius: names, constellation, authoritative coordinates; an unknown sel is
     );
   });
 
+  await test.step('the selected constellation is highlighted in the line layer (SKY-5)', async () => {
+    // The abbreviation comes from the server's `constellation` field (plan D114), never from a
+    // client-side polygon test; the layer reports the constellation it draws highlighted.
+    await expect.poll(() => highlightOf(page), { timeout: 20_000 }).toBe('CMa');
+    expect(await page.evaluate(() => window.__sky?.constellationOf('hip:32349') ?? null)).toBe(
+      'CMa',
+    );
+  });
+
+  await test.step('orion in the search centres the constellation and keeps the selection', async () => {
+    const box = page.getByRole('combobox', { name: 'Search the sky' });
+    await box.fill('orion');
+    const option = page.getByRole('option', { name: /Orion/ }).first();
+    await expect(option).toContainText('Constellation');
+    // The option is chosen by a click, never by Enter: Enter takes the active option, and an
+    // option becomes active when the pointer enters it. Playwright's virtual mouse rests where
+    // the Details tab was clicked, and on the phone layout the list opens under that spot, so
+    // Enter would take the hovered star of Orion (Alnilam) instead of the constellation.
+    await option.click();
+    await expect
+      .poll(() => centreDistance(page, 'con:Ori'), { timeout: 15_000 })
+      .toBeLessThan(CENTRE_TOLERANCE_PX);
+    expect((await debugState(page)).sel).toBe(SIRIUS);
+    expect(selParam(page)).toBe(SIRIUS);
+    expect(await highlightOf(page)).toBe('CMa');
+  });
+
   await test.step('the French panel names the constellation Grand Chien', async () => {
     await page.goto(withParams(appUrl(ENGINE, true), `sel=${SIRIUS}&lang=fr`));
     await waitReady(page);
@@ -113,9 +159,10 @@ test('Sirius: names, constellation, authoritative coordinates; an unknown sel is
     expect((await debugState(page)).sel).toBeNull();
     const panelEn = await openPanelTab(page, 'Details');
     await expect(panelEn).toContainText('Nothing selected');
+    // Nothing selected: no constellation is highlighted (SKY-5).
+    await expect.poll(() => highlightOf(page), { timeout: 10_000 }).toBeNull();
   });
 
-  expect(foreign).toEqual([]);
   // The unknown `sel` is answered 404 by design; Chromium logs that failed load as a console
   // error of its own, which is not an error of the page.
   expect(errors.filter((line) => !line.startsWith('Failed to load resource'))).toEqual([]);

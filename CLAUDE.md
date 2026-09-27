@@ -11,7 +11,7 @@
 ## Authoritative documents
 
 - `docs/brief.xml` is the specification. When sections conflict (brief l.11): legal and licensing > security and privacy > api_contract > architecture > [M] functional > non-functional budgets > [S] > style.
-- `docs/plan.md` is the durable memory across sessions: status, decisions D1-D114, milestones, risks, open questions, progress log. Read it first in every session; update it in every milestone commit.
+- `docs/plan.md` is the durable memory across sessions: status, decisions D1-D168, milestones, risks, open questions, progress log. Read it first in every session; update it in every milestone commit.
 - `docs/decisions/` holds one ADR per notable decision; `docs/backlog.md` records every deviation from the brief with its reason and the deferred [L] items.
 
 ## Commands (root `Makefile`)
@@ -21,9 +21,10 @@
 - `make dev`: API (`fastapi dev`, port 8000) and Vite (port 5173, HTTPS, proxies `/api`) together; `make dev-api` / `make dev-web` separately.
 - `make check`: every gate, before each commit and in CI: `uv lock --check`, ruff format/check (backend and `scripts/*.py`), pyright (backend, then `scripts/*.py` as explicit files), `pytest -m "not slow"` with coverage (astro and catalogs >= 90 %, `quaternions.py` and `formats.py` 100 %), `tsc -b`, eslint + prettier, `npm run test` (vitest with coverage: 100 % on `sky/math/**` and `state/url.ts`), `node --check`, prettier and a run of `scripts/check_i18n.mjs`, `make types` + `make notices` + drift gate on the generated files.
 - `make test`: full pytest (slow and conformance included) + vitest.
-- `make e2e`: `make build-e2e` (`vite build --mode e2e`, the only build with `window.__sky`) then Playwright on `chromium-desktop` and `chromium-mobile` against a locally started stack; `webkit` and `chromium-webgpu` are manual projects.
+- `make e2e`: `make build-e2e` (`vite build --mode e2e`, the only build with `window.__sky`) then Playwright on `chromium-desktop` and `chromium-mobile` against a locally started stack; `webkit`, `chromium-webgpu` and `perf` are manual projects.
 - `make types`: regenerate `docs/openapi.json` and `frontend/src/api/schema.d.ts`. `make notices`: regenerate `THIRD_PARTY_NOTICES.md` and `frontend/src/data/credits.json` (the About screen's credits) from the data registry.
 - `make build`: production frontend build, followed by a grep proving `dist/assets` contains no `__sky`.
+- `make audit`: `npm audit` + `pip-audit` (`uv tool run pip-audit==2.10.1`) checked by `scripts/check_audit.mjs` against `scripts/audit-allowlist.json` (network; outside `make check`; the CI `audit` job, weekly). `make lighthouse`: `scripts/lighthouse.mjs` (Lighthouse 13.5.0 through `npm exec --package`, never a root `npx`) on six URLs against the API on 8000 and the e2e preview on 4173; score >= 0.9, the CI e2e job's last step.
 - `make up` / `make down`: docker compose (arrive in M7).
 - `make format`: ruff format + fix, prettier + eslint --fix.
 - uv and npm run only through make, or as `uv run --directory backend ...` / `npm --prefix frontend ...`; Node always through `fnm exec --using=<repo>/.node-version`; never `cd` in a recipe; never a root `npx` (it fetches a floating version).
@@ -59,6 +60,7 @@
 - Every UI string goes through `t()` with a key present in both `en.json` and `fr.json`; `scripts/check_i18n.mjs` fails on missing or unused keys and on a dynamic key without a literal prefix (`t(\`constellations.${abbr}\`)`; the dynamic keys are typed in `i18n/keys.ts`).
 - Documentation changes ship in the same commit as the code they describe.
 - Augmented reality (M5): `sky/ar/**` is Babylon-free and reached only through the dynamic import in `SkyEngine` (chunk `arController`); `sky/engine/xr/` is the only Babylon XR importer (chunk `XrBridge`); `App` loads `ui/ar/ArOverlay.tsx` with `lazy()`; the `ar` store slice is transient (no URL parameter); `make build` runs `scripts/check_chunks.mjs` to prove the split.
+- Security headers and the CSP are defined once in `frontend/security-headers.ts` (served by `vite dev` with a nonce and by `vite preview`; the nginx template at M7 mirrors it), the API adds `nosniff` and a deny-all CSP in `middleware/headers.py` outside CORS; every e2e spec imports `test` and `expect` from `e2e/fixtures.ts` (the `cspViolations`, `foreignRequests` and `noStorage` auto fixtures), never from `@playwright/test`.
 
 ## Do not
 

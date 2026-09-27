@@ -3,8 +3,13 @@ import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 
 // The responsive panel body (VIEW-5, plan D112). Below `md` (48 rem) it is a bottom sheet: a
-// tap-to-expand handle (`aria-expanded` / `aria-controls`), a 4 rem strip that stays visible
-// while collapsed (time and transport) and a scrollable body capped at 70 dvh; Escape collapses
+// tap-to-expand handle (`aria-expanded` / `aria-controls`), a strip of at least 4 rem that stays
+// visible while collapsed (time and transport; it wraps rather than scrolling sideways, so a
+// 320 px viewport never scrolls in two dimensions: WCAG 1.4.10, plan D157 C7) and a scrollable
+// body. The parent caps the whole sheet (handle, strip and body together) at 70 dvh, so the body
+// is the one part that shrinks (`min-h-0`, the handle and the strip `shrink-0`) and scrolls: a
+// cap on the body alone let the wrapped strip push the sheet over the top bar's bottom row at
+// 412x839 (WCAG 2.5.8, 2.4.11; plan D157 C7). Escape collapses
 // it while `escapeCollapses` holds (the parent clears it on the desktop layout, where the same
 // `expanded` flag only records the skip link's or `openPanel`'s intent). At `md` and above the
 // handle and the strip disappear and the body always shows: the same DOM serves the side panel,
@@ -31,8 +36,8 @@ const EDITABLE = 'input, textarea, select, [contenteditable]:not([contenteditabl
 /** Complete literal class strings (brief l.550): hidden below `md` while collapsed. */
 function bodyClass(expanded: boolean): string {
   return expanded
-    ? 'block max-h-[70dvh] overflow-y-auto px-3 overscroll-contain touch-pan-y md:max-h-none md:min-h-0 md:flex-1 md:pb-3'
-    : 'hidden max-h-[70dvh] overflow-y-auto px-3 overscroll-contain touch-pan-y md:block md:max-h-none md:min-h-0 md:flex-1 md:pb-3';
+    ? 'block min-h-0 overflow-y-auto px-3 overscroll-contain touch-pan-y md:flex-1 md:pb-3'
+    : 'hidden min-h-0 overflow-y-auto px-3 overscroll-contain touch-pan-y md:block md:flex-1 md:pb-3';
 }
 
 export default function Sheet({
@@ -82,12 +87,12 @@ export default function Sheet({
         onClick={() => {
           onToggle(!expanded);
         }}
-        className="flex min-h-6 w-full items-center justify-center py-1 text-muted select-none hover:text-panel-fg md:hidden pointer-coarse:min-h-8"
+        className="flex min-h-6 w-full shrink-0 items-center justify-center py-1 text-muted select-none hover:text-panel-fg md:hidden pointer-coarse:min-h-8"
       >
         <Chevron size={20} />
       </button>
       {strip !== undefined && (
-        <div className="flex h-strip items-center gap-2 overflow-x-auto px-3 md:hidden">
+        <div className="flex min-h-strip shrink-0 flex-wrap items-center gap-2 px-3 md:hidden">
           {strip}
         </div>
       )}

@@ -14,7 +14,16 @@ export type ReadonlyVec3 = readonly [number, number, number];
 export type Quat = [number, number, number, number];
 export type ReadonlyQuat = readonly [number, number, number, number];
 
-/** Read `a[i]`, throwing `RangeError` when the index is outside the array. */
+/**
+ * Read `a[i]`, throwing `RangeError` when the index is outside the array.
+ *
+ * Kept as one tiny load site (plan D144): `at` is called with every typed-array kind of the
+ * application plus plain arrays, so its keyed load is megamorphic and V8's generic path boxes
+ * every double it returns; splitting it into one site per receiver family was measured on the M6
+ * heap protocol and changed nothing (about 45 kB per overlay tick either way), so the hot kernels
+ * read consecutive values through `load3`/`load4` below, whose own load sites see the two float
+ * families only, and the residual `at` rows are recorded with the heap table (backlog B-91).
+ */
 export function at(a: ArrayLike<number>, i: number): number {
   const v = a[i];
   if (v === undefined) {
@@ -23,20 +32,42 @@ export function at(a: ArrayLike<number>, i: number): number {
   return v;
 }
 
-/** Load three consecutive values `a[offset..offset+2]` into `out`. */
+/**
+ * Load three consecutive values `a[offset..offset+2]` into `out`, throwing `RangeError` when any
+ * of them is outside the array. The reads are `load3`'s own (plan D144): the catalog columns are
+ * `Float32Array`, the frame buffers `Float64Array`, so the load site stays polymorphic and the
+ * doubles reach `out` unboxed, where `at` (every receiver kind of the application) would box them.
+ */
 export function load3(out: Vec3, a: ArrayLike<number>, offset: number): Vec3 {
-  out[0] = at(a, offset);
-  out[1] = at(a, offset + 1);
-  out[2] = at(a, offset + 2);
+  const x = a[offset];
+  const y = a[offset + 1];
+  const z = a[offset + 2];
+  if (x === undefined || y === undefined || z === undefined) {
+    throw new RangeError(
+      `indices ${String(offset)}..${String(offset + 2)} out of range for length ${String(a.length)}`,
+    );
+  }
+  out[0] = x;
+  out[1] = y;
+  out[2] = z;
   return out;
 }
 
-/** Load four consecutive values `a[offset..offset+3]` into `out`. */
+/** Load four consecutive values `a[offset..offset+3]` into `out` (the `load3` rule). */
 export function load4(out: Quat, a: ArrayLike<number>, offset: number): Quat {
-  out[0] = at(a, offset);
-  out[1] = at(a, offset + 1);
-  out[2] = at(a, offset + 2);
-  out[3] = at(a, offset + 3);
+  const x = a[offset];
+  const y = a[offset + 1];
+  const z = a[offset + 2];
+  const w = a[offset + 3];
+  if (x === undefined || y === undefined || z === undefined || w === undefined) {
+    throw new RangeError(
+      `indices ${String(offset)}..${String(offset + 3)} out of range for length ${String(a.length)}`,
+    );
+  }
+  out[0] = x;
+  out[1] = y;
+  out[2] = z;
+  out[3] = w;
   return out;
 }
 

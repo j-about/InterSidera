@@ -12,7 +12,7 @@ import { WebGL2UnavailableError } from '../sky/engine/types';
 import type { FrameController } from '../state/frameController';
 import { createSkyStore } from '../state/store';
 import { createFrameEval } from '../state/types';
-import SkyCanvas, { backendOverride } from './SkyCanvas';
+import SkyCanvas, { backendOverride, dprOverride } from './SkyCanvas';
 
 // The single engine effect (plan D87, brief l.551): one factory call even under StrictMode's
 // double effect, disposal on unmount, disposal of an engine that resolves after the abort, the
@@ -266,6 +266,38 @@ describe('SkyCanvas', () => {
     expect(underlayRoot.childElementCount).toBe(0);
   });
 
+  it('hands the cap to the factory only when the hash names one, never to the URL query', async () => {
+    const store = createSkyStore({}, Date.now());
+    const { engine } = fakeEngine();
+    const withCap = controlledFactory(engine);
+    location.hash = '#engine=webgl2&dpr=1.5';
+    try {
+      const { unmount } = render(
+        <SkyCanvas store={store} frames={fakeFrames()} createEngine={withCap.factory} />,
+      );
+      await waitFor(() => {
+        expect(withCap.calls).toHaveLength(1);
+      });
+      expect(withCap.calls[0]?.maxDevicePixelRatio).toBe(1.5);
+      expect(withCap.calls[0]?.preferBackend).toBe('webgl2');
+      expect(location.search).not.toContain('dpr');
+      unmount();
+    } finally {
+      location.hash = '';
+    }
+
+    const without = controlledFactory(engine);
+    const { unmount } = render(
+      <SkyCanvas store={store} frames={fakeFrames()} createEngine={without.factory} />,
+    );
+    await waitFor(() => {
+      expect(without.calls).toHaveLength(1);
+    });
+    // `exactOptionalPropertyTypes`: absent, not `undefined`.
+    expect('maxDevicePixelRatio' in (without.calls[0] ?? {})).toBe(false);
+    unmount();
+  });
+
   it('labels the canvas for assistive technology', () => {
     const view = render(
       <SkyCanvas
@@ -275,6 +307,21 @@ describe('SkyCanvas', () => {
       />,
     );
     expect(view.getByLabelText('Sky view')).toBeInstanceOf(HTMLCanvasElement);
+  });
+});
+
+describe('dprOverride', () => {
+  it('reads #dpr within 0.5..4 beside #engine and ignores anything else (plan D142)', () => {
+    expect(dprOverride('#dpr=1.5')).toBe(1.5);
+    expect(dprOverride('#engine=webgl2&dpr=1')).toBe(1);
+    expect(dprOverride('#dpr=0.5')).toBe(0.5);
+    expect(dprOverride('#dpr=4')).toBe(4);
+    expect(dprOverride('#dpr=0.25')).toBeUndefined();
+    expect(dprOverride('#dpr=4.5')).toBeUndefined();
+    expect(dprOverride('#dpr=abc')).toBeUndefined();
+    expect(dprOverride('#dpr=')).toBeUndefined();
+    expect(dprOverride('#engine=webgl2')).toBeUndefined();
+    expect(dprOverride('')).toBeUndefined();
   });
 });
 

@@ -215,8 +215,10 @@ export interface FramesState {
   lastError: { status: number; blocked: boolean } | null;
   /**
    * A transient frame failure being retried (network, 429, 5xx), whatever the loaded window:
-   * `attempts` consecutive failures of the shape, the next attempt not before `nextRetryMs`.
-   * Cleared by the next successful response (UX-6 banner, plan D92).
+   * `status` of the last failed attempt (0 for a network error), `attempts` consecutive failed
+   * attempts of the request shape (the client's own retries included, from the first one: plan
+   * R70), the next attempt not before `nextRetryMs`. Cleared by the next successful response
+   * (UX-6 banner, plan D92; mirrored by the debug hook as `state().failing`).
    */
   failing: { status: number; attempts: number; nextRetryMs: number } | null;
   /** The clock was stopped at a coverage bound (TIME-4); cleared by the next user time change. */

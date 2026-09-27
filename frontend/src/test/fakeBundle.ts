@@ -141,6 +141,7 @@ export function fakeBundle(options: FakeBundleOptions = {}): CatalogBundle {
       hipIndex,
       magnitudeLimit: 14,
       parseMs: 0,
+      fetchMs: 0,
     },
     index: { data: index, etag: null, stale: false },
     dso: options.dso === false ? null : { data: [...DSO], etag: 'dso', stale: false },

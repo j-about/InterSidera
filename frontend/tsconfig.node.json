@@ -26,5 +26,11 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts", "playwright.config.ts", "e2e/**/*.ts"]
+  "include": [
+    "vite.config.ts",
+    "security-headers.ts",
+    "security-headers.test.ts",
+    "playwright.config.ts",
+    "e2e/**/*.ts"
+  ]
 }

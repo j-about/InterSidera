@@ -44,6 +44,25 @@ export function backendOverride(hash: string): Backend | 'auto' {
   return value === 'webgl2' || value === 'webgpu' ? value : 'auto';
 }
 
+/** `#dpr=` accepts this range of device pixels per CSS pixel (plan D142). */
+const DPR_OVERRIDE_MIN = 0.5;
+const DPR_OVERRIDE_MAX = 4;
+
+/**
+ * Dev and e2e builds only: `#dpr=<0.5..4>` beside `#engine` caps the device pixel ratio the
+ * canvas renders at (plan D142, the phone protocol of Q57: `#dpr=1.5` against the default cap of
+ * 2 on the all-layers URL). `undefined` keeps the engine's own cap; anything outside the range or
+ * not a number is ignored. Never serialised into the query string.
+ */
+export function dprOverride(hash: string): number | undefined {
+  const value = new URLSearchParams(hash.replace(/^#/, '')).get('dpr');
+  if (value === null || value.trim() === '') {
+    return undefined;
+  }
+  const ratio = Number(value);
+  return ratio >= DPR_OVERRIDE_MIN && ratio <= DPR_OVERRIDE_MAX ? ratio : undefined;
+}
+
 interface Deferred<T> {
   promise: Promise<T>;
   resolve: (value: T) => void;
@@ -115,6 +134,8 @@ export default function SkyCanvas({
       const boot = startBoot({ store, frames, engine: engineReady.promise, signal });
       actions.setEngine({ status: 'creating' });
       try {
+        // `exactOptionalPropertyTypes`: the DPR cap is passed only when the hash names one.
+        const maxDevicePixelRatio = debugBuild ? dprOverride(location.hash) : undefined;
         const created = await createEngine({
           canvas,
           store,
@@ -126,6 +147,7 @@ export default function SkyCanvas({
           signal,
           preferBackend: debugBuild ? backendOverride(location.hash) : 'auto',
           debug: debugBuild,
+          ...(maxDevicePixelRatio === undefined ? {} : { maxDevicePixelRatio }),
         });
         if (aborted()) {
           // A factory that ignores the signal still hands back a live context: release it.

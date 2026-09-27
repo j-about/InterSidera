@@ -1,12 +1,15 @@
 // @vitest-environment node
 // Boot sequence (plan D87): a fake fetch replays `/health` (starting with progress, a fatal
 // detail, unreachable), `/meta` (503 back to health, step classes), the catalogs (degraded /meta
-// without dso, stale ETag) and a fake engine; the phases and errors land in the store.
+// without dso, stale ETag) and a fake engine; the phases and errors land in the store. Plan D138:
+// `/meta` is requested alongside the first `/health` and `setHealth` still precedes the `meta`
+// phase; plan D141: every phase leaves a `performance.mark`, behind a guard for platforms without
+// one (Node has `mark`, so the assertions stub `performance` with `vi.stubGlobal`).
 
 import type { MetaResponse } from '../api/client';
 import { WebGL2UnavailableError } from '../sky/engine/types';
 import type { SkyEngineApi } from '../sky/engine/types';
-import { startBoot } from './boot';
+import { markPhase, startBoot } from './boot';
 import type { FrameController } from './frameController';
 import { createSkyStore } from './store';
 import type { SkyStore } from './storeTypes';
@@ -286,6 +289,9 @@ describe('startBoot', () => {
     });
     expect(calledUrls(fetchImpl)).not.toContain(DSO);
     expect(calledUrls(fetchImpl).filter((u) => u === HEALTH)).toHaveLength(3);
+    // Plan D138: `/meta` leaves with the first `/health`, not after the poll's last answer.
+    expect(calledUrls(fetchImpl).slice(0, 2)).toEqual([HEALTH, META]);
+    expect(calledUrls(fetchImpl).filter((u) => u === META)).toHaveLength(1);
     const bundle = handle.bundle();
     expect(bundle?.dso).toBeNull();
     expect(bundle?.constellations?.data).toEqual([]);
@@ -375,6 +381,69 @@ describe('startBoot', () => {
     });
   });
 
+  it('writes health before the meta phase and stamps every phase with a mark (D138, D141)', async () => {
+    const fetchImpl = sequence({
+      [HEALTH]: [() => json(200, { status: 'ready', version: '0.1.0' })],
+      [META]: [() => json(200, makeMeta())],
+      ...catalogsOk,
+    });
+    const store = createSkyStore({}, NOW);
+    // One log of the two writes the splash and the About dialog depend on, in store order.
+    const order: string[] = [];
+    store.subscribe(
+      (s) => s.health,
+      (health) => {
+        order.push(`health:${health?.status ?? 'null'}`);
+      },
+    );
+    store.subscribe(
+      (s) => s.boot.phase,
+      (phase) => {
+        order.push(`phase:${phase}`);
+      },
+    );
+    const mark = vi.fn<(name: string) => void>();
+    vi.stubGlobal('performance', { now: () => 0, mark });
+    try {
+      await startBoot({
+        store,
+        frames: fakeFrames().frames,
+        engine: Promise.resolve(fakeEngine().engine),
+        signal: new AbortController().signal,
+        fetchImpl,
+        sleep: instantSleep,
+      }).done;
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    // The store starts in the `health` phase, so its selector fires from `meta` on.
+    expect(order).toEqual([
+      'health:ready',
+      'phase:meta',
+      'phase:catalogs',
+      'phase:frame',
+      'phase:ready',
+    ]);
+    expect(mark.mock.calls.map((call) => call[0])).toEqual([
+      'sky:health',
+      'sky:meta',
+      'sky:catalogs',
+      'sky:frame',
+      'sky:ready',
+    ]);
+  });
+
+  it('marks nothing where the platform has no performance.mark (jsdom 30)', () => {
+    vi.stubGlobal('performance', { now: () => 0 });
+    try {
+      expect(() => {
+        markPhase('sky:health');
+      }).not.toThrow();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('goes back to /health when /meta answers 503', async () => {
     const fetchImpl = sequence({
       [HEALTH]: [() => json(200, { status: 'ready', version: '0.1.0' })],
@@ -398,6 +467,35 @@ describe('startBoot', () => {
     expect(phases).toEqual(['health', 'meta', 'health', 'meta', 'catalogs', 'frame', 'ready']);
     expect(calledUrls(fetchImpl).filter((u) => u === HEALTH)).toHaveLength(2);
     expect(calledUrls(fetchImpl).filter((u) => u === META)).toHaveLength(2);
+  });
+
+  it('keeps a /meta rejection quiet while /health is still polling, then reports it', async () => {
+    // `/meta` answers 404 at once while the API says `starting`: the boot waits for the poll (the
+    // progress stays visible), then ends in the http error; nothing is left unhandled meanwhile.
+    const fetchImpl = sequence({
+      [HEALTH]: [
+        () => json(503, { status: 'starting', version: '0.1.0' }, { 'Retry-After': '1' }),
+        () => json(200, { status: 'ready', version: '0.1.0' }),
+      ],
+      [META]: [() => new Response('nope', { status: 404 })],
+      ...catalogsOk,
+    });
+    const store = createSkyStore({}, NOW);
+    const { phases } = trackBoot(store);
+    await startBoot({
+      store,
+      frames: fakeFrames().frames,
+      engine: Promise.resolve(fakeEngine().engine),
+      signal: new AbortController().signal,
+      fetchImpl,
+      sleep: instantSleep,
+    }).done;
+    expect(phases).toEqual(['health', 'meta', 'error']);
+    expect(store.getState().boot).toMatchObject({
+      phase: 'error',
+      error: { kind: 'http', status: 404 },
+    });
+    expect(store.getState().health?.status).toBe('ready');
   });
 
   it('reports a stale star catalog and still reaches ready', async () => {
@@ -517,7 +615,9 @@ describe('startBoot', () => {
     await handle.done;
     expect(store.getState().boot.phase).toBe('health');
     expect(store.getState().boot.error).toBeNull();
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    // The first poll and its concurrent `/meta` (plan D138; unrouted here, so a 404 held quietly
+    // until the abort), nothing after the abort.
+    expect(calledUrls(fetchImpl)).toEqual([HEALTH, META]);
 
     // Frame phase: `whenCovering` never resolves; the abort must not leave the boot hanging.
     const abort2 = new AbortController();

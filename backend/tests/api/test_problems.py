@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from skyapi.main import create_app
+from skyapi.middleware.headers import API_POLICY
 from skyapi.middleware.problem import PROBLEM_TYPE_BASE, PROBLEM_TYPES
 from support.fixtures_api import api_settings_for
 
@@ -126,6 +127,10 @@ def test_unhandled_exception_is_a_500_problem_with_the_request_id(tmp_path: Path
     assert response.status_code == 500
     assert response.headers["content-type"] == "application/problem+json"
     assert response.headers["x-request-id"] == "123e4567-e89b-12d3-a456-426614174000"
+    # Starlette's ServerErrorMiddleware renders this path outside every user middleware: the
+    # handler itself adds the security headers of `middleware/headers.py` (plan D149), once.
+    assert response.headers.get_list("x-content-type-options") == ["nosniff"]
+    assert response.headers.get_list("content-security-policy") == [API_POLICY]
     body = response.json()
     assert body["type"] == PROBLEM_TYPE_BASE + "internal-error"
     assert "123e4567-e89b-12d3-a456-426614174000" in body["detail"]

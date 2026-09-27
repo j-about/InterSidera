@@ -1,6 +1,6 @@
 # Data sources
 
-Status: written at M1. The registry is `backend/src/skyapi/data/data_files.toml` (inside the package, ADR-0005); this document mirrors it. The brief's list (`docs/brief.xml` l.303-334) was verified against the live sources on 2026-09-02 and 2026-09-03; the table below is the corrected version and supersedes the brief where they differ (see `docs/plan.md` section 5 for the evidence).
+Status: written at M1; reviewed at M6 (2026-09-24): the registry is unchanged since the M4 `gazetteer` entry, the weekly refresh line of brief l.298 is in the `sky-data` section below, and the development `data/` directory measured 612 MB without the incomplete `de441.bsp.part` (995,098,624 B of the 3,307,878,400 B file, so `sky-data fetch --full` is still pending), of which `cache/` 198 MB, against the brief's about 3.5 GB with de441 (l.299; recorded in `docs/testing.md` "Budgets"). The registry is `backend/src/skyapi/data/data_files.toml` (inside the package, ADR-0005); this document mirrors it. The brief's list (`docs/brief.xml` l.303-334) was verified against the live sources on 2026-09-02 and 2026-09-03; the table below is the corrected version and supersedes the brief where they differ (see `docs/plan.md` section 5 for the evidence).
 
 Every file is downloaded by `sky-data fetch` into `DATA_DIR` (`SKYAPI_DATA_DIR`, default `../data` relative to `backend/`) with SHA-256 verification and resumable downloads; none is committed to the repository. Sizes are exact byte counts observed on 2026-09-03 unless marked approximate.
 

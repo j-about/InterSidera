@@ -1,11 +1,19 @@
+import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import tailwindcss from '@tailwindcss/vite';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import react from '@vitejs/plugin-react';
+import { loadEnv } from 'vite';
 import { configDefaults, defineConfig } from 'vitest/config';
 
 import pkg from './package.json' with { type: 'json' };
+import {
+  CSP_GEOCODER_ORIGIN_DEFAULT,
+  geocoderOriginFromEnv,
+  securityHeaders,
+} from './security-headers.ts';
 
 /**
  * A trusted development certificate for phones (plan D135, backlog B-82): `DEV_TLS_CERT` and
@@ -37,6 +45,25 @@ export default defineConfig(({ command, mode, isPreview }) => {
   const interactiveDev = command === 'serve' && mode === 'development' && !isPreview;
   const https = devTls();
 
+  // The security headers of the web tier come from one module (security-headers.ts, plan D147):
+  // `vite preview` serves the production values, `vite dev` the same policy plus a per-process
+  // nonce on `script-src` and `style-src` (the Fast Refresh preamble of @vitejs/plugin-react is
+  // an inline module script and the dev client injects `<style>` elements; `html.cspNonce` stamps
+  // both, dev only: a build would bake a static nonce into dist/index.html). The geocoder origin
+  // (`connect-src`) is `SKY_GEOCODER_ORIGIN` (plan D148) from the repository-root `.env` files
+  // through Vite's own loader with the prefix filter (no `SKYAPI_*` value is read), `process.env`
+  // winning; the default is Nominatim. It is resolved only when this config serves pages (`vite
+  // dev`, `vite preview`): `vite build` and vitest never read `.env`, so check, test and types
+  // stay hermetic (rules/tooling.md). Nothing of this reaches the client bundle.
+  const servesPages = interactiveDev || isPreview === true;
+  const geocoderOrigin = servesPages
+    ? geocoderOriginFromEnv({
+        ...loadEnv(mode, resolve(import.meta.dirname, '..'), 'SKY_GEOCODER_ORIGIN'),
+        ...process.env,
+      })
+    : CSP_GEOCODER_ORIGIN_DEFAULT;
+  const nonce = interactiveDev ? randomBytes(16).toString('base64') : undefined;
+
   return {
     define: { __APP_VERSION__: JSON.stringify(pkg.version) },
     plugins: [
@@ -44,46 +71,70 @@ export default defineConfig(({ command, mode, isPreview }) => {
       tailwindcss(),
       ...(interactiveDev && https === undefined ? [basicSsl()] : []),
     ],
+    ...(nonce === undefined ? {} : { html: { cspNonce: nonce } }),
     server: {
       port: 5173,
       strictPort: true,
-      // Same-origin `/api` in development; the API listens on 8000 (brief l.20, l.95). The target
-      // is 127.0.0.1, not `localhost`, which Node may resolve to ::1 while uvicorn binds IPv4 only.
-      proxy: { '/api': { target: 'http://127.0.0.1:8000' } },
+      proxy: {
+        // Same-origin `/api` in development; the API listens on 8000 (brief l.20, l.95). The
+        // target is 127.0.0.1, not `localhost`, which Node may resolve to ::1 while uvicorn binds
+        // IPv4 only.
+        '/api': { target: 'http://127.0.0.1:8000' },
+        // The dev/e2e self-test report collector (plan D168, docs/dev-wsl2.md): `__sky.selfTest`
+        // POSTs its report to a same-origin path, allowed by `connect-src 'self'`, and the proxy
+        // hands it to the local collector on 9911 (a 502 when nothing listens). Inherited by
+        // `preview.proxy`; nginx never has it.
+        '/__selftest': { target: 'http://127.0.0.1:9911' },
+      },
       ...(https === undefined ? {} : { https }),
+      ...(nonce === undefined ? {} : { headers: securityHeaders({ geocoderOrigin, nonce }) }),
     },
     // `preview.proxy` inherits `server.proxy`, so the e2e smoke test reaches the API through 4173.
-    preview: { port: 4173, strictPort: true, ...(https === undefined ? {} : { https }) },
+    preview: {
+      port: 4173,
+      strictPort: true,
+      headers: securityHeaders({ geocoderOrigin }),
+      ...(https === undefined ? {} : { https }),
+    },
     build: {
       // `.vite/manifest.json` feeds scripts/check_chunks.mjs (the lazy-chunk gate, plan D131).
       manifest: true,
+      // Source maps for the e2e build only (plan D146): the manual `perf` Playwright project maps
+      // its heap-sampling sites back to `src/` through them. Production ships no maps.
+      sourcemap: mode === 'e2e',
       // Vite 8 is Rolldown-based: `codeSplitting` groups, never `rollupOptions` / `manualChunks`
-      // (brief l.549, plan D90, D131). Two groups: `babylon-webgpu` (the WebGPU engine, the WGSL
-      // shaders and the audio engine, reached only through the dynamic import in
-      // sky/engine/webgpu.ts, so WebGL2 users never download it) and `babylon` (the rest of
-      // @babylonjs/core) tagged `$initial` with the higher priority. Rolldown groups capture
-      // their dependencies recursively: without the tag the shared modules landed in the WebGPU
-      // chunk, which `index` and `babylon` then imported statically and index.html preloaded
-      // (the M3/M4 builds shipped 145 kB gzip of WebGPU code to everyone; D90 amended). Never
-      // `includeDependenciesRecursively: false` on the lazy group: it yields a cyclic
-      // webgpu/babylon-webgpu pair that throws `Class extends value undefined` at evaluation. The
-      // AR controller, the AR overlay and the WebXR bridge need no group: a dynamic-only import
-      // of an application module becomes its own chunk. scripts/check_chunks.mjs (make build, CI)
-      // proves the split on `.vite/manifest.json`. Measured on 2026-09-17 with `make build` (the
-      // gate's zlib figures): eager index 178.1 kB + babylon 229.6 kB + runtime 0.4 kB gzip
-      // (408 kB; 397 kB right after the regrouping at the contract step, down from 505 kB with
-      // the eager WebGPU chunk), lazy babylon-webgpu 95.2 kB (68.1 kB before the XR graph made
-      // the WGSL `default.*` shaders reachable, plan Q63/R96) + webgpu 0.9 kB, arController
-      // 3.3 kB, ArOverlay 2.0 kB, XrBridge 129.1 kB and the shared webxr 1.2 kB gzip, plus 31
-      // small on-demand Babylon chunks (audio, texture loaders, shaders) nothing requests
-      // (budget 1.5 MB, brief l.257).
+      // (brief l.549, plan D90, D131). Two groups: `babylon-webgpu` (the WebGPU engine and the
+      // audio engine, reached only through the dynamic import in sky/engine/webgpu.ts, so WebGL2
+      // users never download it) and `babylon` (the rest of @babylonjs/core) tagged `$initial`
+      // with the higher priority. Rolldown groups capture their dependencies recursively: without
+      // the tag the shared modules landed in the WebGPU chunk, which `index` and `babylon` then
+      // imported statically and index.html preloaded (the M3/M4 builds shipped 145 kB gzip of
+      // WebGPU code to everyone; D90 amended). Never `includeDependenciesRecursively: false` on
+      // the lazy group: it yields a cyclic webgpu/babylon-webgpu pair that throws `Class extends
+      // value undefined` at evaluation. The group test names no `ShadersWGSL` directory (plan
+      // D143): the WGSL modules the engine needs (`clearQuad.*`, the `color.*` line shader of
+      // sky/engine/webgpu.ts and their includes) are reached statically and follow through the
+      // recursive capture, whereas the XR graph (WebXRDefaultExperience's controller, teleport
+      // and hand-tracking features import StandardMaterial) makes the WGSL `default.*` material
+      // shaders reachable too: 172.8 kB raw of string literals that the old `ShadersWGSL`
+      // alternative captured into `babylon-webgpu` (96.2 kB gzip with Babylon 9.27). Without it
+      // they become lazy chunks nothing requests. The AR controller, the AR overlay and the WebXR
+      // bridge need no group: a dynamic-only import of an application module becomes its own
+      // chunk. scripts/check_chunks.mjs (make build, CI) proves the split on
+      // `.vite/manifest.json`, with an eager gzip budget and the rule that `defaultPixelShader`
+      // appears in no eager chunk, `babylon-webgpu-*` or `webgpu-*` (checks (f) and (g), plan
+      // D143). Measured on 2026-09-23 with `make build` (the gate's zlib figures): eager index
+      // 187.0 kB + babylon 233.0 kB + runtime 0.4 kB gzip (420 kB, unchanged by the regex), lazy
+      // babylon-webgpu 66.2 kB (96.2 kB before) + webgpu 1.3 kB, XrBridge 129.0 kB, arController
+      // 3.3 kB, ArOverlay 2.0 kB, the shared webxr 1.2 kB, 51 lazy chunks in all (38 before;
+      // budget 1.5 MB, brief l.257).
       rolldownOptions: {
         output: {
           codeSplitting: {
             groups: [
               {
                 name: 'babylon-webgpu',
-                test: /node_modules[\\/]@babylonjs[\\/]core[\\/](Engines[\\/](webgpuEngine|WebGPU)|ShadersWGSL|Audio)[\\/]/,
+                test: /node_modules[\\/]@babylonjs[\\/]core[\\/](Engines[\\/](webgpuEngine|WebGPU)|Audio)[\\/]/,
                 priority: 20,
               },
               {
@@ -101,7 +152,10 @@ export default defineConfig(({ command, mode, isPreview }) => {
       environment: 'jsdom',
       globals: true,
       setupFiles: ['./src/test/setup.ts'],
-      include: ['src/**/*.{test,spec}.{ts,tsx}'],
+      // The headers module lives next to this config (Node side, tsconfig.node.json); its test
+      // runs under the node environment (`// @vitest-environment node`) and stays outside the
+      // coverage include below.
+      include: ['src/**/*.{test,spec}.{ts,tsx}', 'security-headers.test.ts'],
       // Vitest 4 excludes only node_modules and .git by default; keep the Playwright specs and the
       // build output out of the unit-test run.
       exclude: [...configDefaults.exclude, 'e2e/**', 'dist/**'],

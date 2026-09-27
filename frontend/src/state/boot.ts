@@ -1,9 +1,11 @@
 // Boot sequence (plan D87, brief l.65-66): `/health` until the API is up (progress or a fatal
-// detail while `starting`, ADR-0008), `/meta` (a 503 sends it back to `/health`), the catalogs in
-// parallel, the engine, then the first frame window; every step is mirrored into the store's
-// `boot` block so the splash (M3) and the banners (M4) render from state alone. Aborting the
-// signal stops the sequence silently between any two awaits (React StrictMode double effect,
-// brief l.551).
+// detail while `starting`, ADR-0008) with `/meta` requested alongside it (plan D138: one round
+// trip less on a cold boot; a 503 or a network failure on `/meta` defers to the poll and sends
+// the sequence back to `/health`), the catalogs in parallel, the engine, then the first frame
+// window; every step is mirrored into the store's `boot` block so the splash (M3) and the banners
+// (M4) render from state alone, and stamped with a `performance.mark('sky:<phase>')` for the
+// boot measurements (plan D141; the marks carry no data). Aborting the signal stops the sequence
+// silently between any two awaits (React StrictMode double effect, brief l.551).
 
 import { loadCatalogs } from '../api/catalogs';
 import type { CatalogBundle } from '../api/catalogs';
@@ -105,6 +107,18 @@ function sendsBackToHealth(error: unknown): boolean {
   return error instanceof NetworkError || (error instanceof ApiProblem && error.status === 503);
 }
 
+/**
+ * `performance.mark(name)` where the platform has it (plan D141): jsdom 30 implements `now()`
+ * alone, so the guard reads the method through an `unknown`-typed view (the DOM typing says it
+ * always exists). The marks are read back by the dev/e2e debug hook and carry no data.
+ */
+export function markPhase(name: `sky:${string}`): void {
+  const perf: { mark?: unknown } = performance;
+  if (typeof perf.mark === 'function') {
+    performance.mark(name);
+  }
+}
+
 export function startBoot(deps: BootDeps): BootHandle {
   const { store, signal } = deps;
   const { actions } = store.getState();
@@ -163,39 +177,65 @@ export function startBoot(deps: BootDeps): BootHandle {
     actions.setBoot({ attempt, retryAtMs: now() + delayMs, error: { kind: 'unreachable' } });
   }
 
-  /** `/health` then `/meta`, looping back to `/health` while the API is starting or unreachable. */
+  /**
+   * `/meta`, or `null` when the API is still starting (503) or the network dropped: the poll's
+   * outcome decides then. A 503 is never retried by the client here (it would retry silently
+   * five times while `/health` shows the progress). Any other failure rejects.
+   */
+  async function metaOrNull(): Promise<MetaResponse | null> {
+    try {
+      return (
+        await getMeta({
+          ...requestOptions,
+          retry: {
+            retryOnStatus: (status) => status === 429 || status === 502 || status === 504,
+          },
+        })
+      ).data;
+    } catch (error) {
+      if (aborted() || isAbortError(error) || !sendsBackToHealth(error)) {
+        throw error;
+      }
+      return null;
+    }
+  }
+
+  /**
+   * `/health` and `/meta` together (plan D138), looping back to `/health` while the API is
+   * starting or unreachable. `setHealth` still precedes `setBoot({ phase: 'meta' })`: the splash
+   * reads `health.status` and the About dialog `health.version`.
+   */
   async function healthAndMeta(): Promise<MetaResponse | null> {
     for (;;) {
       if (aborted()) {
         return null;
       }
       actions.setBoot({ phase: 'health' });
-      const health = await pollHealth({
+      markPhase('sky:health');
+      // Both requests leave now, the poll first (it owns the splash); `/meta` is read after it.
+      const polling = pollHealth({
         ...requestOptions,
         onUpdate: onHealthUpdate,
         onRetry: onHealthRetry,
       });
+      const meta = metaOrNull();
+      // A `/meta` rejection that lands before the poll ends (or during an abort) must not surface
+      // as unhandled meanwhile; `await meta` below still throws it.
+      void meta.catch(() => undefined);
+      const health = await polling;
       if (aborted()) {
         return null;
       }
       actions.setHealth(health);
       actions.setBoot({ phase: 'meta', progress: null, error: null, attempt: 0, retryAtMs: null });
-      try {
-        // A 503 here means the API went back to `starting`: return to `/health` at once, where
-        // the progress is shown, instead of letting the client retry it silently five times.
-        return (
-          await getMeta({
-            ...requestOptions,
-            retry: {
-              retryOnStatus: (status) => status === 429 || status === 502 || status === 504,
-            },
-          })
-        ).data;
-      } catch (error) {
-        if (aborted() || isAbortError(error) || !sendsBackToHealth(error)) {
-          throw error;
-        }
+      markPhase('sky:meta');
+      const data = await meta;
+      if (data !== null) {
+        return data;
       }
+      // `/meta` said 503 (or the network dropped) while `/health` answered: the API went back to
+      // `starting`, or the answers crossed; the poll shows the progress until both agree (one
+      // more `/health` round trip, and `sky:health`/`sky:meta` marked again, in that case only).
     }
   }
 
@@ -212,6 +252,7 @@ export function startBoot(deps: BootDeps): BootHandle {
         actions.setMeta(meta);
         actions.setTtMinusUtc(meta.server_time.tt_minus_utc_seconds);
         actions.setBoot({ phase: 'catalogs' });
+        markPhase('sky:catalogs');
         try {
           bundle = await loadCatalogs(meta, {
             ...requestOptions,
@@ -240,6 +281,7 @@ export function startBoot(deps: BootDeps): BootHandle {
       }
       engine.setCatalog(bundle.stars);
       actions.setBoot({ phase: 'frame' });
+      markPhase('sky:frame');
       const blocked = firstFrameBlocked(store);
       try {
         await raceAbort(Promise.race([deps.frames.whenCovering(), blocked.promise]), signal);
@@ -250,6 +292,7 @@ export function startBoot(deps: BootDeps): BootHandle {
         return;
       }
       actions.setBoot({ phase: 'ready' });
+      markPhase('sky:ready');
     } catch (error) {
       if (aborted() || isAbortError(error)) {
         return;

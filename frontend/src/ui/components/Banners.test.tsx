@@ -23,6 +23,7 @@ describe('Banners', () => {
     const { actions } = store.getState();
     render(<Banners store={store} />);
     act(() => {
+      actions.setBoot({ phase: 'ready' });
       actions.setFrames({ failing: { status: 0, attempts: 2, nextRetryMs: Date.now() + 4200 } });
     });
     const alert = screen.getByRole('alert', { name: 'Sky service unreachable' });
@@ -38,6 +39,26 @@ describe('Banners', () => {
       actions.setFrames({ failing: null });
     });
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('leaves a failing first frame to the splash: the alert is a post-boot signal', () => {
+    // The frame controller publishes `failing` from the first retry (plan R70), during the boot
+    // too; while the splash is up (`boot.phase !== 'ready'`) it owns the message.
+    const store = createSkyStore();
+    const { actions } = store.getState();
+    render(<Banners store={store} />);
+    const failing = { status: 0, attempts: 1, nextRetryMs: Date.now() + 1000 };
+    act(() => {
+      actions.setBoot({ phase: 'frame' });
+      actions.setFrames({ failing });
+    });
+    expect(screen.queryByRole('alert')).toBeNull();
+    act(() => {
+      actions.setBoot({ phase: 'ready' });
+    });
+    expect(screen.getByRole('alert', { name: 'Sky service unreachable' })).toHaveTextContent(
+      'retrying in 1 s',
+    );
   });
 
   it('offers a reload when a catalog is stale', () => {

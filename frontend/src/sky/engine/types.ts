@@ -31,10 +31,15 @@ export interface StarCatalogInput {
   /** Faintest magnitude of the catalog (`/meta.catalogs.stars.magnitude_limit`). */
   magnitudeLimit: number;
   /**
-   * Milliseconds from the start of the `/catalogs/stars` request to the end of parsing and HIP
-   * indexing (`api/catalogs.ts`); the GPU upload is not included.
+   * Milliseconds of `parseSkys` plus the HIP index (`api/catalogs.ts`), CPU only: the download
+   * is `fetchMs` (plan D141 split the former fetch-plus-parse figure), the GPU upload neither.
    */
   parseMs: number;
+  /**
+   * Milliseconds from the start of the `/catalogs/stars` request to its last byte (plan D141).
+   * Always set by `loadCatalogs`; the UI test fakes (`src/test/fakeBundle.ts`) set it to 0.
+   */
+  fetchMs: number;
 }
 
 /**
@@ -74,6 +79,11 @@ export interface SkyEngineOptions {
   xrCompatible?: boolean;
   /** Dev and e2e builds: Babylon's missing-side-effect warnings on. */
   debug?: boolean;
+  /**
+   * Device pixels per CSS pixel the canvas renders at most (plan D142): the `#dpr=` hash of dev
+   * and e2e builds for the phone protocol of Q57; the engine's own cap (2) when absent.
+   */
+  maxDevicePixelRatio?: number;
 }
 
 /** A label the engine draws, with its CSS-pixel box relative to the canvas (debug hook, e2e). */
@@ -87,12 +97,75 @@ export interface LabelBox {
   height: number;
 }
 
-/** Counts of the rendering layers after the last overlay tick (debug hook `stats()`). */
+/** Counts of the rendering layers (debug hook `stats()`), computed when asked (plan D144). */
 export interface LayerStats {
   /** Deep-sky objects passing the limits and the type filter. */
   dso: number;
   /** Constellation line segments with both ends in the star catalog. */
   clinesSegments: number;
+}
+
+/** Monotonic counters since the engine was created (plan D141). */
+export interface EngineCounters {
+  /** Completed render frames (`tick` plus `scene.render` without a throw). */
+  frames: number;
+  /** Overlay ticks (the <= 10 Hz path: lines, constellations, labels, marker, centring). */
+  overlayTicks: number;
+  /** `setVisibleLabels` publications (the <= 1 Hz label list). */
+  labelPublishes: number;
+}
+
+/** Mean CPU cost per phase over the last ten seconds, milliseconds (plan D141). */
+export interface EnginePhases {
+  /** `tick` (the simulation step, the overlay tick included when it ran). */
+  tickMs: number;
+  /** `scene.render`. */
+  renderMs: number;
+  /** The overlay tick alone, averaged over the frames that ran one. */
+  overlayMs: number;
+}
+
+/** The render target and the scaling in force (plan D142). */
+export interface RenderTarget {
+  /** The device-pixel-ratio cap applied in `resize()` (2, or the `#dpr=` override). */
+  cap: number;
+  hardwareScalingLevel: number;
+  /** Device pixels. */
+  renderWidth: number;
+  renderHeight: number;
+}
+
+/** What the constellation layer reports beyond `LayerStats.clinesSegments` (plan D141). */
+export interface OverlayStats {
+  /** IAU abbreviation of the highlighted constellation (`details.con`), `null` when none. */
+  clinesHighlight: string | null;
+  /**
+   * Boundary chords built from the catalog (every ring's point count minus one), like
+   * `clinesSegments` a catalog count: `layers.cbounds` says whether they are drawn (the mesh is
+   * hidden, not emptied).
+   */
+  cboundsSegments: number;
+}
+
+/**
+ * Instrumentation of the dev and e2e debug hook (plan D140-D142). The real engine always carries
+ * it as `SkyEngineApi.perf`; the property is optional only because the UI test fakes of the seam
+ * (five object literals outside the engine) predate it. Nothing here allocates per frame while no
+ * waiter is pending.
+ */
+export interface EnginePerf {
+  /**
+   * Resolves after `n` further render frames have completed (plan D140): a spec that changed the
+   * view waits for the picture, not for a wall-clock delay. Rejects when the engine is disposed
+   * or gives up (`MAX_FRAME_FAILURES`).
+   */
+  afterFrames(n: number): Promise<void>;
+  /** `Date.now()` as the last `tick` read it (the clock of `ttAt`); `NaN` before the first tick. */
+  tickWallMs(): number;
+  counters(): EngineCounters;
+  phaseMs(): EnginePhases;
+  renderTarget(): RenderTarget;
+  overlays(): OverlayStats;
 }
 
 /**
@@ -167,6 +240,8 @@ export interface SkyEngineApi {
   reducedMotion(): boolean;
   resize(): void;
   dispose(): void;
+  /** The measurement seam of the debug hook (plan D140-D142); see `EnginePerf`. */
+  readonly perf?: EnginePerf;
 }
 
 export type SkyEngineFactory = (options: SkyEngineOptions) => Promise<SkyEngineApi>;

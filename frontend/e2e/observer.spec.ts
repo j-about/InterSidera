@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { Page } from '@playwright/test';
 
 import {
@@ -19,7 +19,8 @@ import {
 // boots: a prompt that is never answered (the explanation must be visible on its own, on the phone
 // layout too, with the sky uncovered), then the granted flow, then the denied flow through an
 // `addInitScript` stub (headless Chromium's handling of an un-granted prompt is undocumented,
-// plan R65).
+// plan R65). E4 (plan D163, UX-6): a second geocoder submit answered 429 shows `geocoder.blocked`
+// and is never retried by the page (OSMF usage policy, brief l.554).
 
 const ENGINE = 'webgl2';
 const PARIS = { latitude: 48.8566, longitude: 2.3522 };
@@ -27,6 +28,8 @@ const PARIS = { latitude: 48.8566, longitude: 2.3522 };
 const NO_OBSERVER_URL = `/?atm=0#engine=${ENGINE}`;
 /** At most two decimals (OBS-7). */
 const TWO_DECIMALS = /^-?\d+(\.\d{1,2})?$/;
+/** Chromium's own console line for a request answered with an error status. */
+const RESOURCE_LINE = 'Failed to load resource';
 
 interface GeocoderMeta {
   enabled: boolean;
@@ -99,13 +102,16 @@ test('the explanation is visible while the browser prompt is up, the sky uncover
 
 test('geolocation, manual coordinates, the mocked geocoder, a body switch and a preset', async ({
   page,
+  foreignRequests,
 }) => {
   const meta = geocoderOf(await metaOf(page));
   const geocoderHost = meta.url === '' ? null : new URL(meta.url).hostname;
+  if (geocoderHost !== null) {
+    // The one foreign host a test may reach: the geocoder, routed and fulfilled below (a
+    // `page.route` fulfilment still fires `page.on('request')`); the fixture asserts the rest.
+    foreignRequests.allow(geocoderHost);
+  }
   const errors = collectErrors(page);
-  const foreign = collectForeignRequests(page, {
-    allow: geocoderHost === null ? [] : [geocoderHost],
-  });
   const frameRequests = collectFrameRequests(page);
 
   await test.step('a granted fix moves the observer, rounded only in the URL and the requests', async () => {
@@ -175,6 +181,16 @@ test('geolocation, manual coordinates, the mocked geocoder, a body switch and a 
       await page.route(`${origin}/**`, async (route) => {
         fulfilled.add(route.request().url());
         referers.push(route.request().headers().referer);
+        // E4: the second query is refused by the service (Nominatim answers 429 over its
+        // policy); the first one is the documented Paris row.
+        if (new URL(route.request().url()).searchParams.get('q') === 'Lyon') {
+          await route.fulfill({
+            status: 429,
+            contentType: 'text/html',
+            body: '<html><body>Too Many Requests</body></html>',
+          });
+          return;
+        }
         await route.fulfill({
           json: [
             {
@@ -230,6 +246,28 @@ test('geolocation, manual coordinates, the mocked geocoder, a body switch and a 
       expect(param(page, 'lat')).toBe('48.86');
       expect((await debugState(page)).observer.elev).toBe(0);
 
+      // E4 (UX-6, plan D163): the service refuses the next query with 429. The panel says so,
+      // the results are cleared, the page never retries on its own (exactly one more request,
+      // still none after the cooldown), and the submit control is released after the policy's
+      // one-second interval so the user may try again by hand.
+      const submit = page.getByRole('button', { name: 'Search' });
+      await expect(submit).not.toHaveAttribute('aria-disabled', { timeout: 5000 });
+      await page.getByRole('textbox', { name: 'Place name' }).fill('Lyon');
+      await submit.click();
+      const blocked = page.getByRole('tabpanel', { name: 'Observer' }).getByRole('alert');
+      await expect(blocked).toHaveText(
+        'The place search service refused the request; wait a moment before trying again.',
+        { timeout: 10_000 },
+      );
+      expect(fulfilled.size).toBe(2);
+      const refused = new URL([...fulfilled][1] ?? '');
+      expect(refused.searchParams.get('q')).toBe('Lyon');
+      await expect(page.getByRole('button', { name: /Paris, Île-de-France/ })).toHaveCount(0);
+      await expect(submit).not.toHaveAttribute('aria-disabled', { timeout: 5000 });
+      await page.waitForTimeout(1500);
+      expect(fulfilled.size).toBe(2);
+      await expect(blocked).toBeVisible();
+
       await page.getByRole('switch', { name: 'Online place search (Nominatim)' }).click();
       await expect(page.getByRole('textbox', { name: 'Place name' })).toHaveCount(0);
       // Scoped to the observer tab: the About dialog (closed) carries the same attribution.
@@ -257,6 +295,12 @@ test('geolocation, manual coordinates, the mocked geocoder, a body switch and a 
     await expect(page.getByTestId('observer-coverage')).toHaveText(/-?\d{4,}.*-?\d{4,}/);
   });
 
-  expect(foreign).toEqual([]);
-  expect(errors).toEqual([]);
+  expect(foreignRequests.urls).toEqual([]);
+  // The E4 answer is Chromium's own "Failed to load resource ... 429" console line (logged for
+  // a route-fulfilled response as well): exactly one when the geocoder step ran, none otherwise;
+  // the page itself logs nothing.
+  const resourceLines = errors.filter((line) => line.startsWith(RESOURCE_LINE));
+  expect(resourceLines).toHaveLength(meta.enabled && geocoderHost !== null ? 1 : 0);
+  expect(resourceLines.every((line) => line.includes('429'))).toBe(true);
+  expect(errors.filter((line) => !line.startsWith(RESOURCE_LINE))).toEqual([]);
 });

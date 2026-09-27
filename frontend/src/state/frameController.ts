@@ -3,16 +3,20 @@
 // the store, runs the pure `decide`, starts or cancels requests through an injectable fetcher,
 // stores at most two windows (`current`, `next`) and mirrors the buffer status into the store.
 // Failures never stall the picture: the engine keeps extrapolating from the last window while a
-// request is in flight or backing off (brief l.281).
+// request is in flight or backing off (brief l.281). M6 amendments (plan D161): a 422 that
+// refuses a WINDOW while the time itself is still inside the coverage fetches the same shape
+// flush with the bound and keeps the clock running (B-56), and the fetcher's own retries reach
+// the banner through `frames.failing` from the first failed attempt (R70).
 
 import { ApiProblem, backoffDelayMs, getFrame } from '../api/client';
-import type { FrameResponse } from '../api/client';
+import type { FrameResponse, NetworkError, RetryHook } from '../api/client';
 import type { FrameSource } from '../sky/engine/types';
 import { composeMinorRequest } from '../sky/math/minorBodies';
 import { DAY_S } from '../sky/math/time';
 import {
   boundedRequest,
   buildRequest,
+  clampInsideCoverage,
   decide,
   evaluate as evaluateWindow,
   requestKey,
@@ -25,7 +29,16 @@ import type { FetchReason, FetchState, FrameQuery, FrameWindow, SimInput } from 
 import type { MetaResponse, MinorBodySummary, SkyState, SkyStore } from './storeTypes';
 import type { FrameEval, FramesState, MinorStatus, SkyWarning } from './types';
 
-export type FrameFetcher = (query: FrameQuery, signal: AbortSignal) => Promise<FrameResponse>;
+/**
+ * One `/sky/frame` request. `onRetry` (plan R70) is told before each retry sleep of a fetcher
+ * that retries on its own (the default one does, through the client's policy); a test fetcher
+ * may ignore it or call it to simulate the client's ladder.
+ */
+export type FrameFetcher = (
+  query: FrameQuery,
+  signal: AbortSignal,
+  onRetry?: RetryHook,
+) => Promise<FrameResponse>;
 
 export interface FrameController extends FrameSource {
   dispose(): void;
@@ -60,10 +73,11 @@ const NO_MINOR: readonly string[] = [];
  * controller sees it at once: a long `Retry-After` means the data group is missing and the
  * request shape must not be retried at all (plan D76), a short one backs off here.
  */
-const defaultFetcher: FrameFetcher = async (query, signal) => {
+const defaultFetcher: FrameFetcher = async (query, signal, onRetry) => {
   const { data } = await getFrame(query, {
     signal,
     retry: { retryOnStatus: (status) => status === 429 || status === 502 || status === 504 },
+    ...(onRetry === undefined ? {} : { onRetry }),
   });
   return data;
 };
@@ -126,6 +140,9 @@ export function createFrameController(deps: FrameControllerDeps): FrameControlle
   // one bucket per `step_s` of simulated time, and a ladder keyed on it would restart at every
   // bucket instead of growing (brief l.281).
   let failures = 0;
+  // `frames.failing.attempts` (plan R70): every failed attempt of `retryShape`, the fetcher's own
+  // retries (`retrying`) and the exhausted rounds counted by `fail` alike; reset with `failures`.
+  let attempts = 0;
   let retryShape: string | null = null;
   let retryNotBeforeMs = -Infinity;
   // `boot.retrySeq` as last seen: a change (the user's "retry now") ends the backoff at once.
@@ -287,6 +304,7 @@ export function createFrameController(deps: FrameControllerDeps): FrameControlle
     inFlightController = null;
     state.inFlight = null;
     failures = 0;
+    attempts = 0;
     retryShape = null;
     state.failedKey = null;
     state.failedShape = null;
@@ -294,7 +312,14 @@ export function createFrameController(deps: FrameControllerDeps): FrameControlle
     if (window.n < 2) {
       state.lastSnapshotDoneMs = now();
     }
-    if (reason === 'prefetch' && state.current !== null) {
+    if (
+      state.current !== null &&
+      (reason === 'prefetch' ||
+        // B-56: the bounded continuation of a window that still covers the time takes over at
+        // the seam like a prefetch; replacing `current` would drop the samples around `tt` for
+        // a window that may start beyond it (the bound can lie up to 31 steps past `current`).
+        (reason === 'bound' && !Number.isNaN(lastTt) && windowCovers(state.current, lastTt)))
+    ) {
       state.next = window;
     } else {
       state.current = window;
@@ -325,6 +350,28 @@ export function createFrameController(deps: FrameControllerDeps): FrameControlle
     }
     if (error instanceof ApiProblem) {
       if (error.status === 422 && error.slug === 'outside-coverage') {
+        if (error.rangeTt !== undefined && reason !== 'bound') {
+          // B-56 (plan D161): only the WINDOW left the coverage while the time itself is still
+          // inside it (with `n = 32` a continuation or the refetch at the seam reaches up to 31
+          // steps past `tt`, so the M4 stop came up to 31 steps early). Fetch the same shape
+          // flush with the bound and keep the clock running: the engine's clamp branch stops it
+          // when `tt` itself reaches the bound (the other `stopAtBound` caller). The refused
+          // request is remembered so the next decision does not re-issue it. A bounded request
+          // equal to the current window means that window already ends at the bound (risk
+          // R107: re-issuing it every tick would be a loop), so that case keeps the M4 rules.
+          const bounded = boundedRequest(request, error.rangeTt);
+          if (
+            bounded !== null &&
+            !Number.isNaN(lastTt) &&
+            clampInsideCoverage(lastTt, error.rangeTt) === lastTt &&
+            requestKey(bounded) !== state.current?.key
+          ) {
+            state.failedKey = requestKey(request);
+            deps.onError?.(error);
+            start(bounded, 'bound', speed, now());
+            return;
+          }
+        }
         if (reason === 'prefetch' && state.current !== null) {
           // The continuation leaves the coverage while `current` is still valid: block that
           // request alone and keep playing. Pausing here would re-issue a fresh 1 s-step
@@ -378,11 +425,21 @@ export function createFrameController(deps: FrameControllerDeps): FrameControlle
     // Transient (network, 429, 5xx, malformed body, a fetcher that gave up on its own with an
     // AbortError): exponential backoff on this shape while the engine keeps extrapolating
     // (brief l.281). The counter belongs to one shape: another shape starts its ladder afresh.
+    if (reason === 'bound') {
+      // B-56: the refused request was remembered so its bounded form could take its place; that
+      // form failed transiently, so forget the refusal. The first decision past the backoff
+      // re-issues the refused request, the API answers 422 again at once and the branch above
+      // derives the bounded request afresh: the ladder below is then a retry the banner's
+      // countdown honours, not a wait until the seam (up to 28 % of a window, review of D161).
+      state.failedKey = null;
+    }
     const shape = shapeKey(request);
     if (shape !== retryShape) {
       failures = 0;
+      attempts = 0;
     }
     failures += 1;
+    attempts += 1;
     retryShape = shape;
     retryNotBeforeMs =
       now() +
@@ -394,12 +451,42 @@ export function createFrameController(deps: FrameControllerDeps): FrameControlle
     const status = error instanceof ApiProblem ? error.status : 0;
     // The banner (UX-6) sees every retried failure, with or without a picture behind it.
     publish({
-      failing: { status, attempts: failures, nextRetryMs: retryNotBeforeMs },
+      failing: { status, attempts, nextRetryMs: retryNotBeforeMs },
       ...(state.current === null
         ? { status: 'error' as const, lastError: { status, blocked: false } }
         : {}),
     });
     deps.onError?.(error);
+  }
+
+  /**
+   * A retry inside the fetcher's own ladder (plan R70, `RequestOptions.onRetry`): the UX-6
+   * banner learns of the outage at the first failed attempt instead of after the client's 7.5 s.
+   * The frame status never turns `error` here: the request is still being retried.
+   */
+  function retrying(
+    controller: AbortController,
+    shape: string,
+    delayMs: number,
+    cause: NetworkError | ApiProblem,
+  ): void {
+    if (inFlightController !== controller) {
+      return; // superseded or disposed: the late report of an abandoned request
+    }
+    if (shape !== retryShape) {
+      failures = 0;
+      attempts = 0;
+      retryShape = shape;
+      retryNotBeforeMs = -Infinity;
+    }
+    attempts += 1;
+    publish({
+      failing: {
+        status: cause instanceof ApiProblem ? cause.status : 0,
+        attempts,
+        nextRetryMs: now() + delayMs,
+      },
+    });
   }
 
   function start(request: FrameQuery, reason: FetchReason, speed: number, nowMs: number): void {
@@ -410,7 +497,10 @@ export function createFrameController(deps: FrameControllerDeps): FrameControlle
     if (state.current === null) {
       publish({ status: 'loading' });
     }
-    void fetchFrame(request, controller.signal).then(
+    const shape = shapeKey(request);
+    void fetchFrame(request, controller.signal, (_attempt, delayMs, cause) => {
+      retrying(controller, shape, delayMs, cause);
+    }).then(
       (response) => {
         settle(controller, response, request, reason, speed);
       },
@@ -436,6 +526,7 @@ export function createFrameController(deps: FrameControllerDeps): FrameControlle
       retryNotBeforeMs = -Infinity;
       retryShape = null;
       failures = 0;
+      attempts = 0;
     }
     const storeChanged =
       s.observer !== lastObserver ||

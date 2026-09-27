@@ -14,11 +14,11 @@ describe('SpeedSelect', () => {
     const select = screen.getByRole('combobox', { name: 'Speed' });
     expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([
       '1 day/s, backward',
-      '1 min/s, backward',
-      '1 s/s, backward',
+      '1\u00a0min/s, backward',
+      '1\u00a0s/s, backward',
       'Paused',
-      '1 s/s',
-      '1 min/s',
+      '1\u00a0s/s',
+      '1\u00a0min/s',
       '1 day/s',
     ]);
     expect(select).toHaveValue('0');
@@ -29,10 +29,10 @@ describe('SpeedSelect', () => {
   it('adds a value outside the list in order and pluralises', () => {
     render(<SpeedSelect id="s" speeds={speedList([1, 60])} value={172800} onChange={vi.fn()} />);
     expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([
-      '1 min/s, backward',
-      '1 s/s, backward',
-      '1 s/s',
-      '1 min/s',
+      '1\u00a0min/s, backward',
+      '1\u00a0s/s, backward',
+      '1\u00a0s/s',
+      '1\u00a0min/s',
       '2 days/s',
     ]);
     expect(screen.getByRole('combobox')).toHaveValue('172800');
@@ -41,7 +41,7 @@ describe('SpeedSelect', () => {
   it('formats labels through speedLabel', () => {
     const t = i18next.t.bind(i18next);
     expect(speedLabel(t, 0)).toBe('Paused');
-    expect(speedLabel(t, 600)).toBe('10 min/s');
+    expect(speedLabel(t, 600)).toBe('10\u00a0min/s');
     expect(speedLabel(t, -31557600)).toBe('1 year/s, backward');
     expect(speedLabel(t, 63115200)).toBe('2 years/s');
   });

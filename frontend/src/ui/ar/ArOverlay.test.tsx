@@ -8,9 +8,9 @@ import { EngineProvider } from '../shell/EngineContext';
 import ArOverlay, { AR_OVERLAY_ID } from './ArOverlay';
 
 // The AR chrome (AR-1..AR-5, plan D127): the requesting banner with its cancel, the exit control
-// focused on entry, the offset readout and reset, the camera-field slider, the atmosphere switch,
-// the WebXR switch and the transport in a session, the manual-north hint, the mode status line.
-// Roles, names and store writes are asserted, never markup.
+// focused on entry, the offset readout with its 1° nudges and reset, the camera-field slider, the
+// atmosphere switch, the WebXR switch and the transport in a session, the manual-north hint, the
+// mode status line. Roles, names and store writes are asserted, never markup.
 
 const CAPABLE: ArCapabilities = {
   secure: true,
@@ -130,6 +130,31 @@ describe('ArOverlay', () => {
     const before = store.getState().options.atm;
     fireEvent.click(atmosphere);
     expect(store.getState().options.atm).toBe(!before);
+  });
+
+  it('nudges the azimuth offset by one degree per tap, the sign of the calibration drag', () => {
+    // "Turn the sky right" moves the drawn sky right on screen, as a rightward drag does; the
+    // drag rule (`frames.ts::dragDeltaDeg`) turns the view left for it, so the offset decreases
+    // (plan D157 C5, WCAG 2.5.7). The store wraps the offset into [-180, 180).
+    const store = arStore();
+    const { actions } = store.getState();
+    renderOverlay(store);
+    const right = screen.getByRole('button', { name: 'Turn the sky 1° right' });
+    const left = screen.getByRole('button', { name: 'Turn the sky 1° left' });
+    fireEvent.click(right);
+    expect(store.getState().ar.azOffsetDeg).toBe(-1);
+    expect(screen.getByText('Azimuth offset -1°')).toBeInTheDocument();
+    fireEvent.click(left);
+    fireEvent.click(left);
+    expect(store.getState().ar.azOffsetDeg).toBe(1);
+    expect(screen.getByText('Azimuth offset 1°')).toBeInTheDocument();
+    act(() => {
+      actions.setArOffset(-179.5);
+    });
+    fireEvent.click(right);
+    expect(store.getState().ar.azOffsetDeg).toBe(179.5);
+    fireEvent.click(screen.getByRole('button', { name: 'Reset the alignment' }));
+    expect(store.getState().ar.azOffsetDeg).toBe(0);
   });
 
   it('shows the hint for an absent or relative heading, worded per level, until dismissed', () => {

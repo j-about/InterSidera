@@ -172,6 +172,8 @@ export class LabelLayer {
   private readonly publishedIds: string[] = [];
   private lastPublishMs = -Infinity;
   private dirty = true;
+  /** `setVisibleLabels` calls so far (the debug hook's `labelPublishes`, plan D141). */
+  private publishes = 0;
   // Scratch storage of `update` (nothing is allocated per tick).
   private readonly enu = vec3();
   private readonly icrf = vec3();
@@ -797,6 +799,12 @@ export class LabelLayer {
       });
     }
     actions.setVisibleLabels(list);
+    this.publishes += 1;
+  }
+
+  /** Publications of the visible-label list since creation (monotonic, plan D141). */
+  get publishCount(): number {
+    return this.publishes;
   }
 
   /**

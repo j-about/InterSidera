@@ -60,9 +60,16 @@ export default defineConfig([
     },
   },
 
-  // C. TypeScript that runs under Node rather than in the browser.
+  // C. TypeScript that runs under Node rather than in the browser (the headers module and its
+  // node-environment test included, plan D147).
   {
-    files: ['vite.config.ts', 'playwright.config.ts', 'e2e/**/*.ts'],
+    files: [
+      'vite.config.ts',
+      'security-headers.ts',
+      'security-headers.test.ts',
+      'playwright.config.ts',
+      'e2e/**/*.ts',
+    ],
     languageOptions: { globals: globals.node },
   },
 
@@ -140,6 +147,39 @@ export default defineConfig([
             {
               group: ['**/sky/math/*', '**/sky/math'],
               message: 'UI components contain no astronomy math (brief l.407).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  // G. Every Playwright spec runs through the shared fixtures (plan D153): `test` and `expect`
+  // come from e2e/fixtures.ts, never from @playwright/test, whose value import would silently skip
+  // the CSP, foreign-request and storage teardowns (type imports such as `Page` stay allowed).
+  // The Babylon paths of block B are repeated: a later rule entry replaces, never merges.
+  {
+    files: ['e2e/**/*.spec.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@babylonjs/core',
+              message: 'Import from @babylonjs/core/<module> subpaths (tree-shaking, brief l.406).',
+            },
+            { name: 'babylonjs', message: 'Never the UMD package.' },
+            {
+              name: '@playwright/test',
+              importNames: ['test', 'expect'],
+              message: "Import test and expect from './fixtures.ts' (plan D153).",
+            },
+          ],
+          patterns: [
+            {
+              group: ['@babylonjs/core/Legacy/*'],
+              message: 'Never the Legacy bundle (brief l.541).',
             },
           ],
         },

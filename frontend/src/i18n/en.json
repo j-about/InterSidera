@@ -15,7 +15,7 @@
     "meta": "Reading the sky service description…",
     "catalogs": "Loading the star catalogs…",
     "frame": "Computing the first sky positions…",
-    "unreachable": "The sky service cannot be reached; retrying in {{seconds}} s…",
+    "unreachable": "The sky service cannot be reached; retrying in {{seconds}} s…",
     "label": "Loading the sky"
   },
   "engine": {
@@ -291,7 +291,7 @@
   },
   "degraded": {
     "unreachableTitle": "Sky service unreachable",
-    "unreachable": "The sky positions cannot be refreshed; retrying in {{seconds}} s.",
+    "unreachable": "The sky positions cannot be refreshed; retrying in {{seconds}} s.",
     "retryNow": "Retry now",
     "staleTitle": "Catalogs updated",
     "stale": "The sky service now serves newer catalogs than this page loaded.",
@@ -364,7 +364,7 @@
     "title": "Your location"
   },
   "coords": {
-    "preview": "Sent to the sky service as {{lat}}°, {{lon}}°, {{elev}} m (rounded to 0.01°).",
+    "preview": "Sent to the sky service as {{lat}}°, {{lon}}°, {{elev}} m (rounded to 0.01°).",
     "error": {
       "empty": "Enter a value.",
       "syntax": "Enter decimal degrees or degrees, minutes and seconds.",
@@ -422,12 +422,12 @@
     "paused": "Paused",
     "backward": "{{speed}}, backward",
     "speedUnit": {
-      "s_one": "{{count}} s/s",
-      "s_other": "{{count}} s/s",
-      "min_one": "{{count}} min/s",
-      "min_other": "{{count}} min/s",
-      "h_one": "{{count}} h/s",
-      "h_other": "{{count}} h/s",
+      "s_one": "{{count}} s/s",
+      "s_other": "{{count}} s/s",
+      "min_one": "{{count}} min/s",
+      "min_other": "{{count}} min/s",
+      "h_one": "{{count}} h/s",
+      "h_other": "{{count}} h/s",
       "d_one": "{{count}} day/s",
       "d_other": "{{count}} days/s",
       "wk_one": "{{count}} week/s",
@@ -517,14 +517,16 @@
       "now": "Now",
       "value": "Azimuth offset {{deg}}",
       "reset": "Reset the alignment",
+      "left": "Turn the sky 1° left",
+      "right": "Turn the sky 1° right",
       "years_one": "{{count}} yr",
       "years_other": "{{count}} yr",
       "days_one": "{{count}} d",
       "days_other": "{{count}} d",
-      "hours_one": "{{count}} h",
-      "hours_other": "{{count}} h",
-      "minutes_one": "{{count}} min",
-      "minutes_other": "{{count}} min"
+      "hours_one": "{{count}} h",
+      "hours_other": "{{count}} h",
+      "minutes_one": "{{count}} min",
+      "minutes_other": "{{count}} min"
     },
     "compass": {
       "label": "Compass",

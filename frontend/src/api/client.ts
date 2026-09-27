@@ -67,6 +67,18 @@ export const DEFAULT_RETRY_POLICY: RetryPolicy = {
   maxRetryAfterS: 60,
 };
 
+/**
+ * Told before each retry sleep: `attempt` counts the consecutive failed attempts from 1,
+ * `delayMs` is the wait before the next one and `cause` the failure being retried (a
+ * `NetworkError`, or the `ApiProblem` of a retryable status). Never called for the last attempt,
+ * whose failure is thrown instead.
+ */
+export type RetryHook = (
+  attempt: number,
+  delayMs: number,
+  cause: NetworkError | ApiProblem,
+) => void;
+
 export interface RequestOptions {
   signal?: AbortSignal;
   retry?: Partial<RetryPolicy>;
@@ -79,6 +91,12 @@ export interface RequestOptions {
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
   /** Uniform random source for the jitter (tests inject a constant). */
   random?: () => number;
+  /**
+   * Called before each retry sleep of `requestWithRetry` (plan R70): the frame controller
+   * publishes `frames.failing` from the first failed attempt instead of after the whole ladder
+   * (up to 7.5 s), so the UX-6 banner appears at once while the picture keeps extrapolating.
+   */
+  onRetry?: RetryHook;
 }
 
 export type ProblemErrorEntry = ProblemError;
@@ -330,6 +348,7 @@ interface ResolvedOptions {
   now: () => number;
   sleep: (ms: number, signal?: AbortSignal) => Promise<void>;
   random: () => number;
+  onRetry: RetryHook | undefined;
 }
 
 function resolveOptions(options: RequestOptions, accept: string): ResolvedOptions {
@@ -348,6 +367,7 @@ function resolveOptions(options: RequestOptions, accept: string): ResolvedOption
     now: options.now ?? (() => Date.now()),
     sleep: options.sleep ?? timerSleep,
     random: options.random ?? (() => Math.random()),
+    onRetry: options.onRetry,
   };
 }
 
@@ -361,9 +381,12 @@ async function readJson<T>(response: Response): Promise<T> {
   return body as T;
 }
 
-/** GET with the retry policy; resolves with the first 2xx response, rejects otherwise. */
+/**
+ * GET with the retry policy; resolves with the first 2xx response, rejects otherwise. Each retry
+ * is announced through `onRetry` (plan R70) before its sleep.
+ */
 async function requestWithRetry(url: string, resolved: ResolvedOptions): Promise<Response> {
-  const { policy, fetchImpl, init, now, sleep, random, signal } = resolved;
+  const { policy, fetchImpl, init, now, sleep, random, signal, onRetry } = resolved;
   for (let attempt = 0; ; attempt += 1) {
     const last = attempt + 1 >= policy.maxAttempts;
     let response: Response;
@@ -373,7 +396,9 @@ async function requestWithRetry(url: string, resolved: ResolvedOptions): Promise
       if (isAbortError(error) || last) {
         throw isAbortError(error) ? error : new NetworkError(url, error);
       }
-      await sleep(backoffDelayMs(attempt, undefined, random, policy.maxRetryAfterS), signal);
+      const delayMs = backoffDelayMs(attempt, undefined, random, policy.maxRetryAfterS);
+      onRetry?.(attempt + 1, delayMs, new NetworkError(url, error));
+      await sleep(delayMs, signal);
       continue;
     }
     if (response.ok) {
@@ -383,10 +408,9 @@ async function requestWithRetry(url: string, resolved: ResolvedOptions): Promise
     if (last || !policy.retryOnStatus(response.status)) {
       throw problem;
     }
-    await sleep(
-      backoffDelayMs(attempt, problem.retryAfterS, random, policy.maxRetryAfterS),
-      signal,
-    );
+    const delayMs = backoffDelayMs(attempt, problem.retryAfterS, random, policy.maxRetryAfterS);
+    onRetry?.(attempt + 1, delayMs, problem);
+    await sleep(delayMs, signal);
   }
 }
 
@@ -450,8 +474,10 @@ export interface HealthPollOptions extends RequestOptions {
    * poll waits `delayMs` before failed attempt `attempt + 1` (`attempt` counts consecutive
    * failures from 1), so `boot.ts` can fill `BootState.attempt` / `retryAtMs` and show
    * `boot.unreachable` (plan D87). A 503 from the API itself goes through `onUpdate` instead.
+   * The same `RetryHook` shape as `RequestOptions.onRetry`, which the poll never forwards to
+   * `requestWithRetry` (it runs its own loop).
    */
-  onRetry?: (attempt: number, delayMs: number, cause: NetworkError | ApiProblem) => void;
+  onRetry?: RetryHook;
 }
 
 /**

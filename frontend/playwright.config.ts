@@ -6,6 +6,12 @@ const isCI = !!process.env.CI;
 // that spec (plan D89). Headless WebGPU on the CI runner is unmeasured, so `chromium-webgpu` is
 // configured but not part of the CI project list (docs/testing.md, maintainer question 16).
 const webgpuSpec = /webgpu\.spec\.ts/;
+// The `perf` project (plan D146) is manual like `webkit` and `chromium-webgpu`: never in
+// `make e2e` or CI (`npm run e2e -- --project=perf` after `make build-e2e`). Its spec records the
+// boot under throttled network profiles through CDP and a heap-sampling profile mapped through the
+// e2e build's source maps; the CI projects ignore it as they ignore the WebGPU spec.
+const perfSpec = /perf\.spec\.ts/;
+const manualSpecs = /(webgpu|perf)\.spec\.ts/;
 
 // https://playwright.dev/docs/test-configuration
 export default defineConfig({
@@ -24,9 +30,9 @@ export default defineConfig({
   // Desktop, mobile emulation and WebKit (brief l.410). No WebGL flags: Playwright already passes
   // --enable-unsafe-swiftshader to headless Chromium.
   projects: [
-    { name: 'chromium-desktop', testIgnore: webgpuSpec, use: { ...devices['Desktop Chrome'] } },
-    { name: 'chromium-mobile', testIgnore: webgpuSpec, use: { ...devices['Pixel 7'] } },
-    { name: 'webkit', testIgnore: webgpuSpec, use: { ...devices['Desktop Safari'] } },
+    { name: 'chromium-desktop', testIgnore: manualSpecs, use: { ...devices['Desktop Chrome'] } },
+    { name: 'chromium-mobile', testIgnore: manualSpecs, use: { ...devices['Pixel 7'] } },
+    { name: 'webkit', testIgnore: manualSpecs, use: { ...devices['Desktop Safari'] } },
     {
       // Full Chromium in new headless mode (the headless shell has no WebGPU) with the SwiftShader
       // fallback adapter allowed (brief l.540, l.407).
@@ -38,6 +44,7 @@ export default defineConfig({
         launchOptions: { args: ['--enable-unsafe-webgpu', '--use-webgpu-adapter=swiftshader'] },
       },
     },
+    { name: 'perf', testMatch: perfSpec, use: { ...devices['Desktop Chrome'] } },
   ],
   webServer: [
     {

@@ -1,10 +1,12 @@
 // @vitest-environment node
 // Frame controller (plan D76, brief l.67-70, l.281): a fake fetcher and clock drive the first
 // fetch, prefetch and swap, cancellation of a superseded request, the 422 / 503 / network error
-// policies and `whenCovering`.
+// policies and `whenCovering`; the M6 amendments (plan D161): the bounded refetch that keeps the
+// clock running when only the window left the coverage (B-56, both speed signs) and the failing
+// state published from the fetcher's first retry (R70).
 
 import { ApiProblem, NetworkError } from '../api/client';
-import type { FrameResponse, MetaResponse, MinorBodySummary } from '../api/client';
+import type { FrameResponse, MetaResponse, MinorBodySummary, RetryHook } from '../api/client';
 import { DAY_MS, DAY_S } from '../sky/math/time';
 import {
   BLOCKING_RETRY_AFTER_S,
@@ -13,7 +15,7 @@ import {
 } from './frameController';
 import type { FrameFetcher } from './frameController';
 import { COVERAGE_GUARD_D, requestKey, shapeKey } from './frames';
-import type { FrameQuery } from './frames';
+import type { FrameQuery, FrameWindow } from './frames';
 import { createSkyStore } from './store';
 import type { SkyStore } from './storeTypes';
 import { createFrameEval } from './types';
@@ -142,6 +144,8 @@ function syntheticResponse(request: FrameQuery): FrameResponse {
 interface Call {
   query: FrameQuery;
   signal: AbortSignal;
+  /** The controller's retry hook (plan R70): a test calls it to simulate the client's ladder. */
+  onRetry: RetryHook | undefined;
   resolve: (response: FrameResponse) => void;
   reject: (error: unknown) => void;
 }
@@ -152,9 +156,9 @@ function fakeFetcher(options: { rejectOnAbort?: boolean } = {}): {
   fetcher: FrameFetcher;
 } {
   const calls: Call[] = [];
-  const fetcher: FrameFetcher = (query, signal) =>
+  const fetcher: FrameFetcher = (query, signal, onRetry) =>
     new Promise<FrameResponse>((resolve, reject) => {
-      calls.push({ query, signal, resolve, reject });
+      calls.push({ query, signal, onRetry, resolve, reject });
       if (options.rejectOnAbort !== false) {
         signal.addEventListener(
           'abort',
@@ -447,8 +451,9 @@ describe('createFrameController', () => {
     h.controller.dispose();
   });
 
-  it('keeps playing after a 422 on a prefetch, blocks that shape only and stops at the seam', async () => {
-    const h = harness({ t: TT, speed: 60 });
+  /** The loaded first window of a forward or backward simulation at speed `speed`. */
+  async function loadedWindow(speed: number): Promise<{ h: Harness; current: FrameWindow }> {
+    const h = harness({ t: TT, speed });
     h.controller.update(TT, T0);
     call(h.calls, 0).resolve(syntheticResponse(call(h.calls, 0).query));
     await flush();
@@ -456,52 +461,273 @@ describe('createFrameController', () => {
     if (current === null) {
       throw new Error('no current window');
     }
+    return { h, current };
+  }
+
+  it('fetches the bounded continuation as next when a prefetch is refused at the bound and keeps playing (B-56)', async () => {
+    const { h, current } = await loadedWindow(60);
     const span = (current.n - 1) * current.stepD;
     tick(h, current.tt0 + 0.72 * span);
     expect(h.calls).toHaveLength(2);
     const prefetch = call(h.calls, 1).query;
-    // The coverage ends a few samples into the continuation: `current` is entirely valid.
+    // The coverage ends a few samples into the continuation: the time is inside `range_tt`,
+    // only the window left it. Before B-56 the clock stopped here, up to 31 steps early.
     const bound = current.ttEnd + 4.5 * current.stepD;
-    call(h.calls, 1).reject(problem(422, 'outside-coverage', { rangeTt: [2400000.5, bound] }));
+    const range: [number, number] = [2400000.5, bound];
+    call(h.calls, 1).reject(problem(422, 'outside-coverage', { rangeTt: range }));
     await flush();
-    expect(h.store.getState().clock.mode).toBe('playing');
-    expect(h.store.getState().frames.status).toBe('ready');
+    let state = h.store.getState();
+    expect(state.clock.mode).toBe('playing');
+    expect(state.frames.coverageStop).toBeNull();
+    expect(state.frames.status).toBe('ready');
     expect(h.controller.state.failedKey).toBe(requestKey(prefetch));
     expect(h.onError).toHaveBeenCalledTimes(1);
-    // Exactly one request for that continuation: no new prefetch on the following ticks.
-    tick(h, current.tt0 + 0.75 * span);
+    // The same shape, flush with the bound, was issued at once.
+    expect(h.calls).toHaveLength(3);
+    const bounded = call(h.calls, 2).query;
+    expect(bounded).toEqual({ ...prefetch, tt: bounded.tt });
+    expect(bounded.tt + span).toBeCloseTo(bound - COVERAGE_GUARD_D / 2, 9);
+    call(h.calls, 2).resolve(syntheticResponse(bounded));
+    await flush();
+    // It is the continuation (`next`), not a replacement: `current` still covers the time.
+    expect(h.controller.state.current).toBe(current);
+    expect(h.controller.state.next?.tt0).toBe(bounded.tt);
+    expect(h.controller.state.failedKey).toBeNull();
+    // The bounded window overlaps the old one and already covers the time: the next decision
+    // swaps to it (no request), and the clock plays on.
     tick(h, current.tt0 + 0.8 * span);
-    tick(h, current.tt0 + 0.95 * span);
-    expect(h.calls).toHaveLength(2);
+    expect(h.calls).toHaveLength(3);
+    expect(h.controller.state.current?.tt0).toBe(bounded.tt);
+    expect(h.controller.state.next).toBeNull();
+    expect(h.store.getState().clock.mode).toBe('playing');
+    // Inside the bounded window its own prefetch is refused too, and the bounded form of that
+    // refusal IS the current window (risk R107): the M4 rule blocks the key and plays on, so the
+    // engine's clamp branch, not this controller, stops the clock at the bound.
+    tick(h, bounded.tt + 0.75 * span);
+    expect(h.calls).toHaveLength(4);
+    call(h.calls, 3).reject(problem(422, 'outside-coverage', { rangeTt: range }));
+    await flush();
+    state = h.store.getState();
+    expect(state.clock.mode).toBe('playing');
+    expect(state.frames.coverageStop).toBeNull();
+    expect(h.controller.state.failedKey).toBe(requestKey(call(h.calls, 3).query));
+    tick(h, bounded.tt + 0.8 * span);
+    tick(h, bounded.tt + 0.9 * span);
+    expect(h.calls).toHaveLength(4);
+    h.controller.dispose();
+  });
 
-    // Past the seam the refetch at `tt` fails the same way: the clock stops where it is (the
-    // time lies inside `range_tt`, only the window leaves it) and the paused shape is blocked.
+  it('refetches flush with the end bound without stopping when the refetch at the seam is refused (B-56, forward)', async () => {
+    const { h, current } = await loadedWindow(60);
+    // Past the seam with no continuation loaded: the refetch at `tt` is refused because its
+    // window crosses the bound, while `tt` itself is well inside the coverage.
     const jumpTt = current.ttEnd + 2.5 * current.stepD;
+    const bound = current.ttEnd + 4.5 * current.stepD;
     h.store.getState().actions.setTime(jumpTt, h.clock.ms);
     h.store.getState().actions.play(60, h.clock.ms);
     tick(h, jumpTt);
+    expect(h.calls).toHaveLength(2);
+    const jump = call(h.calls, 1).query;
+    expect(jump.tt).toBeCloseTo(current.ttEnd + current.stepD, 9);
+    call(h.calls, 1).reject(problem(422, 'outside-coverage', { rangeTt: [2400000.5, bound] }));
+    await flush();
+    const state = h.store.getState();
+    expect(state.clock.mode).toBe('playing');
+    expect(state.clock.speed).toBe(60);
+    expect(state.frames.coverageStop).toBeNull();
+    expect(h.controller.state.failedKey).toBe(requestKey(jump));
+    expect(h.onError).toHaveBeenCalledTimes(1);
     expect(h.calls).toHaveLength(3);
-    expect(call(h.calls, 2).query.tt).toBeCloseTo(current.ttEnd + current.stepD, 9);
-    call(h.calls, 2).reject(problem(422, 'outside-coverage', { rangeTt: [2400000.5, bound] }));
+    const flushed = call(h.calls, 2).query;
+    expect(flushed).toEqual({ ...jump, tt: flushed.tt });
+    expect(flushed.tt + 31 * current.stepD).toBeCloseTo(bound - COVERAGE_GUARD_D / 2, 9);
+    expect(flushed.tt).toBeLessThanOrEqual(jumpTt);
+    call(h.calls, 2).resolve(syntheticResponse(flushed));
+    await flush();
+    // The old window did not cover the time: the bounded one replaces it and covers `tt`.
+    expect(h.controller.state.current?.tt0).toBe(flushed.tt);
+    expect(h.controller.state.next).toBeNull();
+    expect(h.store.getState().frames.status).toBe('ready');
+    // The time sits 93 % into the bounded window, so its continuation is prefetched and refused
+    // in turn; its bounded form is the current window itself (risk R107), so the M4 rule blocks
+    // that key and the clock plays on until the engine's clamp branch stops it at the bound.
+    tick(h, jumpTt + current.stepD, 1000);
+    expect(h.calls).toHaveLength(4);
+    const continuation = call(h.calls, 3).query;
+    // The continuation starts past the bounded window's end (aligned to the step grid).
+    expect(continuation.tt).toBeGreaterThan(flushed.tt + 30 * current.stepD);
+    expect(continuation.tt).toBeLessThan(flushed.tt + 33 * current.stepD);
+    call(h.calls, 3).reject(problem(422, 'outside-coverage', { rangeTt: [2400000.5, bound] }));
+    await flush();
+    expect(h.store.getState().clock.mode).toBe('playing');
+    expect(h.store.getState().frames.coverageStop).toBeNull();
+    expect(h.controller.state.failedKey).toBe(requestKey(continuation));
+    tick(h, jumpTt + 1.5 * current.stepD, 1000);
+    tick(h, jumpTt + 1.8 * current.stepD, 1000);
+    expect(h.calls).toHaveLength(4);
+    h.controller.dispose();
+  });
+
+  it('refetches flush with the start bound without stopping when playing backward (B-56, backward)', async () => {
+    const { h, current } = await loadedWindow(-60);
+    const span = (current.n - 1) * current.stepD;
+    // Backward the time sits in the last segment (`tt0` about 30 steps before it, grid-aligned).
+    expect(TT - current.tt0).toBeGreaterThan(29 * current.stepD);
+    expect(TT - current.tt0).toBeLessThan(31 * current.stepD);
+    // The backward continuation at 70 % consumption (from `ttEnd` down) is refused: the coverage
+    // starts a few samples into it while the time stays inside.
+    tick(h, current.ttEnd - 0.72 * span);
+    expect(h.calls).toHaveLength(2);
+    const prefetch = call(h.calls, 1).query;
+    expect(prefetch.tt).toBeLessThan(current.tt0);
+    const bound = current.tt0 - 4.5 * current.stepD;
+    const range: [number, number] = [bound, 2500000.5];
+    call(h.calls, 1).reject(problem(422, 'outside-coverage', { rangeTt: range }));
+    await flush();
+    expect(h.store.getState().clock.mode).toBe('playing');
+    expect(h.store.getState().clock.speed).toBe(-60);
+    expect(h.store.getState().frames.coverageStop).toBeNull();
+    expect(h.controller.state.failedKey).toBe(requestKey(prefetch));
+    expect(h.calls).toHaveLength(3);
+    const bounded = call(h.calls, 2).query;
+    expect(bounded).toEqual({ ...prefetch, tt: bounded.tt });
+    expect(bounded.tt).toBeCloseTo(bound + COVERAGE_GUARD_D / 2, 9);
+    call(h.calls, 2).resolve(syntheticResponse(bounded));
+    await flush();
+    expect(h.controller.state.current).toBe(current);
+    expect(h.controller.state.next?.tt0).toBe(bounded.tt);
+
+    // Past the seam without a continuation (the user jumps back inside the coverage but within
+    // 31 steps of its start): the refetch at `tt` crosses the start bound and is refused too.
+    h.controller.dispose();
+    const again = await loadedWindow(-60);
+    const jumpTt = again.current.tt0 - 2.5 * again.current.stepD;
+    const startBound = again.current.tt0 - 4.5 * again.current.stepD;
+    again.h.store.getState().actions.setTime(jumpTt, again.h.clock.ms);
+    again.h.store.getState().actions.play(-60, again.h.clock.ms);
+    tick(again.h, jumpTt);
+    expect(again.h.calls).toHaveLength(2);
+    const jump = call(again.h.calls, 1).query;
+    expect(jump.tt).toBeLessThan(startBound);
+    call(again.h.calls, 1).reject(
+      problem(422, 'outside-coverage', { rangeTt: [startBound, 2500000.5] }),
+    );
+    await flush();
+    const state = again.h.store.getState();
+    expect(state.clock.mode).toBe('playing');
+    expect(state.clock.speed).toBe(-60);
+    expect(state.frames.coverageStop).toBeNull();
+    expect(again.h.controller.state.failedKey).toBe(requestKey(jump));
+    expect(again.h.calls).toHaveLength(3);
+    const flushed = call(again.h.calls, 2).query;
+    expect(flushed.tt).toBeCloseTo(startBound + COVERAGE_GUARD_D / 2, 9);
+    expect(flushed.tt).toBeLessThanOrEqual(jumpTt);
+    call(again.h.calls, 2).resolve(syntheticResponse(flushed));
+    await flush();
+    expect(again.h.controller.state.current?.tt0).toBe(flushed.tt);
+    // 93 % consumed backward: the backward continuation is prefetched, refused, and its bounded
+    // form is the current window (risk R107): blocked under the M4 rule, the clock plays on.
+    tick(again.h, jumpTt - again.current.stepD, 1000);
+    expect(again.h.calls).toHaveLength(4);
+    const continuation = call(again.h.calls, 3).query;
+    expect(continuation.tt).toBeLessThan(startBound);
+    call(again.h.calls, 3).reject(
+      problem(422, 'outside-coverage', { rangeTt: [startBound, 2500000.5] }),
+    );
+    await flush();
+    expect(again.h.store.getState().clock.mode).toBe('playing');
+    expect(again.h.store.getState().frames.coverageStop).toBeNull();
+    expect(again.h.controller.state.failedKey).toBe(requestKey(continuation));
+    tick(again.h, jumpTt - 1.5 * again.current.stepD, 1000);
+    expect(again.h.calls).toHaveLength(4);
+    again.h.controller.dispose();
+  });
+
+  it('keeps the M4 stop when the time itself left the coverage, whatever the window (B-56 guard)', async () => {
+    const { h, current } = await loadedWindow(60);
+    // A jump beyond the coverage end: the time is outside `range_tt`, so the clock stops one
+    // guard inside the bound (TIME-4) and the bounded refetch covers the stopped time.
+    const bound = current.ttEnd + 2 * current.stepD;
+    const jumpTt = bound + 10 * current.stepD;
+    h.store.getState().actions.setTime(jumpTt, h.clock.ms);
+    h.store.getState().actions.play(60, h.clock.ms);
+    tick(h, jumpTt);
+    expect(h.calls).toHaveLength(2);
+    call(h.calls, 1).reject(problem(422, 'outside-coverage', { rangeTt: [2400000.5, bound] }));
     await flush();
     const state = h.store.getState();
     expect(state.clock.mode).toBe('paused');
-    expect(state.clock.tt).toBeGreaterThanOrEqual(jumpTt);
-    expect(state.clock.tt).toBeLessThan(bound);
-    expect(state.frames.status).toBe('ready');
-    expect(h.onError).toHaveBeenCalledTimes(2);
-    // The same shape is refetched flush with the bound for the stopped clock, then nothing more.
-    expect(h.calls).toHaveLength(4);
-    const flushed = call(h.calls, 3).query;
-    expect(flushed.step_s).toBe(call(h.calls, 2).query.step_s);
-    expect(flushed.tt + 31 * current.stepD).toBeCloseTo(bound - COVERAGE_GUARD_D / 2, 9);
-    expect(flushed.tt).toBeLessThanOrEqual(state.clock.tt);
-    call(h.calls, 3).resolve(syntheticResponse(flushed));
+    expect(state.clock.tt).toBe(bound - COVERAGE_GUARD_D);
+    expect(state.frames.coverageStop).toEqual({ rangeTt: [2400000.5, bound] });
+    expect(h.calls).toHaveLength(3);
+    expect(call(h.calls, 2).query.tt + 31 * current.stepD).toBeCloseTo(
+      bound - COVERAGE_GUARD_D / 2,
+      9,
+    );
+    h.controller.dispose();
+  });
+
+  it('retries a bounded continuation that failed transiently instead of waiting for the seam (B-56)', async () => {
+    const { h, current } = await loadedWindow(60);
+    const span = (current.n - 1) * current.stepD;
+    tick(h, current.tt0 + 0.72 * span);
+    const prefetch = call(h.calls, 1).query;
+    const range: [number, number] = [2400000.5, current.ttEnd + 4.5 * current.stepD];
+    call(h.calls, 1).reject(problem(422, 'outside-coverage', { rangeTt: range }));
     await flush();
-    expect(h.controller.state.current?.tt0).toBe(flushed.tt);
-    tick(h, state.clock.tt, 1000);
-    tick(h, state.clock.tt, 1000);
+    expect(h.calls).toHaveLength(3);
+    const bounded = call(h.calls, 2).query;
+    // The bounded request fails on the network: the banner announces the retry, the picture and
+    // the clock stay, and the refused prefetch is forgotten so that the retry can happen at all
+    // (it was the only request the policy could produce inside `current`).
+    call(h.calls, 2).reject(new NetworkError('/api/v1/sky/frame', new TypeError('offline')));
+    await flush();
+    const failedAt = h.clock.ms;
+    expect(h.store.getState().frames.failing).toEqual({
+      status: 0,
+      attempts: 1,
+      nextRetryMs: failedAt + 500,
+    });
+    expect(h.store.getState().frames.status).toBe('ready');
+    expect(h.store.getState().clock.mode).toBe('playing');
+    expect(h.controller.state.failedKey).toBeNull();
+    // Nothing before the backoff elapsed (the shape is the one that failed) ...
+    tick(h, current.tt0 + 0.74 * span, 200);
+    expect(h.calls).toHaveLength(3);
+    // ... then the refused prefetch again, refused again, and the bounded request at once.
+    tick(h, current.tt0 + 0.76 * span, 400);
     expect(h.calls).toHaveLength(4);
+    expect(call(h.calls, 3).query).toEqual(prefetch);
+    call(h.calls, 3).reject(problem(422, 'outside-coverage', { rangeTt: range }));
+    await flush();
+    expect(h.calls).toHaveLength(5);
+    expect(call(h.calls, 4).query).toEqual(bounded);
+    expect(h.controller.state.failedKey).toBe(requestKey(prefetch));
+    // A second transient failure grows the ladder on the same shape instead of restarting it.
+    call(h.calls, 4).reject(new NetworkError('/api/v1/sky/frame', new TypeError('offline')));
+    await flush();
+    expect(h.store.getState().frames.failing).toEqual({
+      status: 0,
+      attempts: 2,
+      nextRetryMs: h.clock.ms + 1000,
+    });
+    expect(h.controller.state.failedKey).toBeNull();
+    tick(h, current.tt0 + 0.8 * span, 1000);
+    expect(h.calls).toHaveLength(6);
+    call(h.calls, 5).reject(problem(422, 'outside-coverage', { rangeTt: range }));
+    await flush();
+    expect(h.calls).toHaveLength(7);
+    call(h.calls, 6).resolve(syntheticResponse(bounded));
+    await flush();
+    // Success clears the banner; the bounded window is `next`, swapped in at the next decision
+    // without another request, and the clock plays on.
+    expect(h.store.getState().frames.failing).toBeNull();
+    expect(h.controller.state.next?.tt0).toBe(bounded.tt);
+    tick(h, current.tt0 + 0.82 * span);
+    expect(h.calls).toHaveLength(7);
+    expect(h.controller.state.current?.tt0).toBe(bounded.tt);
+    expect(h.controller.state.next).toBeNull();
+    expect(h.store.getState().clock.mode).toBe('playing');
     h.controller.dispose();
   });
 
@@ -644,6 +870,70 @@ describe('createFrameController', () => {
     expect(h.calls).toHaveLength(2);
     tick(h, TT, 100);
     expect(h.calls).toHaveLength(3);
+    h.controller.dispose();
+  });
+
+  it("publishes failing from the fetcher's first retry and never an error status before the ladder ends (R70)", async () => {
+    const h = harness();
+    h.controller.update(TT, T0);
+    const first = call(h.calls, 0);
+    expect(first.onRetry).toBeDefined();
+    expect(h.store.getState().frames.status).toBe('loading');
+    // The client's first retry: the banner learns of it at once, the status stays `loading`.
+    h.clock.ms += 20;
+    first.onRetry?.(1, 500, new NetworkError('/api/v1/sky/frame', new TypeError('offline')));
+    let frames = h.store.getState().frames;
+    expect(frames.status).toBe('loading');
+    expect(frames.lastError).toBeNull();
+    expect(frames.failing).toEqual({ status: 0, attempts: 1, nextRetryMs: h.clock.ms + 500 });
+    h.clock.ms += 500;
+    first.onRetry?.(2, 1000, problem(502, 'http-error'));
+    frames = h.store.getState().frames;
+    expect(frames.status).toBe('loading');
+    expect(frames.failing).toEqual({ status: 502, attempts: 2, nextRetryMs: h.clock.ms + 1000 });
+    // The ladder is exhausted: the controller's own backoff continues the count.
+    h.clock.ms += 1000;
+    first.reject(problem(504, 'http-error'));
+    await flush();
+    frames = h.store.getState().frames;
+    expect(frames.status).toBe('error');
+    expect(frames.lastError).toEqual({ status: 504, blocked: false });
+    expect(frames.failing).toEqual({ status: 504, attempts: 3, nextRetryMs: h.clock.ms + 500 });
+    // The next request of the same shape keeps counting; its success clears everything.
+    tick(h, TT, 500);
+    expect(h.calls).toHaveLength(2);
+    const second = call(h.calls, 1);
+    second.onRetry?.(1, 500, new NetworkError('/api/v1/sky/frame', new TypeError('offline')));
+    expect(h.store.getState().frames.failing).toMatchObject({ status: 0, attempts: 4 });
+    second.resolve(syntheticResponse(second.query));
+    await flush();
+    expect(h.store.getState().frames.failing).toBeNull();
+    expect(h.store.getState().frames.status).toBe('ready');
+    h.controller.dispose();
+  });
+
+  it('ignores the retry hook of a superseded request and restarts the count on another shape (R70)', async () => {
+    const h = harness();
+    h.controller.update(TT, T0);
+    const first = call(h.calls, 0);
+    first.onRetry?.(1, 500, new NetworkError('/api/v1/sky/frame', new TypeError('offline')));
+    expect(h.store.getState().frames.failing).toMatchObject({ attempts: 1 });
+    // The observer changes: the first request is abandoned and its late retry report ignored.
+    h.store.getState().actions.setObserver({ body: 'earth', lat: 40, lon: -3, elev: 600 });
+    tick(h, TT, 1);
+    await flush();
+    expect(h.calls).toHaveLength(2);
+    expect(first.signal.aborted).toBe(true);
+    const second = call(h.calls, 1);
+    first.onRetry?.(2, 1000, new NetworkError('/api/v1/sky/frame', new TypeError('offline')));
+    expect(h.store.getState().frames.failing).toMatchObject({ attempts: 1 });
+    // The new shape starts its own count at 1.
+    second.onRetry?.(1, 500, problem(429, 'rate-limited'));
+    expect(h.store.getState().frames.failing).toEqual({
+      status: 429,
+      attempts: 1,
+      nextRetryMs: h.clock.ms + 500,
+    });
     h.controller.dispose();
   });
 

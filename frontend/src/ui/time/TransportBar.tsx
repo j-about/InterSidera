@@ -49,7 +49,11 @@ export default function TransportBar({ store }: TransportBarProps) {
   const running = mode !== 'paused';
 
   return (
-    <div role="group" aria-label={t('time.speed')} className="flex shrink-0 items-center gap-0.5">
+    <div
+      role="group"
+      aria-label={t('time.speed')}
+      className="flex max-w-full flex-wrap items-center gap-0.5"
+    >
       <IconButton
         icon={Rewind}
         label={t('time.slower')}

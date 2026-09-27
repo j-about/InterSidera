@@ -9,7 +9,10 @@ import Banner from './Banner';
 import Button from './Button';
 
 // The degraded-state banners (UX-6, plan D111), from store fields only: the API unreachable
-// after boot (`frames.failing`, an alert with the retry countdown and "retry now"), a catalog
+// after boot (`frames.failing`, an alert with the retry countdown and "retry now"; a post-boot
+// signal, rendered only while `boot.phase === 'ready'`: the frame controller publishes `failing`
+// from the first retry (plan R70), so a transient failure of the boot's FIRST frame stays the
+// splash's business, which sits under this column and owns the boot error path), a catalog
 // changed on the server (`catalogs.* === 'stale'`, a reload prompt), the clock stopped at a
 // coverage bound (`frames.coverageStop`, a status with the range as signed years) and the
 // renderer failed after it had started (`engine.status === 'failed'`; the WebGL2 case is the
@@ -51,7 +54,7 @@ export default function Banners({ store, reload }: BannersProps) {
   const { failing, coverageStop, stale, engineFailed, arError } = useStore(
     store,
     useShallow((s) => ({
-      failing: s.frames.failing,
+      failing: s.boot.phase === 'ready' ? s.frames.failing : null,
       coverageStop: s.frames.coverageStop,
       stale: Object.values(s.catalogs).includes('stale'),
       engineFailed: s.engine.status === 'failed' && s.boot.error?.kind !== 'webgl2',

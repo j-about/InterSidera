@@ -72,6 +72,7 @@ describe('format', () => {
 
   it('formats percentages and magnitudes', () => {
     expect(formatPercent(0.967854)).toBe('97%');
+    expect(formatPercent(0.967854, 'fr')).toBe('97\u00a0%');
     expect(formatPercent(NaN)).toBe(UNKNOWN_VALUE);
     expect(formatMagnitude(-1.44)).toBe('-1.4');
     expect(formatMagnitude(8.724)).toBe('8.7');
@@ -97,16 +98,16 @@ describe('formatTimeOffset (the AR time-offset badge, plan D127)', () => {
 
   it('joins the kept units behind a plus or a typographic minus', () => {
     expect(formatTimeOffset({ sign: 1, years: 0, days: 0, hours: 3, minutes: 12 }, en)).toBe(
-      '+3 h 12 min',
+      '+3\u00a0h 12\u00a0min',
     );
     expect(formatTimeOffset({ sign: -1, years: 2, days: 10, hours: 0, minutes: 0 }, en)).toBe(
       '\u22122 yr 10 d',
     );
     expect(formatTimeOffset({ sign: 1, years: 1, days: 0, hours: 5, minutes: 0 }, en)).toBe(
-      '+1 yr 5 h',
+      '+1 yr 5\u00a0h',
     );
     expect(formatTimeOffset({ sign: -1, years: 0, days: 0, hours: 0, minutes: 1 }, en)).toBe(
-      '\u22121 min',
+      '\u22121\u00a0min',
     );
   });
 
@@ -119,7 +120,7 @@ describe('formatTimeOffset (the AR time-offset badge, plan D127)', () => {
 
   it('uses the French unit symbols a, j, h, min', () => {
     expect(formatTimeOffset({ sign: 1, years: 0, days: 0, hours: 3, minutes: 12 }, fr)).toBe(
-      '+3 h 12 min',
+      '+3\u00a0h 12\u00a0min',
     );
     expect(formatTimeOffset({ sign: -1, years: 2, days: 10, hours: 0, minutes: 0 }, fr)).toBe(
       '\u22122 a 10 j',

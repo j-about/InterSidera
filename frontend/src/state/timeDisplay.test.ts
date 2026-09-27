@@ -222,19 +222,26 @@ describe('calendar validation', () => {
   it('accepts valid fields and refuses impossible ones', () => {
     expect(validateFields(fields(2024, 4, 8, 17, 58, 50.816))).toBeNull();
     expect(validateFields(fields(-44, 2, 29))).toBeNull();
-    expect(validateFields(fields(2024, 13, 1))).toBe('invalidDate');
-    expect(validateFields(fields(2024, 0, 1))).toBe('invalidDate');
-    expect(validateFields(fields(2023, 2, 29))).toBe('invalidDate');
-    expect(validateFields(fields(2024, 4, 0))).toBe('invalidDate');
-    expect(validateFields(fields(2024, 4, 8, 24))).toBe('invalidDate');
-    expect(validateFields(fields(2024, 4, 8, -1))).toBe('invalidDate');
-    expect(validateFields(fields(2024, 4, 8, 0, 60))).toBe('invalidDate');
-    expect(validateFields(fields(2024, 4, 8, 0, -1))).toBe('invalidDate');
-    expect(validateFields(fields(2024, 4, 8, 0, 0, 60))).toBe('invalidDate');
-    expect(validateFields(fields(2024, 4, 8, 0, 0, -1))).toBe('invalidDate');
-    expect(validateFields(fields(2024, 4, 8, 0, 0, NaN))).toBe('invalidDate');
-    expect(validateFields(fields(2024.5, 4, 8))).toBe('invalidDate');
-    expect(validateFields(fields(NaN, 4, 8))).toBe('invalidDate');
+    // The offending field, in calendar order (the editor marks it `aria-invalid`, plan D157 C6).
+    expect(validateFields(fields(2024, 13, 1))).toBe('month');
+    expect(validateFields(fields(2024, 0, 1))).toBe('month');
+    expect(validateFields(fields(2024, 4.5, 1))).toBe('month');
+    expect(validateFields(fields(2023, 2, 29))).toBe('day');
+    expect(validateFields(fields(2024, 4, 0))).toBe('day');
+    expect(validateFields(fields(2024, 4, 1.5))).toBe('day');
+    expect(validateFields(fields(2024, 4, 8, 24))).toBe('hour');
+    expect(validateFields(fields(2024, 4, 8, -1))).toBe('hour');
+    expect(validateFields(fields(2024, 4, 8, NaN))).toBe('hour');
+    expect(validateFields(fields(2024, 4, 8, 0, 60))).toBe('minute');
+    expect(validateFields(fields(2024, 4, 8, 0, -1))).toBe('minute');
+    expect(validateFields(fields(2024, 4, 8, 0, 0.5))).toBe('minute');
+    expect(validateFields(fields(2024, 4, 8, 0, 0, 60))).toBe('second');
+    expect(validateFields(fields(2024, 4, 8, 0, 0, -1))).toBe('second');
+    expect(validateFields(fields(2024, 4, 8, 0, 0, NaN))).toBe('second');
+    expect(validateFields(fields(2024.5, 4, 8))).toBe('year');
+    expect(validateFields(fields(NaN, 4, 8))).toBe('year');
+    // The first offending field wins: a month 13 hides the day 40 behind it.
+    expect(validateFields(fields(2024, 13, 40))).toBe('month');
   });
 });
 

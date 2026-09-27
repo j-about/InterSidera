@@ -163,8 +163,10 @@ const MINUS_SIGN = '\u2212';
  * The time offset of the augmented-reality badge (plan D127) from `timeOffsetParts`: the kept
  * units through their plural keys (`ar.offset.years` .. `ar.offset.minutes`, `yr` / `d` / `h` /
  * `min` in English, `a` / `j` / `h` / `min` in French), joined by a space behind `+` or U+2212;
- * `ar.offset.now` when nothing remains. `Intl.DurationFormat` is not used (Safari 17 ships
- * without it and the unit symbols belong to the resource files anyway).
+ * `ar.offset.now` when nothing remains. `Intl.DurationFormat` is not used: it arrived in Chrome
+ * 129 and Firefox 136 (Safari has it since 16.4), above the brief's floor of Android Chrome 120
+ * and the last two Firefox releases (l.267), and the unit symbols belong to the resource files
+ * anyway (plan D159).
  */
 export function formatTimeOffset(parts: TimeOffsetParts, t: TFunction): string {
   if (parts.sign === 0) {

@@ -78,11 +78,16 @@ describe('BootStatus', () => {
       act(() => {
         vi.advanceTimersByTime(0);
       });
-      expect(screen.getByText(i18next.t('boot.unreachable', { seconds: 4 }))).toBeInTheDocument();
+      // DOM Testing Library folds U+00A0 on the node side only: fold the expected string alike.
+      expect(
+        screen.getByText(i18next.t('boot.unreachable', { seconds: 4 }).replace(/\u00a0/g, ' ')),
+      ).toBeInTheDocument();
       act(() => {
         vi.advanceTimersByTime(2000);
       });
-      expect(screen.getByText(i18next.t('boot.unreachable', { seconds: 2 }))).toBeInTheDocument();
+      expect(
+        screen.getByText(i18next.t('boot.unreachable', { seconds: 2 }).replace(/\u00a0/g, ' ')),
+      ).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }

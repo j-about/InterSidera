@@ -175,11 +175,14 @@ async function loadStars(
 ): Promise<{ stars: StarCatalogInput; etag: string | null; stale: boolean }> {
   onStatus?.('stars', 'loading');
   try {
+    // Two figures (plan D141): the download, then the CPU parse and HIP index. The former single
+    // timer started before the request and read as "parse" what was mostly network.
     const started = performance.now();
     const { buffer, response } = await getBytes('/api/v1/catalogs/stars', options);
+    const fetched = performance.now();
     const columns = parseSkys(buffer);
     const hipIndex = buildHipIndex(columns.hip);
-    const parseMs = performance.now() - started;
+    const parseMs = performance.now() - fetched;
     const etagHeader = response.headers.get('ETag');
     const stale = isStaleEtag(etagHeader, meta.catalogs.stars.etag);
     onStatus?.('stars', stale ? 'stale' : 'ready');
@@ -189,6 +192,7 @@ async function loadStars(
         hipIndex,
         magnitudeLimit: meta.catalogs.stars.magnitude_limit,
         parseMs,
+        fetchMs: fetched - started,
       },
       etag: normalizeEtag(etagHeader),
       stale,

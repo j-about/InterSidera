@@ -182,7 +182,11 @@ describe('App', () => {
       actions.setArMode('sensor');
     });
     // The overlay chunk resolves asynchronously (`lazy`); the top bar is gone meanwhile.
-    const exit = await screen.findByRole('button', { name: 'Exit augmented reality' });
+    const exit = await screen.findByRole(
+      'button',
+      { name: 'Exit augmented reality' },
+      { timeout: 5000 },
+    );
     expect(screen.queryByRole('button', { name: 'About InterSidera' })).toBeNull();
     expect(screen.getByRole('banner')).toHaveAttribute('id', 'ar-overlay');
     expect(screen.getByRole('banner')).toContainElement(exit);

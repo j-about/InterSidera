@@ -26,6 +26,11 @@ import TextField from '../components/TextField';
 // proleptic Gregorian notice for dates before 1582-10-15, and Apply. An impossible date or a
 // date outside the range is refused with a message (the URL is untouched); a valid one pauses
 // the clock there. The draft is (re)built from the clock every time the dialog opens.
+// Errors (WCAG 3.3.1, plan D157 C6): an impossible date marks the offending field
+// (`validateFields` names it) through the field's own `error`, so it carries `aria-invalid`, is
+// described by the message and announces it; a date outside the coverage is a property of the
+// whole date, so it stays on the form-level alert under the fields (`apply` sets `range` only
+// with a coverage, so `years` is non-null there). Any keystroke clears both.
 
 export interface DateTimeEditorProps {
   store: SkyStore;
@@ -131,6 +136,9 @@ export default function DateTimeEditor({ store, offsetAt }: DateTimeEditorProps)
     actions.closeDialog();
   };
 
+  const fieldError = (field: keyof CalendarFields): string | null =>
+    error === 'invalidDate' && invalid === field ? t('time.error.invalidDate') : null;
+
   const labels: Record<keyof CalendarFields, string> = {
     year: t('time.year'),
     month: t('time.month'),
@@ -165,6 +173,7 @@ export default function DateTimeEditor({ store, offsetAt }: DateTimeEditorProps)
               inputMode="numeric"
               autoComplete="off"
               spellCheck={false}
+              error={fieldError(field)}
               onValueChange={(text) => {
                 setDraft({ ...draft, [field]: text });
                 setError(null);
@@ -189,11 +198,9 @@ export default function DateTimeEditor({ store, offsetAt }: DateTimeEditorProps)
           </p>
         )}
         {gregorianNotice && <p className="text-xs text-muted">{t('time.gregorianNotice')}</p>}
-        {error !== null && (
+        {error === 'range' && years !== null && (
           <p role="alert" className="text-sm text-danger" data-testid="time-editor-error">
-            {error === 'range' && years !== null
-              ? t('time.error.range', years)
-              : t('time.error.invalidDate')}
+            {t('time.error.range', years)}
           </p>
         )}
         <div className="flex justify-end">

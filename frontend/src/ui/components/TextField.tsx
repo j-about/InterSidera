@@ -27,7 +27,7 @@ export interface TextFieldProps extends Omit<
 function inputClass(invalid: boolean): string {
   return invalid
     ? 'min-h-6 w-full rounded-md border border-danger bg-field-bg px-2 py-1 text-sm text-panel-fg pointer-coarse:min-h-11 disabled:cursor-not-allowed disabled:opacity-50'
-    : 'min-h-6 w-full rounded-md border border-muted/60 bg-field-bg px-2 py-1 text-sm text-panel-fg pointer-coarse:min-h-11 disabled:cursor-not-allowed disabled:opacity-50';
+    : 'min-h-6 w-full rounded-md border border-muted/80 bg-field-bg px-2 py-1 text-sm text-panel-fg pointer-coarse:min-h-11 disabled:cursor-not-allowed disabled:opacity-50';
 }
 
 export default function TextField({

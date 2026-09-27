@@ -51,6 +51,8 @@ describe('AboutDialog', () => {
     expect(repository).toHaveAttribute('target', '_blank');
     expect(repository).toHaveAttribute('rel', 'noopener noreferrer');
     expect(repository).toHaveTextContent('opens in a new tab');
+    // A link alone in a `dd` is a target of its own (WCAG 2.2 SC 2.5.8, plan D157 C4).
+    expect(repository).toHaveClass('inline-block', 'min-h-6', 'py-1');
 
     // What this server serves: the runtime attributions of /meta.
     const meta = fakeMeta({ minor: true });

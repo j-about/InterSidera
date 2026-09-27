@@ -1,8 +1,9 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 
 import {
   BRIGHT_STAR,
   PROBE_FOV,
+  afterFrames,
   altAzOf,
   appUrl,
   centrePatch,
@@ -29,6 +30,9 @@ async function aimAtSirius(page: Parameters<typeof altAzOf>[0]): Promise<void> {
     },
     { az: sirius.az, alt: sirius.alt, fov: PROBE_FOV },
   );
+  // Two presented frames before the first probe (the `expectRendered` mechanism, plan D140): the
+  // poll alone read a stale picture under five SwiftShader workers.
+  await afterFrames(page, 2);
   await expect
     .poll(async () => (await centrePatch(page)).max, { timeout: 10_000 })
     .toBeGreaterThan(100);

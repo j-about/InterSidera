@@ -17,3 +17,5 @@ frontend/package-lock.json linguist-generated=true
 backend/uv.lock linguist-generated=true
 THIRD_PARTY_NOTICES.md linguist-generated=true
 frontend/src/data/credits.json linguist-generated=true
+# The PWA and Apple icons are rendered from favicon.svg by scripts/render_icons.mjs (B-66).
+frontend/public/*.png linguist-generated=true

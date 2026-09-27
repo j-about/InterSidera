@@ -1,9 +1,10 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { Page } from '@playwright/test';
 
 import {
   PLANETS,
   TT_PROBE,
+  afterFrames,
   altAzOf,
   appUrl,
   authoritativeAltAz,
@@ -21,12 +22,50 @@ import {
 // Selection, picking and follow mode (INFO-1, VIEW-4; plan D106, D113): a tap on a planet
 // selects it (`sel` in the URL, the marker in the overlay), `pick` answers the same id, a tap on
 // an empty region deselects, follow mode keeps the selection at the canvas centre while the clock
-// runs; the minor-body branch follows `/meta` (MPC present locally, absent in CI) instead of
-// skipping. Page-side functions reach the hook through `window.__sky` directly.
+// runs (every rendered frame, plan D139; sampled right after a completed frame, plan D162); the
+// minor-body branch follows `/meta` (MPC present locally, absent in CI) instead of skipping.
+// Page-side functions reach the hook through `window.__sky` directly.
 
 const ENGINE = 'webgl2';
-/** The centre stays within this many CSS pixels of the followed object. */
+/** The centre stays within this many CSS pixels of the followed object (kept, plan D162). */
 const FOLLOW_TOLERANCE_PX = 3;
+/** Wall time between the two follow samples: the sky moves 7.5 degrees at 3600x meanwhile. */
+const FOLLOW_SAMPLE_GAP_MS = 500;
+
+interface FollowSample {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  tt: number;
+}
+
+/**
+ * The followed object's projection, the canvas client size and the rendered instant, read in one
+ * evaluation right after a completed frame (plan D162): the projection and the view it uses come
+ * from the same tick, so a sample never mixes two frames.
+ */
+async function followSample(page: Page, id: string): Promise<FollowSample> {
+  await afterFrames(page, 1);
+  return required(
+    await page.evaluate((target): FollowSample | null => {
+      const canvas = document.querySelector('canvas');
+      const point = window.__sky?.screenOf(target);
+      const state = window.__sky?.state();
+      if (canvas === null || point === null || point === undefined || state === undefined) {
+        return null;
+      }
+      return {
+        x: point.x,
+        y: point.y,
+        width: canvas.clientWidth,
+        height: canvas.clientHeight,
+        tt: state.tt,
+      };
+    }, id),
+    `a follow sample of ${id}`,
+  );
+}
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -141,15 +180,22 @@ test('a tap selects the planet under it, the marker follows, and follow mode kee
       window.__sky?.setFollow(true);
       window.__sky?.play(3600);
     });
-    await page.waitForTimeout(3000);
-    const box = await canvasBox(page);
-    const centred = await screenOf(page, target.id);
-    expect(Math.abs(centred.x - box.width / 2)).toBeLessThan(FOLLOW_TOLERANCE_PX);
-    expect(Math.abs(centred.y - box.height / 2)).toBeLessThan(FOLLOW_TOLERANCE_PX);
-    // The clock did run: the view followed a moving target.
+    // Follow writes the view on every frame (plan D139, R95): whichever frame a sample lands on,
+    // the followed object sits at the centre. Two samples half a second apart, the sky having
+    // moved between them, both within the unchanged 3 px tolerance.
+    await page.waitForTimeout(1000);
+    const first = await followSample(page, target.id);
+    await page.waitForTimeout(FOLLOW_SAMPLE_GAP_MS);
+    const second = await followSample(page, target.id);
+    for (const sample of [first, second]) {
+      expect(Math.abs(sample.x - sample.width / 2)).toBeLessThan(FOLLOW_TOLERANCE_PX);
+      expect(Math.abs(sample.y - sample.height / 2)).toBeLessThan(FOLLOW_TOLERANCE_PX);
+    }
+    // The clock did run: the view followed a moving target, between the samples too.
+    expect(first.tt).toBeGreaterThan(TT_PROBE);
+    expect(second.tt).toBeGreaterThan(first.tt);
     const state = await debugState(page);
     expect(state.mode).toBe('playing');
-    expect(state.tt).toBeGreaterThan(TT_PROBE);
     await page.evaluate(() => {
       window.__sky?.pause();
     });

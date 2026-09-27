@@ -20,7 +20,7 @@ import {
   searchMinorBodies,
   serializeQuery,
 } from './client';
-import type { HealthPollOptions, HealthResponse, RequestOptions } from './client';
+import type { HealthPollOptions, HealthResponse, RequestOptions, RetryHook } from './client';
 
 const NOW = Date.UTC(2026, 8, 6, 12, 0, 0);
 const PROBLEM_BASE = 'https://github.com/j-about/InterSidera/blob/master/docs/api.md#problem-';
@@ -321,6 +321,67 @@ describe('retry policy', () => {
     expect(data.status).toBe('ready');
     expect(fetchImpl).toHaveBeenCalledTimes(4);
     expect(sleep.mock.calls.map((call) => call[0])).toEqual([1000, 500, 1000]);
+  });
+
+  it('announces each retry through onRetry before its sleep, never the final failure (R70)', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(problemResponse(429, 'rate-limited', {}, { 'Retry-After': '2' }))
+      .mockResolvedValueOnce(problemResponse(502, 'http-error'))
+      .mockResolvedValueOnce(jsonResponse(200, { status: 'ready', version: '0.1.0' }));
+    const order: string[] = [];
+    const sleep: Sleep = (ms) => {
+      order.push(`sleep ${String(ms)}`);
+      return Promise.resolve();
+    };
+    const onRetry = vi.fn<RetryHook>((attempt, delayMs) => {
+      order.push(`retry ${String(attempt)} ${String(delayMs)}`);
+    });
+    const { data } = await getJson('/api/v1/health', undefined, {
+      fetchImpl,
+      sleep,
+      onRetry,
+      random: () => 1,
+      now: () => NOW,
+    });
+    expect(data.status).toBe('ready');
+    // Attempt numbers count the failures from 1; the delay is the one slept right after.
+    expect(order).toEqual([
+      'retry 1 500',
+      'sleep 500',
+      'retry 2 2000',
+      'sleep 2000',
+      'retry 3 2000',
+      'sleep 2000',
+    ]);
+    expect(onRetry.mock.calls[0]?.[2]).toBeInstanceOf(NetworkError);
+    expect(onRetry.mock.calls[1]?.[2]).toMatchObject({ status: 429, retryAfterS: 2 });
+    expect(onRetry.mock.calls[2]?.[2]).toMatchObject({ status: 502, slug: 'http-error' });
+
+    // The last attempt's failure is thrown, not announced; a non-retryable status neither.
+    const exhausted = vi.fn<typeof fetch>().mockRejectedValue(new TypeError('offline'));
+    const hook = vi.fn<RetryHook>();
+    await expect(
+      getJson('/api/v1/meta', undefined, {
+        fetchImpl: exhausted,
+        sleep: instantSleep,
+        onRetry: hook,
+        retry: { maxAttempts: 3 },
+      }),
+    ).rejects.toBeInstanceOf(NetworkError);
+    expect(hook).toHaveBeenCalledTimes(2);
+    expect(hook.mock.calls.map((call) => call[0])).toEqual([1, 2]);
+    const refused = vi.fn<typeof fetch>().mockResolvedValue(problemResponse(404, 'unknown-object'));
+    const silent = vi.fn<RetryHook>();
+    await expect(
+      getJson('/api/v1/meta', undefined, {
+        fetchImpl: refused,
+        sleep: instantSleep,
+        onRetry: silent,
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(silent).not.toHaveBeenCalled();
   });
 
   it('does not retry 400, 404 or 422', async () => {

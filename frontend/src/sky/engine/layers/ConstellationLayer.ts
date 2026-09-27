@@ -14,7 +14,7 @@ import { apparentStarEnuAt } from '../../math/apparent';
 import { SKY_RADIUS, dirFromRaDec } from '../../math/frames';
 import { rotatePointsInPlace } from '../../math/lines';
 import { yearsSinceEpoch } from '../../math/time';
-import { at, vec3 } from '../../math/typed';
+import { at, load3, vec3 } from '../../math/typed';
 import { Color4, CreateLineSystem, Vector3, VertexBuffer } from '../babylon';
 import type { LinesMesh, Matrix, Scene } from '../babylon';
 import type { StarCatalogInput } from '../types';
@@ -99,21 +99,42 @@ export class ConstellationLayer {
   private segmentB = new Int32Array(0);
   /** Boundary vertices in ICRS (unit), copied and rotated into the mesh buffer on every update. */
   private boundsIcrf = new Float32Array(0);
+  /** Boundary chords drawn: every ring's point count minus one (`stats().cboundsSegments`). */
+  private boundsSegments = 0;
   private highlight = -1;
   private nightOn = false;
   private nightLevel = 1;
   private showLines = false;
   private showBounds = false;
   private readonly scratch = vec3();
+  /** The two endpoints of a segment (plan D144: read through `load3`, never boxed by `at`). */
+  private readonly endA = vec3();
+  private readonly endB = vec3();
 
   constructor(scene: Scene, worldMatrix: Matrix) {
     this.scene = scene;
     this.worldMatrix = worldMatrix;
   }
 
-  /** Line segments drawn (both HIP ends resolved), `stats().clinesSegments`. */
+  /**
+   * Line segments built from the catalog (both HIP ends resolved), `stats().clinesSegments`: a
+   * catalog count that stands whatever `layers.clines` says (the mesh is hidden, not emptied).
+   */
   get segmentCount(): number {
     return this.segmentA.length;
+  }
+
+  /**
+   * Boundary chords built from the catalog, `stats().cboundsSegments` (plan D141): like
+   * `segmentCount`, a catalog count that stands whatever `layers.cbounds` says.
+   */
+  get boundsSegmentCount(): number {
+    return this.boundsSegments;
+  }
+
+  /** IAU abbreviation of the highlighted constellation, `null` when none (plan D141). */
+  get highlightAbbr(): string | null {
+    return this.constellations[this.highlight]?.abbr ?? null;
   }
 
   /**
@@ -212,6 +233,7 @@ export class ConstellationLayer {
         total += ring.length;
       }
     });
+    this.boundsSegments = total - counts.length;
     if (total === 0) {
       return;
     }
@@ -355,17 +377,23 @@ export class ConstellationLayer {
         this.starEnu[3 * s + 1] = enu[1];
         this.starEnu[3 * s + 2] = enu[2];
       }
+      // The endpoints go through `load3` (plan D144, the measured site): `at` over a
+      // `Float64Array` boxed every coordinate it returned (its keyed load is megamorphic), about
+      // 4,200 reads per overlay tick here.
       const positions = lines.positions;
+      const starEnu = this.starEnu;
+      const endA = this.endA;
+      const endB = this.endB;
       for (let s = 0; s < this.segmentA.length; s += 1) {
-        const a = 3 * at(this.segmentA, s);
-        const b = 3 * at(this.segmentB, s);
+        load3(endA, starEnu, 3 * at(this.segmentA, s));
+        load3(endB, starEnu, 3 * at(this.segmentB, s));
         const o = 6 * s;
-        positions[o] = at(this.starEnu, a) * SKY_RADIUS;
-        positions[o + 1] = at(this.starEnu, a + 1) * SKY_RADIUS;
-        positions[o + 2] = at(this.starEnu, a + 2) * SKY_RADIUS;
-        positions[o + 3] = at(this.starEnu, b) * SKY_RADIUS;
-        positions[o + 4] = at(this.starEnu, b + 1) * SKY_RADIUS;
-        positions[o + 5] = at(this.starEnu, b + 2) * SKY_RADIUS;
+        positions[o] = endA[0] * SKY_RADIUS;
+        positions[o + 1] = endA[1] * SKY_RADIUS;
+        positions[o + 2] = endA[2] * SKY_RADIUS;
+        positions[o + 3] = endB[0] * SKY_RADIUS;
+        positions[o + 4] = endB[1] * SKY_RADIUS;
+        positions[o + 5] = endB[2] * SKY_RADIUS;
       }
       lines.mesh.updateVerticesData(VertexBuffer.PositionKind, positions, false, false);
     }
@@ -388,6 +416,7 @@ export class ConstellationLayer {
     this.segmentA = new Int32Array(0);
     this.segmentB = new Int32Array(0);
     this.boundsIcrf = new Float32Array(0);
+    this.boundsSegments = 0;
   }
 
   dispose(): void {

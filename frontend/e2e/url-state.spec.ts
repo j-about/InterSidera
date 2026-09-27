@@ -1,10 +1,11 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { Page } from '@playwright/test';
 import type { SkyDebugApi } from '../src/debug/skyDebugApi.ts';
 
 // URL round trip (UX-2, brief l.246, l.574; OBS-8, l.197; plan D79, D89): every M3 parameter
 // reaches the store, a view change rewrites the query within the 2 Hz budget, a reload restores
-// it, the language is applied to the document, the dev/e2e hash stays out of the query, and no
+// it from the browser-cached catalogs (acceptance l.573, plan D137: a 304 each, the same body),
+// the language is applied to the document, the dev/e2e hash stays out of the query, and no
 // browser storage is touched. Page-side functions reach the hook through `window.__sky`.
 
 const TT = 2460409.25;
@@ -30,6 +31,24 @@ async function debugState(page: Page): Promise<DebugState> {
   }
   return state;
 }
+
+/** Resource Timing of the catalog requests of the current document, by path. */
+async function catalogRows(
+  page: Page,
+): Promise<Map<string, { transferSize: number; decodedBodySize: number }>> {
+  const rows = await page.evaluate(() => window.__sky?.resources() ?? []);
+  return new Map(
+    rows
+      .filter((row) => row.name.startsWith('/api/v1/catalogs/'))
+      .map((row) => [
+        row.name,
+        { transferSize: row.transferSize, decodedBodySize: row.decodedBodySize },
+      ]),
+  );
+}
+
+/** A revalidation answered 304 costs headers alone (about 300 B); a heuristic cache hit costs 0 and is refused below. */
+const REVALIDATION_MAX_BYTES = 1000;
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -82,6 +101,8 @@ test('every M3 parameter round-trips through the store, the URL and a reload', a
   expect(written.hash).toBe('#engine=webgl2');
 
   // A reload of the written URL restores the view and the paused instant (brief l.574).
+  const cold = await catalogRows(page);
+  expect(cold.get('/api/v1/catalogs/stars')?.transferSize ?? 0).toBeGreaterThan(1_000_000);
   await page.reload();
   await waitReady(page);
   const restored = await debugState(page);
@@ -90,6 +111,19 @@ test('every M3 parameter round-trips through the store, the URL and a reload', a
   expect(Math.abs(restored.tt - TT)).toBeLessThan(1e-6);
   expect(restored.observer).toEqual({ body: 'earth', lat: 48.86, lon: 2.35, elev: 35 });
   expect(await page.evaluate(() => document.documentElement.lang)).toBe('fr');
+
+  // The catalogs are cached by the browser (acceptance l.573, plan D137): `cache: 'no-cache'`
+  // revalidates each with `If-None-Match`, the API answers 304, so the second load moves headers
+  // alone while the body the page parsed is the cached one, the same size byte for byte. A
+  // revalidation costs a few hundred bytes of headers on the wire; a heuristic cache hit (no
+  // request at all) reports `transferSize` 0, which is not the 304 the acceptance row claims.
+  const warm = await catalogRows(page);
+  expect([...warm.keys()].sort()).toEqual([...cold.keys()].sort());
+  for (const [name, row] of warm) {
+    expect(row.transferSize, `${name} transferSize`).toBeGreaterThan(0);
+    expect(row.transferSize, `${name} transferSize`).toBeLessThan(REVALIDATION_MAX_BYTES);
+    expect(row.decodedBodySize, `${name} decodedBodySize`).toBe(cold.get(name)?.decodedBodySize);
+  }
 
   // OBS-8: the URL is the only state; no cookie, no Web Storage, no IndexedDB database.
   const storage = await page.evaluate(async () => ({

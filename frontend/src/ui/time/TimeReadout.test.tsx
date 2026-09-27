@@ -33,6 +33,17 @@ describe('TimeReadout', () => {
     });
     expect(screen.getByTestId('time-last')).toHaveTextContent('13:30:00');
     expect(screen.getByText('LAST')).toBeInTheDocument();
+    // The `dl` content model (WCAG 1.3.1, plan D157 C1): every `dt`/`dd` sits directly in a `dl`
+    // or inside exactly one `div` that does (axe `definition-list` / `dlitem`).
+    const terms = screen.getByTestId('time-readout').querySelectorAll('dt, dd');
+    // The local group (one dt, two dd) and the three UTC/TT/LAST pairs.
+    expect(terms.length).toBe(9);
+    for (const term of terms) {
+      const parent = term.parentElement;
+      const grouped = parent?.tagName === 'DIV' && parent.parentElement?.tagName === 'DL';
+      expect(parent?.tagName === 'DL' || grouped).toBe(true);
+    }
+    expect(screen.getByText('Local')).toHaveClass('sr-only');
 
     act(() => {
       store.getState().actions.setObserver({ body: 'mars', lat: 0, lon: 0, elev: 0 });

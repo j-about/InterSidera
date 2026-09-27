@@ -8,6 +8,11 @@ import CoordinateForm, { COORDINATE_DEBOUNCE_MS } from './CoordinateForm';
 // the debounce (DMS included), errors are announced, the preview shows the rounded values, and an
 // external observer change (a preset) replaces the drafts while the form's own write does not.
 
+/** jest-dom collapses the element's whitespace (U+00A0 included) but not the expected string's. */
+function plain(text: string): string {
+  return text.replace(/\u00a0/g, ' ');
+}
+
 describe('CoordinateForm', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -41,7 +46,7 @@ describe('CoordinateForm', () => {
     // The form's own write keeps the typed text.
     expect(lat).toHaveValue('48°51\'24"N');
     expect(screen.getByTestId('coords-preview')).toHaveTextContent(
-      i18next.t('coords.preview', { lat: '48.86', lon: '2.35', elev: '35' }),
+      plain(i18next.t('coords.preview', { lat: '48.86', lon: '2.35', elev: '35' })),
     );
   });
 
@@ -65,10 +70,25 @@ describe('CoordinateForm', () => {
       vi.advanceTimersByTime(COORDINATE_DEBOUNCE_MS * 2);
     });
     expect(store.getState().observer).toEqual({ body: 'earth', lat: 51.48, lon: 0, elev: 0 });
-    // The preview keeps the store's values while the drafts are invalid.
+    // The preview keeps the store's values while the drafts are invalid, with two decimals for
+    // the angles and none for the elevation (plan D159).
     expect(screen.getByTestId('coords-preview')).toHaveTextContent(
-      i18next.t('coords.preview', { lat: '51.48', lon: '0', elev: '0' }),
+      plain(i18next.t('coords.preview', { lat: '51.48', lon: '0.00', elev: '0' })),
     );
+  });
+
+  it('formats the preview in the current language while the drafts stay dot-decimal', async () => {
+    const store = createSkyStore({ body: 'earth', lat: 48.8567, lon: 2.3508, elev: 35 });
+    await i18next.changeLanguage('fr');
+    try {
+      render(<CoordinateForm store={store} />);
+      expect(screen.getByRole('textbox', { name: 'Latitude' })).toHaveValue('48.8567');
+      expect(screen.getByTestId('coords-preview')).toHaveTextContent(
+        plain(i18next.t('coords.preview', { lat: '48,86', lon: '2,35', elev: '35' })),
+      );
+    } finally {
+      await i18next.changeLanguage('en');
+    }
   });
 
   it('follows an external observer change and keeps the body of a concurrent switch', () => {

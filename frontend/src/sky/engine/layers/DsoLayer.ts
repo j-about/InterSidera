@@ -258,7 +258,11 @@ export class DsoLayer {
     this.material.setFloat('uAtmosphere', u.atmosphere);
   }
 
-  /** How many objects the shader draws under these limits (the debug `stats().dso`, <= 10 Hz). */
+  /**
+   * How many objects the shader draws under these limits: the debug hook's `stats().dso`, computed
+   * on demand by `SkyEngineApi.layerStats()` and never on the overlay tick (plan D144: three
+   * typed-array reads per object per tick were the largest allocation site of the M6 heap table).
+   */
   countVisible(magLimit: number, sizeLimitArcmin: number): number {
     let n = 0;
     for (let i = 0; i < this.entries.length; i += 1) {

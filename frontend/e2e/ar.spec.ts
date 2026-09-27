@@ -1,6 +1,7 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { Page } from '@playwright/test';
 
+import { expectNoAxeViolations } from './axe.ts';
 import {
   TT_FIXED,
   appUrl,
@@ -25,7 +26,10 @@ import {
 // beside the camera. Orientation samples are synthetic `deviceorientationabsolute` events
 // dispatched by an init-script ticker every 100 ms from `window.__fakeOrientation` (CDP's
 // `setDeviceOrientationOverride` drives the relative sensor only). One boot per scenario,
-// `test.step` inside (plan D113). Expected console output during these runs: none at the `error`
+// `test.step` inside (plan D113). axe-core scans the overlay in three states (plan D156: the
+// sensor mode with a good compass, the manual-north hint, the `requesting` banner) and the two 1°
+// nudge buttons are the non-drag twin of the calibration drag (WCAG 2.5.7, plan D157 C5).
+// Expected console output during these runs: none at the `error`
 // level; the WebXR scenario yields `console.warn` lines only, which `collectErrors` ignores by
 // design: Babylon's "We recommend using 'unbounded' reference space type..." (once per entry,
 // the `local` space of plan D128), "dom-overlay is an experimental and unstable feature." (once
@@ -225,6 +229,10 @@ test('sensor mode: lazy chunks, camera, pose, calibration, field, badge, degrada
       .toBeLessThan(1);
   });
 
+  await test.step('axe: the AR overlay in the sensor mode', async () => {
+    await expectNoAxeViolations(page, 'AR overlay, sensor mode');
+  });
+
   await test.step('a horizontal drag calibrates the azimuth offset (AR-3) and the reset clears it', async () => {
     const box = await canvasBox(page);
     const before = await debugState(page);
@@ -255,6 +263,29 @@ test('sensor mode: lazy chunks, camera, pose, calibration, field, badge, degrada
     await expect
       .poll(async () => (await debugState(page)).ar.azOffsetDeg, { timeout: 5000 })
       .toBe(0);
+  });
+
+  await test.step('the 1° nudges turn the sky like the drag does, without dragging (SC 2.5.7)', async () => {
+    // "Turn the sky right" moves the drawn sky right on screen, as a rightward drag does: the
+    // view turns left, so the offset decreases by one degree (`dragDeltaDeg`); "left" adds one.
+    const offset = async (): Promise<number> => (await debugState(page)).ar.azOffsetDeg;
+    await page.getByRole('button', { name: 'Turn the sky 1° right' }).tap();
+    await expect.poll(offset, { timeout: 5000 }).toBeCloseTo(-1, 6);
+    await expect(page.getByText('Azimuth offset -1°')).toBeVisible();
+    // The pose follows: the sensor looks south (180) and the view reads 179.
+    await expect
+      .poll(async () => Math.abs((await debugState(page)).view.az - 179), { timeout: 5000 })
+      .toBeLessThan(0.5);
+    const left = page.getByRole('button', { name: 'Turn the sky 1° left' });
+    await left.tap();
+    await left.tap();
+    await expect.poll(offset, { timeout: 5000 }).toBeCloseTo(1, 6);
+    await expect(page.getByText('Azimuth offset 1°')).toBeVisible();
+    await expect
+      .poll(async () => Math.abs((await debugState(page)).view.az - 181), { timeout: 5000 })
+      .toBeLessThan(0.5);
+    await page.getByRole('button', { name: 'Reset the alignment' }).tap();
+    await expect.poll(offset, { timeout: 5000 }).toBe(0);
   });
 
   await test.step('the camera-field slider drives view.fov through the cover model and reaches the URL', async () => {
@@ -314,6 +345,7 @@ test('sensor mode: lazy chunks, camera, pose, calibration, field, badge, degrada
     await expect(page.getByRole('status', { name: 'Align the sky' })).toHaveText(
       /point the phone north/,
     );
+    await expectNoAxeViolations(page, 'AR overlay, manual-north hint');
   });
 
   await test.step('three seconds without a sample end the session with a message (AR-5)', async () => {
@@ -400,6 +432,7 @@ test('a refused or missing camera returns to the normal view with one message (A
     expect(await arMode(page)).toBe('requesting');
     await expect(page.getByRole('button', { name: 'Exit augmented reality' })).toBeFocused();
     await expect(video(page)).toHaveCount(0);
+    await expectNoAxeViolations(page, 'AR overlay, requesting');
     await requesting.getByRole('button', { name: 'Cancel' }).tap();
     await expect.poll(() => arMode(page), { timeout: 10_000 }).toBe('off');
     await expect(requesting).toHaveCount(0);

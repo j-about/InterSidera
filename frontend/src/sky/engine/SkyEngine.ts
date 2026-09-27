@@ -4,12 +4,17 @@
 // store subscriptions (view, layers, options, observer, meta, DSO types, selection, follow, centre
 // requests, the catalog bundle, the constellation of the selection, the minor-body names) and the
 // frame source. The engine owns time: every render tick derives `tt` from the store's control
-// block, drives the frame buffer, evaluates the current window and publishes the `tt` mirror and
-// the selection readout at most twice per second; the overlays (lines, constellations, labels,
-// marker, follow, centring) refresh at <= 10 Hz; the visible-label list reaches the store at <= 1
-// Hz on change. Geometry lives in ENU under the frozen world matrix P of `frames.ts` (ADR-0009);
-// Babylon's only jobs are the camera, the meshes and the render loop. Nothing here allocates per
-// frame (the 2 Hz readout copy and the label texts on an id change are the exceptions).
+// block, drives the frame buffer, evaluates the current window, re-centres the camera on the
+// followed object (plan D139: every frame, before the view is read, so the picture never lags the
+// direction it draws) and publishes the `tt` mirror and the selection readout at most twice per
+// second; the overlays (lines, constellations, labels, marker, centring) refresh at <= 10 Hz; the
+// visible-label list reaches the store at <= 1 Hz on change. Geometry lives in ENU under the
+// frozen world matrix P of `frames.ts` (ADR-0009); Babylon's only jobs are the camera, the meshes
+// and the render loop. Nothing here allocates per frame (the 2 Hz readout copy, the label texts
+// on an id change and the follow patch's store spread are the exceptions).
+// Instrumentation (plan D140-D142, dev/e2e hook): the wall stamp of the last tick, per-phase cost
+// rings, monotonic frame and overlay counters, `afterFrames(n)` waiters consulted only when
+// pending, the device-pixel-ratio cap and the render target, all behind `perf`.
 // Augmented reality (plan D116, D122-D124): the engine hosts the lazily imported sensor-mode
 // controller (`sky/ar/arController.ts`, loaded when `ar.mode` becomes `requesting`, ticked after
 // the other tickers, disposed on `off`), clears the scene transparent over the camera video in the
@@ -97,6 +102,8 @@ import { SkyResolver } from './resolver';
 import type { XrFlow } from './xr/xrFlow';
 import type {
   ArController,
+  EnginePerf,
+  EnginePhases,
   EngineTicker,
   FrameSource,
   LabelBox,
@@ -110,8 +117,10 @@ import type {
 
 /** The `tt` mirror and the readout reach the store at most this often (plan D80, brief l.552). */
 const PUBLISH_INTERVAL_MS = 500;
-/** Rotating overlays, labels, marker, follow and centring refresh at <= 10 Hz (brief l.68). */
+/** Rotating overlays, labels, marker and centring refresh at <= 10 Hz (brief l.68). */
 const OVERLAY_INTERVAL_MS = 100;
+/** `overlayCosts` entry of a frame that ran no overlay tick (plan D141). */
+const NO_OVERLAY = -1;
 /** A centre request that cannot be resolved (object not in the window yet) is dropped after this. */
 const CENTRE_TIMEOUT_MS = 10_000;
 /** `snapshot()` gives up when no frame ends within this. */
@@ -125,7 +134,7 @@ const DEFAULT_BODY_CAPACITY = 16;
 /** Camera depth range: the sphere sits at 1000 (brief l.59, l.543 "maxZ must exceed"). */
 const CAMERA_MIN_Z = 1;
 const CAMERA_MAX_Z = 2000;
-/** Retina-class screens render at 2x at most (plan D85). */
+/** Retina-class screens render at 2x at most (plan D85; `#dpr=` overrides it in dev/e2e, D142). */
 const MAX_DEVICE_PIXEL_RATIO = 2;
 /** Consecutive failing frames (about one second) before the engine gives up. */
 const MAX_FRAME_FAILURES = 60;
@@ -136,6 +145,13 @@ type XrModule = typeof import('./xr/XrBridge');
 
 interface PendingCentre extends CentreRequest {
   sinceMs: number;
+}
+
+/** An `afterFrames` promise (plan D140): settled once `frameSeq` reaches `seq`. */
+interface FrameWaiter {
+  seq: number;
+  resolve: () => void;
+  reject: (reason: Error) => void;
 }
 
 class SkyEngine implements SkyEngineApi {
@@ -189,6 +205,10 @@ class SkyEngine implements SkyEngineApi {
   private readonly labelRebuild: LabelRebuildInputs;
   private readonly minorNames = new Map<string, string>();
   private readonly stats: LayerStats = { dso: 0, clinesSegments: 0 };
+  /** The follow write of plan D139, reused every frame (`setView` spreads it into the store). */
+  private readonly followPatch: { az: number; alt: number } = { az: 0, alt: 0 };
+  /** Device pixels per CSS pixel at most (`SkyEngineOptions.maxDevicePixelRatio`, plan D142). */
+  private readonly maxDpr: number;
   private catalog: StarCatalogInput | null = null;
   private bundle: CatalogBundle | null = null;
   private view: ViewState;
@@ -238,11 +258,24 @@ class SkyEngine implements SkyEngineApi {
   private labelsMinor: readonly string[] | null = null;
   private readoutPublished = false;
   private disposed = false;
+  // The ten-second rings (plan D86, D141): `performance.now()` stamps, the cost of `tick`, of
+  // `scene.render` and of the overlay tick (`NO_OVERLAY` on frames that ran none).
   private readonly frameStamps = new Float64Array(FPS_RING);
-  private readonly frameCosts = new Float64Array(FPS_RING);
+  private readonly tickCosts = new Float64Array(FPS_RING);
+  private readonly renderCosts = new Float64Array(FPS_RING);
+  private readonly overlayCosts = new Float64Array(FPS_RING);
   private frameHead = 0;
   private frameCount = 0;
   private frameFailures = 0;
+  /** `Date.now()` as the last `tick` read it (plan D141); `NaN` before the first tick. */
+  private tickWallMs = NaN;
+  /** The overlay tick's cost in the frame being rendered, `NO_OVERLAY` when it did not run. */
+  private overlayCostMs = NO_OVERLAY;
+  /** Completed render frames (monotonic, plan D140/D141): `afterFrames` counts against it. */
+  private frameSeq = 0;
+  private overlayTicks = 0;
+  /** Pending `afterFrames` promises; the render path looks at the array only when it is not empty. */
+  private readonly frameWaiters: FrameWaiter[] = [];
   private readonly readyPromise: Promise<void>;
   private readyResolve: (() => void) | null = null;
   private readyArmed = false;
@@ -259,6 +292,7 @@ class SkyEngine implements SkyEngineApi {
     this.labelText = options.labelText;
     this.underlayRoot = options.underlayRoot;
     this.signal = options.signal;
+    this.maxDpr = options.maxDevicePixelRatio ?? MAX_DEVICE_PIXEL_RATIO;
     this.readyPromise = new Promise<void>((resolve) => {
       this.readyResolve = resolve;
     });
@@ -542,10 +576,98 @@ class SkyEngine implements SkyEngineApi {
     }
     let total = 0;
     for (let k = 0; k < n; k += 1) {
-      total += at(this.frameCosts, this.ringIndex(k));
+      const i = this.ringIndex(k);
+      total += at(this.tickCosts, i) + at(this.renderCosts, i);
     }
     return total / n;
   }
+
+  /** Mean cost per phase over the last ten seconds (plan D141); the overlay mean over its own ticks. */
+  private phaseMs(): EnginePhases {
+    const n = this.recentFrames();
+    if (n === 0) {
+      return { tickMs: 0, renderMs: 0, overlayMs: 0 };
+    }
+    let tick = 0;
+    let render = 0;
+    let overlay = 0;
+    let overlays = 0;
+    for (let k = 0; k < n; k += 1) {
+      const i = this.ringIndex(k);
+      tick += at(this.tickCosts, i);
+      render += at(this.renderCosts, i);
+      const cost = at(this.overlayCosts, i);
+      if (cost !== NO_OVERLAY) {
+        overlay += cost;
+        overlays += 1;
+      }
+    }
+    return {
+      tickMs: tick / n,
+      renderMs: render / n,
+      overlayMs: overlays === 0 ? 0 : overlay / overlays,
+    };
+  }
+
+  /**
+   * Resolves after `n` further completed frames (plan D140). Waiters are settled by `renderFrame`
+   * and rejected when the engine is disposed or gives up, so a spec never waits on a dead loop.
+   */
+  private afterFrames(n: number): Promise<void> {
+    if (this.disposed) {
+      return Promise.reject(abortError());
+    }
+    if (!(n > 0)) {
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve, reject) => {
+      this.frameWaiters.push({ seq: this.frameSeq + Math.ceil(n), resolve, reject });
+    });
+  }
+
+  /** Settle the waiters whose frame has come; the array is compacted in place (no allocation). */
+  private settleFrameWaiters(): void {
+    const waiters = this.frameWaiters;
+    let kept = 0;
+    for (const waiter of waiters) {
+      if (waiter.seq <= this.frameSeq) {
+        waiter.resolve();
+      } else {
+        waiters[kept] = waiter;
+        kept += 1;
+      }
+    }
+    waiters.length = kept;
+  }
+
+  private rejectFrameWaiters(reason: Error): void {
+    for (const waiter of this.frameWaiters) {
+      waiter.reject(reason);
+    }
+    this.frameWaiters.length = 0;
+  }
+
+  /** The measurement seam of the debug hook (plan D140-D142); nothing here runs per frame. */
+  readonly perf: EnginePerf = {
+    afterFrames: (n) => this.afterFrames(n),
+    tickWallMs: () => this.tickWallMs,
+    counters: () => ({
+      frames: this.frameSeq,
+      overlayTicks: this.overlayTicks,
+      labelPublishes: this.labels.publishCount,
+    }),
+    phaseMs: () => this.phaseMs(),
+    renderTarget: () => ({
+      cap: this.maxDpr,
+      hardwareScalingLevel: this.engine.getHardwareScalingLevel(),
+      renderWidth: this.engine.getRenderWidth(),
+      renderHeight: this.engine.getRenderHeight(),
+    }),
+    overlays: () => ({
+      clinesHighlight: this.constellations.highlightAbbr,
+      cboundsSegments: this.constellations.boundsSegmentCount,
+    }),
+  };
 
   starCount(): number {
     return this.stars.count;
@@ -567,7 +689,13 @@ class SkyEngine implements SkyEngineApi {
     return this.skyB;
   }
 
+  /** Computed when asked (plan D144): the deep-sky count reads three columns per object. */
   layerStats(): LayerStats {
+    this.stats.dso =
+      this.layers.dso && this.hasFrame
+        ? this.dso.countVisible(this.dsoMagLimitEffective(), this.dsoSizeLimitValue)
+        : 0;
+    this.stats.clinesSegments = this.constellations.segmentCount;
     return this.stats;
   }
 
@@ -893,16 +1021,17 @@ class SkyEngine implements SkyEngineApi {
   }
 
   /**
-   * Match the canvas to its CSS size at up to 2 device pixels per CSS pixel (plan D85). Skipped
-   * during a WebXR session (the XR framebuffer renders; Babylon sizes the canvas itself) and run
-   * once when the session ends (`afterXrSession`).
+   * Match the canvas to its CSS size at up to `maxDpr` device pixels per CSS pixel (plan D85: 2;
+   * D142: the `#dpr=` override of dev and e2e builds). Skipped during a WebXR session (the XR
+   * framebuffer renders; Babylon sizes the canvas itself) and run once when the session ends
+   * (`afterXrSession`).
    */
   resize(): void {
     if (this.disposed || this.arMode === 'xr') {
       return;
     }
     const ratio = window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
-    this.engine.setHardwareScalingLevel(1 / Math.min(ratio, MAX_DEVICE_PIXEL_RATIO));
+    this.engine.setHardwareScalingLevel(1 / Math.min(ratio, this.maxDpr));
     this.engine.resize();
     // The visible part of the camera frame changed with the box (plan D123).
     this.arFovDirty = true;
@@ -916,6 +1045,7 @@ class SkyEngine implements SkyEngineApi {
     this.disposed = true;
     this.signal.removeEventListener('abort', this.dispose);
     this.engine.stopRenderLoop();
+    this.rejectFrameWaiters(abortError());
     for (const stop of this.unsubscribe) {
       stop();
     }
@@ -951,16 +1081,22 @@ class SkyEngine implements SkyEngineApi {
       return;
     }
     const start = performance.now();
+    let ticked: number;
     try {
       this.tick(Date.now());
+      ticked = performance.now();
       this.scene.render();
     } catch (error) {
       this.failFrame(error);
       return;
     }
     this.frameFailures = 0;
-    this.recordFrame(start, performance.now() - start);
+    this.recordFrame(start, ticked - start, performance.now() - ticked, this.overlayCostMs);
     this.armReady();
+    this.frameSeq += 1;
+    if (this.frameWaiters.length > 0) {
+      this.settleFrameWaiters();
+    }
   };
 
   private failFrame(error: unknown): void {
@@ -971,11 +1107,14 @@ class SkyEngine implements SkyEngineApi {
     if (this.frameFailures >= MAX_FRAME_FAILURES) {
       this.engine.stopRenderLoop(this.renderFrame);
       this.store.getState().actions.setEngine({ status: 'failed' });
+      this.rejectFrameWaiters(new Error('the sky engine gave up rendering'));
     }
   }
 
   /** One simulation step at wall time `nowMs` (plan D75, D80). */
   private tick(nowMs: number): void {
+    this.tickWallMs = nowMs;
+    this.overlayCostMs = NO_OVERLAY;
     const state = this.store.getState();
     let tt = ttAt(state.clock, nowMs, state.clock.ttMinusUtc);
     if (this.coverage !== null) {
@@ -1025,6 +1164,24 @@ class SkyEngine implements SkyEngineApi {
       // tick, so the overlays appear with their first real rotation.
       this.hasFrame = true;
       this.applyLayers(state.layers);
+    }
+    // Follow mode (VIEW-4) at frame rate (plan D139, R95): the direction was refreshed by
+    // `frames.evaluate` above, so the camera re-centres before this tick reads `view` (the store's
+    // view listener applies it synchronously); at 3600x a 100 ms cadence drew the target up to
+    // 1.5 degrees off centre on the frames between two overlay ticks. Suspended while the sensors
+    // or the XR rig own the view (plan D124; `requestAr` ends follow).
+    const selection = this.selection;
+    if (
+      this.arMode === 'off' &&
+      this.follow &&
+      selection !== null &&
+      this.resolver.directionOf(selection, this.scratchEnu)
+    ) {
+      const e = this.scratchEnu;
+      enuToAltAz(this.scratchAltAz, e[0], e[1], e[2]);
+      this.followPatch.az = this.scratchAltAz.az;
+      this.followPatch.alt = this.scratchAltAz.alt;
+      state.actions.setView(this.followPatch);
     }
     const current = this.current;
     const { view, options } = this;
@@ -1103,14 +1260,17 @@ class SkyEngine implements SkyEngineApi {
 
     if (nowMs - this.lastOverlayMs >= OVERLAY_INTERVAL_MS) {
       this.lastOverlayMs = nowMs;
+      const started = performance.now();
       this.overlayTick(nowMs);
+      this.overlayCostMs = performance.now() - started;
+      this.overlayTicks += 1;
     }
     if (publishNow) {
       this.publishReadout(state.actions);
     }
   }
 
-  /** The <= 10 Hz work: rotating lines, constellations, labels, marker, follow, centring. */
+  /** The <= 10 Hz work: rotating lines, constellations, labels, marker, centring. */
   private overlayTick(nowMs: number): void {
     const current = this.current;
     const { view } = this;
@@ -1147,27 +1307,13 @@ class SkyEngine implements SkyEngineApi {
     } else {
       this.labels.update(t);
     }
-    this.stats.dso = this.layers.dso
-      ? this.dso.countVisible(this.dsoMagLimitEffective(), this.dsoSizeLimitValue)
-      : 0;
-    this.stats.clinesSegments = this.constellations.segmentCount;
 
-    // Follow and centring write the view: both are suspended while the sensors or the XR rig own
-    // it (plan D124; `requestAr` ends follow, a centre request waits or times out).
+    // Centring writes the view (follow does so in `tick`, plan D139); it is suspended while the
+    // sensors or the XR rig own the view (plan D124: a centre request waits or times out).
     if (this.arMode === 'off') {
-      // Follow mode (VIEW-4): the camera re-centres on the selection.
-      const selection = this.selection;
-      if (
-        this.follow &&
-        selection !== null &&
-        this.resolver.directionOf(selection, this.scratchEnu)
-      ) {
-        const e = this.scratchEnu;
-        enuToAltAz(this.scratchAltAz, e[0], e[1], e[2]);
-        actions.setView({ az: this.scratchAltAz.az, alt: this.scratchAltAz.alt });
-      }
       // A centre request (search, INFO-2) is served as soon as its object resolves, dropped after
       // ten seconds or once the selection moved elsewhere.
+      const selection = this.selection;
       const centre = this.centre;
       if (centre !== null) {
         if (
@@ -1442,14 +1588,23 @@ class SkyEngine implements SkyEngineApi {
     }
     this.readyArmed = true;
     void this.scene.whenReadyAsync().then(() => {
+      // The boot measurements read this mark (plan D141; `state/boot.ts::markPhase` is its twin,
+      // kept apart so the engine imports nothing from the boot sequence). jsdom 30 has no `mark`.
+      const perf: { mark?: unknown } = performance;
+      if (typeof perf.mark === 'function') {
+        performance.mark('sky:engine-ready');
+      }
       this.readyResolve?.();
     });
   }
 
-  private recordFrame(stamp: number, costMs: number): void {
-    this.frameStamps[this.frameHead] = stamp;
-    this.frameCosts[this.frameHead] = costMs;
-    this.frameHead = (this.frameHead + 1) % FPS_RING;
+  private recordFrame(stamp: number, tickMs: number, renderMs: number, overlayMs: number): void {
+    const head = this.frameHead;
+    this.frameStamps[head] = stamp;
+    this.tickCosts[head] = tickMs;
+    this.renderCosts[head] = renderMs;
+    this.overlayCosts[head] = overlayMs;
+    this.frameHead = (head + 1) % FPS_RING;
     if (this.frameCount < FPS_RING) {
       this.frameCount += 1;
     }

@@ -3,6 +3,10 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+  # Weekly (Monday 06:17 UTC): the `audit` job alone, so new advisories surface between commits.
+  schedule:
+    - cron: '17 6 * * 1'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -18,6 +22,7 @@ env:
 
 jobs:
   backend:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -84,6 +89,7 @@ jobs:
       - run: git ls-files --error-unmatch -- ../THIRD_PARTY_NOTICES.md ../frontend/src/data/credits.json && git diff --exit-code -- ../THIRD_PARTY_NOTICES.md ../frontend/src/data/credits.json
 
   frontend:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -104,8 +110,8 @@ jobs:
       # Contract drift gate, frontend half: generated types must match the committed OpenAPI document.
       - run: npm run gen:types
       - run: git ls-files --error-unmatch -- src/api/schema.d.ts && git diff --exit-code -- src/api/schema.d.ts
-      - run: node --check ../scripts/check_i18n.mjs
-      - run: node --check ../scripts/check_chunks.mjs
+      # Every scripts/*.mjs is syntax-checked and formatted (make check-i18n).
+      - run: for f in ../scripts/*.mjs; do node --check "$f"; done
       - run: npm exec -- prettier --no-config --print-width 100 --single-quote --check ../scripts
       - run: node ../scripts/check_i18n.mjs
       - run: npm run build
@@ -122,6 +128,7 @@ jobs:
   # `chromium-webgpu` project is configured but unmeasured on a GPU-less runner (docs/testing.md,
   # plan.md maintainer question 16).
   e2e:
+    if: github.event_name != 'schedule'
     needs: [backend, frontend]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -175,6 +182,56 @@ jobs:
             frontend/playwright-report
           if-no-files-found: ignore
           retention-days: 7
+      # Lighthouse accessibility audit (brief l.290, plan D155; `make lighthouse`): Playwright stops
+      # its web servers with the run, so the API (same environment as playwright.config.ts) and the
+      # e2e preview are restarted in the background, `/health` polled until it answers 200 (`ready`,
+      # or `degraded` without MPCORB; 503 while `starting`) and the six URLs scored (>= 0.9 each).
+      # The script pins lighthouse through `npm exec --package`, never a root `npx`.
+      - run: SKYAPI_AUTO_FETCH=false SKYAPI_EPHEMERIS=de440s.bsp uv run --directory backend fastapi run --host 127.0.0.1 --port 8000 &
+      - run: npm --prefix frontend run preview &
+      - run: |
+          for i in $(seq 1 120); do
+            curl -fsS -o /dev/null http://127.0.0.1:8000/api/v1/health && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8000/api/v1/health
+          for i in $(seq 1 30); do
+            curl -fsS -o /dev/null http://127.0.0.1:4173/ && break
+            sleep 1
+          done
+          curl -fsS -o /dev/null http://127.0.0.1:4173/
+      - run: node scripts/lighthouse.mjs
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: lighthouse
+          path: reports/lighthouse
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Dependency audits (brief l.276; plan D151; backlog B-86): `npm audit` and `pip-audit` need the
+  # registries and their answers change over time without a commit, so they stay outside the
+  # hermetic `make check` and run here, on every push and pull request and on the weekly schedule
+  # (the three other jobs skip scheduled runs). Same four commands as `make audit`; no `npm ci`
+  # (`--package-lock-only` reads the lockfile) and no `uv sync` (`uv export --frozen` reads uv.lock).
+  # scripts/check_audit.mjs compares both reports with scripts/audit-allowlist.json.
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1 (see the backend job)
+        with:
+          working-directory: backend
+          enable-cache: true
+          cache-dependency-glob: "**/uv.lock"
+      - run: npm --prefix frontend audit --json --package-lock-only > "$RUNNER_TEMP/npm-audit.json" || true
+      - run: uv export --quiet --directory backend --frozen --format requirements.txt --no-emit-project --no-hashes --all-groups -o "$RUNNER_TEMP/requirements.txt"
+      - run: uv tool run pip-audit==2.10.1 -r "$RUNNER_TEMP/requirements.txt" --no-deps --strict --disable-pip --progress-spinner off -f json -o "$RUNNER_TEMP/pip-audit.json" || true
+      - run: node scripts/check_audit.mjs --npm "$RUNNER_TEMP/npm-audit.json" --python "$RUNNER_TEMP/pip-audit.json"
 
   # docker (M7): docker/setup-buildx-action@v4 + docker/build-push-action@v7 for both images
   #           (push: false, platforms: linux/amd64).

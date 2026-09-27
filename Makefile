@@ -23,17 +23,20 @@ PYRUN := $(UV) run --directory backend $(UV_ENV)
 # pyright (PyPI) is a Node wrapper and needs node on PATH.
 PYNODE := $(NODE_EXEC) $(UV) run --directory backend
 GENERATED := docs/openapi.json frontend/src/api/schema.d.ts THIRD_PARTY_NOTICES.md frontend/src/data/credits.json
-# scripts/ lies outside the frontend ESLint base path (ESLint 10 refuses such files), so it is
-# gated by `node --check` and prettier (the whole directory, so check_chunks.mjs included).
+# scripts/ lies outside the frontend ESLint base path (ESLint 10 refuses such files), so every
+# scripts/*.mjs is gated by `node --check` and prettier (the whole directory).
 # Config-free flags: the frontend .prettierrc names the Tailwind plugin, which prettier resolves
 # from the working directory (the repo root here).
 SCRIPTS_PRETTIER := --no-config --print-width 100 --single-quote
+# The pinned pip-audit of `make audit` (plan D151), run through `uv tool run` (what `uvx` aliases)
+# rather than added to the dev group: its own tree would enlarge uv.lock and the audited surface.
+PIP_AUDIT := pip-audit==2.10.1
 
 .PHONY: help setup data dev dev-api dev-web check check-backend check-frontend check-i18n \
-        check-contract types notices test e2e build build-e2e up down format
+        check-contract types notices test e2e build build-e2e audit lighthouse up down format
 
 help: ## Show this help
-	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
+	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
 	  awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
 setup: ## Install toolchains (Python 3.14, Node 24), dependencies and Playwright browsers
@@ -80,8 +83,7 @@ check-frontend:
 	$(NPM) run test
 
 check-i18n:
-	$(NODE) --check scripts/check_i18n.mjs
-	$(NODE) --check scripts/check_chunks.mjs
+	for f in $(wildcard scripts/*.mjs); do $(NODE) --check $$f; done
 	$(NPM) exec -- prettier $(SCRIPTS_PRETTIER) --check $(CURDIR)/scripts
 	$(NODE) scripts/check_i18n.mjs
 
@@ -110,6 +112,23 @@ build: ## Production frontend build (never contains the window.__sky debug hook;
 
 build-e2e: ## Test build exposing window.__sky for Playwright (vite build --mode e2e)
 	$(NPM) run build:e2e
+
+# Network and time-varying (brief l.276; plan D151; backlog B-86): outside `make check`, mirrored by
+# the CI `audit` job. Both audits write JSON into one temporary directory, removed when the recipe
+# ends (the `trap`, on failure too); their exit codes are theirs (npm exits 1 on any finding,
+# pip-audit on any vulnerability) and scripts/check_audit.mjs reads both reports against
+# scripts/audit-allowlist.json.
+audit: ## Dependency audits (network): npm audit + pip-audit against scripts/audit-allowlist.json
+	tmp=$$(mktemp -d /tmp/intersidera-audit.XXXXXX) && trap 'rm -rf "$$tmp"' EXIT && \
+	  ($(NPM) audit --json --package-lock-only > $$tmp/npm-audit.json || true) && \
+	  $(UV) export --quiet --directory backend --frozen --format requirements.txt --no-emit-project --no-hashes --all-groups -o $$tmp/requirements.txt && \
+	  ($(UV) tool run $(PIP_AUDIT) -r $$tmp/requirements.txt --no-deps --strict --disable-pip --progress-spinner off -f json -o $$tmp/pip-audit.json || true) && \
+	  $(NODE) scripts/check_audit.mjs --npm $$tmp/npm-audit.json --python $$tmp/pip-audit.json
+
+# Lighthouse (plan D155) pinned through `npm exec --package=lighthouse@<version>` inside the script,
+# never a root `npx`; reports land in reports/lighthouse/ (gitignored).
+lighthouse: ## Accessibility audit with Lighthouse (needs the API on 8000 and the e2e preview on 4173: make dev-api, make build-e2e, npm --prefix frontend run preview)
+	$(NODE) scripts/lighthouse.mjs
 
 up: ## docker compose up (arrives in M7)
 	@echo "make up: compose.yaml arrives in M7"; exit 2

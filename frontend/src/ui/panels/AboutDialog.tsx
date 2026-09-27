@@ -14,7 +14,9 @@ import Dialog from '../components/Dialog';
 // `.attribution`, the geocoder attribution) and the credits of every registered data source and
 // asset from `credits.json` (generated from the same registry as `THIRD_PARTY_NOTICES.md`).
 // Headings are translated; the attribution strings, licenses and URLs are data and stay as
-// they are. External links open in a new tab, announced as such (UX-4).
+// they are. External links open in a new tab, announced as such (UX-4), and stand as
+// `inline-block` boxes of at least 24 px (WCAG 2.2 SC 2.5.8 target size, plan D157 C4): alone in
+// a `dd` they are not "in a sentence", so the inline exception does not apply to them.
 
 export interface AboutDialogProps {
   store: SkyStore;
@@ -32,7 +34,7 @@ function ExternalLink({ href, children }: ExternalLinkProps) {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="break-all text-accent underline-offset-2 hover:underline"
+      className="inline-block min-h-6 py-1 break-all text-accent underline-offset-2 hover:underline"
     >
       {children}
       <span className="sr-only"> ({t('about.newTab')})</span>

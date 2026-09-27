@@ -38,6 +38,7 @@ from skyapi.astro.observers import (
 from skyapi.astro.state import AstroState
 
 __all__ = [
+    "COVERAGE_GRID_DECIMALS",
     "COVERAGE_MARGIN_DAYS",
     "MOON_BPC_FILENAME",
     "MOON_TF_FILENAME",
@@ -47,7 +48,9 @@ __all__ = [
     "MissingDataError",
     "bpc_coverage",
     "build_moon_frame",
+    "ceil_to_grid",
     "ephemeris_coverage",
+    "floor_to_grid",
     "kernel_paths",
     "load_astro_state",
 ]
@@ -60,6 +63,15 @@ MOON_BPC_FILENAME = "moon_pa_de440_200625.bpc"
 # return NaN silently outside their segments (jpllib.py l.267-283), so every coverage is shrunk
 # by one day at both ends and checked explicitly before any ephemeris call.
 COVERAGE_MARGIN_DAYS = 1.0
+
+# The API canonicalizes every `tt` to this many decimals (`api/canonical.py::TT_DECIMALS`, 1e-8
+# day = 0.86 ms). An advertised bound that is not itself on that grid is rounded across it about
+# half of the time, so a window flush with the bound answered 422 (backlog B-52, plan D161): both
+# coverage functions therefore move their bounds inward onto the grid, the start up and the end
+# down, by less than one grid step (`ceil_to_grid`, `floor_to_grid`). `ensure_coverage` is
+# inclusive, so `tt=<bound>` is served.
+COVERAGE_GRID_DECIMALS = 8
+_COVERAGE_GRID_STEP = 10.0**-COVERAGE_GRID_DECIMALS
 
 # Two adjacent segments may differ by float rounding of the same boundary second.
 _ADJACENCY_TOLERANCE_DAYS = 1e-6
@@ -96,6 +108,37 @@ def _tdb_to_tt(ts: Timescale, tdb_jd: float) -> float:
     return float(ts.tdb_jd(tdb_jd).tt)
 
 
+def ceil_to_grid(value: float) -> float:
+    """The smallest value on the API's `tt` grid that is >= `value` (a coverage start).
+
+    The grid is what `round(value, COVERAGE_GRID_DECIMALS)` returns, so a value already on it is
+    returned unchanged, and the nearest grid point is the answer unless it lies outward, in which
+    case the next one inward is: exact in floating point, never outward, inward by less than one
+    step. (`math.ceil(value * 1e8) / 1e8` is not: the float product pushes about a third of the
+    grid points one step further.)
+    """
+    nearest = round(value, COVERAGE_GRID_DECIMALS)
+    if nearest >= value:
+        return nearest
+    return round(nearest + _COVERAGE_GRID_STEP, COVERAGE_GRID_DECIMALS)
+
+
+def floor_to_grid(value: float) -> float:
+    """The largest value on the API's `tt` grid that is <= `value` (a coverage end)."""
+    nearest = round(value, COVERAGE_GRID_DECIMALS)
+    if nearest <= value:
+        return nearest
+    return round(nearest - _COVERAGE_GRID_STEP, COVERAGE_GRID_DECIMALS)
+
+
+def _coverage_on_grid(ts: Timescale, start_tdb: float, end_tdb: float) -> tuple[float, float]:
+    """TDB bounds to TT, shrunk by `COVERAGE_MARGIN_DAYS` and moved inward onto the grid."""
+    return (
+        ceil_to_grid(_tdb_to_tt(ts, start_tdb) + COVERAGE_MARGIN_DAYS),
+        floor_to_grid(_tdb_to_tt(ts, end_tdb) - COVERAGE_MARGIN_DAYS),
+    )
+
+
 def _merge_contiguous(name: str, spans: list[tuple[float, float]]) -> tuple[float, float]:
     spans.sort()
     start, end = spans[0]
@@ -113,7 +156,8 @@ def ephemeris_coverage(
 
     Per `(center, target)` pair the contiguous segments are merged (DE441 splits each body in
     two); each served body's chain to the Solar System Barycenter is intersected, then all
-    bodies together; TDB bounds become TT and shrink by `COVERAGE_MARGIN_DAYS` at both ends.
+    bodies together; TDB bounds become TT, shrink by `COVERAGE_MARGIN_DAYS` at both ends and
+    land on the 1e-8 day grid of the API (`_coverage_on_grid`, B-52).
     """
     spans: defaultdict[tuple[int, int], list[tuple[float, float]]] = defaultdict(list)
     for segment in eph.segments:
@@ -136,16 +180,16 @@ def ephemeris_coverage(
             start, end = max(start, segment_start), min(end, segment_end)
     if not start < end:
         raise MissingDataError(f"{eph.filename} has no common coverage for the served bodies")
-    return _tdb_to_tt(ts, start) + COVERAGE_MARGIN_DAYS, _tdb_to_tt(ts, end) - COVERAGE_MARGIN_DAYS
+    return _coverage_on_grid(ts, start, end)
 
 
 def bpc_coverage(segments: Sequence[PckSegment], ts: Timescale) -> tuple[float, float]:
-    """TT range of contiguous binary-PCK segments for one body, minus the same margin."""
+    """TT range of contiguous binary-PCK segments for one body, minus the margin, on the grid."""
     if not segments:
         raise MissingDataError("no binary PCK segment to take coverage from")
     spans = [(float(s.initial_jd), float(s.final_jd)) for s in segments]
     start, end = _merge_contiguous("binary PCK", spans)
-    return _tdb_to_tt(ts, start) + COVERAGE_MARGIN_DAYS, _tdb_to_tt(ts, end) - COVERAGE_MARGIN_DAYS
+    return _coverage_on_grid(ts, start, end)
 
 
 def _int_variable(pc: PlanetaryConstants, name: str) -> int:

@@ -57,8 +57,34 @@ contract). `pck00011.tpc` encodes Mars' nutation-precession angles as 26 quadrat
   backlog row (B-36).
 - Recorded as correction B-35 in `docs/backlog.md` and in `docs/plan.md` section 5.
 
+## Amendment (M6, 2026-09-24): the Moon frame from every binary-PCK segment (Skyfield #952)
+
+Recorded here because it is the one sanctioned use of Skyfield private names in the code base
+(plan D35, M1; `CLAUDE.md` forbids touching a Skyfield private name outside `astro/loader.py`). `moon_pa_de440_200625.bpc` (12.3 MB, coverage 1549-12-31 to 2650-01-25 TDB) holds
+two segments for body 31008 split at 2426; Skyfield 1.55's `PlanetaryConstants.read_binary` keeps
+every segment in `_segment_list` but `_segment_map[body]` remembers only the last one, so the
+Skyfield-built `MOON_ME_DE440_ME421` frame answered 2426-2650 alone (issues #952 and #960, open on
+2026-09-03). `astro/loader.py::build_moon_frame` (l.209-250) is the
+only function that reads `pc._segment_list` and calls `pc.build_frame(integer, _segment=segment)`
+(`# pyright: ignore[reportPrivateUsage]` on the one line); it builds one Skyfield `Frame` per
+segment and wraps them in `astro/frames.py::SegmentedFrame` (l.290), which routes every time
+sample to the segment covering it and raises `CoverageError` outside every segment instead of
+jplephem's bare `ValueError`. The same function narrows the one `DeprecationWarning` of
+`planetarylib.py` l.113 (`matrix.shape = 3, 3` under NumPy 2.5) to that call (backlog B-40).
+
+M6 change (backlog B-52, ADR-0011): the advertised Moon coverage goes through `bpc_coverage` ->
+`_coverage_on_grid`, so the TT bounds are shrunk by `COVERAGE_MARGIN_DAYS` and moved inward onto
+the API's 1e-8 day grid with `ceil_to_grid` / `floor_to_grid`; the served bounds are
+`[2287185.5, 2688975.49999999]`, bit-identical to the pre-M6 values (area D final report,
+section 1). Tests: `tests/unit/test_moon_frame.py` (a Moon observer on 2019-12-20, before the
+segment boundary; both segments covered; agreement with Skyfield's own
+frame on the last segment; a window straddling the boundary; the private names the workaround
+relies on still exist) and `tests/unit/test_loader.py::test_bpc_coverage_merges_contiguous_segments`.
+
 ## Revisit trigger
 
 - Skyfield gains text-PCK rotation frames: replace `IauRotationFrame` by Skyfield's and keep the
   tests.
 - NAIF publishes binary PCKs for the planets.
+- Skyfield closes #952/#960 (a public multi-segment frame or a segment-aware `build_frame`):
+  drop the two private names and `SegmentedFrame`, keep `test_moon_frame.py` as the regression.

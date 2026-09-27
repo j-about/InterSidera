@@ -171,26 +171,33 @@ export function daysInMonth(year: number, month: number): number {
   return MONTH_DAYS[month - 1] ?? 0;
 }
 
-export type FieldsError = 'invalidDate';
+/** A calendar field the editor can mark invalid (`aria-invalid`, WCAG 3.3.1; plan D157 C6). */
+export type InvalidField = keyof CalendarFields;
 
-/** `null` when the fields make a calendar date and time, else the editor's error code. */
-export function validateFields(f: CalendarFields): FieldsError | null {
-  const integers = [f.year, f.month, f.day, f.hour, f.minute].every((v) => Number.isInteger(v));
-  if (!integers || !Number.isFinite(f.second)) {
-    return 'invalidDate';
+/**
+ * `null` when the fields make a calendar date and time, else the first offending field in
+ * calendar order: a non-integer year, a month outside 1-12, a day outside the month (the leap
+ * rule applied to the given year), an hour outside 0-23, a minute outside 0-59, a second outside
+ * `[0, 60)` or not a number.
+ */
+export function validateFields(f: CalendarFields): InvalidField | null {
+  if (!Number.isInteger(f.year)) {
+    return 'year';
   }
-  if (f.month < 1 || f.month > 12 || f.day < 1 || f.day > daysInMonth(f.year, f.month)) {
-    return 'invalidDate';
+  if (!Number.isInteger(f.month) || f.month < 1 || f.month > 12) {
+    return 'month';
   }
-  if (
-    f.hour < 0 ||
-    f.hour > 23 ||
-    f.minute < 0 ||
-    f.minute > 59 ||
-    f.second < 0 ||
-    f.second >= 60
-  ) {
-    return 'invalidDate';
+  if (!Number.isInteger(f.day) || f.day < 1 || f.day > daysInMonth(f.year, f.month)) {
+    return 'day';
+  }
+  if (!Number.isInteger(f.hour) || f.hour < 0 || f.hour > 23) {
+    return 'hour';
+  }
+  if (!Number.isInteger(f.minute) || f.minute < 0 || f.minute > 59) {
+    return 'minute';
+  }
+  if (!Number.isFinite(f.second) || f.second < 0 || f.second >= 60) {
+    return 'second';
   }
   return null;
 }

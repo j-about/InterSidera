@@ -47,3 +47,4 @@ ESLint stays at `^10.9.1`. `--legacy-peer-deps` is never used, anywhere.
 - Remove the `eslint-plugin-jsx-a11y` entry when a release declares an ESLint 10 peer (issue #1075 closed).
 - Remove the `openapi-typescript` entry when a release declares a TypeScript 6 (or 7) peer, or when ADR-0001 is superseded and the TypeScript pin changes.
 - Re-check both at every milestone's version review (brief l.32) and at M6 hardening.
+- Note (2026-09-23, M6, plan D164): both triggers checked at the M6 dependency refresh, unfired. eslint-plugin-jsx-a11y is still 6.10.2 with the peer `eslint: ^3 || ^4 || ^5 || ^6 || ^7 || ^8 || ^9` (no release declaring an ESLint 10 peer; issue #1075 is the tracker), openapi-typescript 7.13.0 still peers `typescript: ^5.x`, so both `overrides` entries stay (`frontend/package-lock.json`); ESLint moved within its range to 10.11.0 and typescript-eslint to 8.70.1 with no peer conflict. Next check after M7, together with ADR-0001. Status unchanged.

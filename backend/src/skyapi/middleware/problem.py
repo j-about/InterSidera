@@ -15,6 +15,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
 
+from skyapi.middleware.headers import security_headers
 from skyapi.models.problem import Problem, ProblemError
 
 logger = logging.getLogger(__name__)
@@ -194,11 +195,12 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> Respo
     # afterwards (the TestClient still sees the exception, uvicorn logs the traceback). The
     # request-context middleware has already logged the exception with the request id and left
     # the id in the scope state; it is echoed here because that middleware never sees this
-    # response. CORS headers are absent on this path (documented in docs/api.md).
+    # response, and the security headers of `middleware/headers.py` are added here for the same
+    # reason (plan D149). CORS headers are absent on this path (documented in docs/api.md).
     scope_state: Mapping[str, object] = request.scope.get("state") or {}
     request_id = scope_state.get("request_id")
     detail = "unexpected error"
-    headers: dict[str, str] = {}
+    headers: dict[str, str] = security_headers()
     if isinstance(request_id, str):
         detail = f"unexpected error; request id {request_id} in the server log"
         headers["X-Request-Id"] = request_id

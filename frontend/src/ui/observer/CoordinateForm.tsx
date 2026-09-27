@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
 
+import { formatNumber } from '../../i18n/format';
 import {
   formatDegrees,
   formatElevation,
@@ -20,8 +21,10 @@ import TextField from '../components/TextField';
 // through the field's `role="alert"`, and the valid triple written to the store after a 250 ms
 // debounce (the frame controller compares the OBS-7-rounded query, so keystrokes beyond the
 // second decimal cost no request). A preview line shows the rounded values that leave the
-// browser. The drafts follow the store when something else moves the observer (a preset, the
-// geocoder, geolocation, Back) and keep the typed text otherwise.
+// browser, formatted by `Intl` in the current language (plan D159: "48,86°" in French), while
+// the drafts themselves stay dot-decimal: they are editable input in the parser's syntax (which
+// also accepts a comma). The drafts follow the store when something else moves the observer (a
+// preset, the geocoder, geolocation, Back) and keep the typed text otherwise.
 
 /** Keystrokes settle for this long before the store is written. */
 export const COORDINATE_DEBOUNCE_MS = 250;
@@ -156,9 +159,9 @@ export default function CoordinateForm({ store }: CoordinateFormProps) {
       />
       <p className="text-xs text-muted" data-testid="coords-preview">
         {t('coords.preview', {
-          lat: String(preview.lat),
-          lon: String(preview.lon),
-          elev: String(preview.elev),
+          lat: formatNumber(preview.lat, 2),
+          lon: formatNumber(preview.lon, 2),
+          elev: formatNumber(preview.elev, 0),
         })}
       </p>
     </div>

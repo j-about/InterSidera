@@ -1,4 +1,4 @@
-import { MoveHorizontal, RotateCcw, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MoveHorizontal, RotateCcw, X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
@@ -26,7 +26,11 @@ import TimeOffsetBadge from './TimeOffsetBadge';
 // the start, no background of its own, the panel surface on the inner row. Contents: the exit
 // control (focused on entry through an effect, never `autoFocus`; the AR button regains the focus
 // when the top bar returns, see `App`), the time-offset badge, the compass indicator, the AR-3
-// azimuth offset with its reset, the camera-field slider (the diagonal of plan D123, through
+// azimuth offset between two 1° nudges with its reset (the nudges are the non-drag twin of the
+// calibration drag, WCAG 2.2 SC 2.5.7, plan D157 C5: "turn the sky right" moves the drawn sky to
+// the right on screen exactly as a rightward drag does, which by `frames.ts::dragDeltaDeg` turns
+// the view left, so the offset decreases by one degree; "left" adds one), the camera-field
+// slider (the diagonal of plan D123, through
 // `formatDegrees`), the existing atmosphere switch (plan Q58, the UX-2 control relocated), the
 // WebXR switch when the probe said `supported` (an event-time engine call, plan D93; the engine
 // writes the outcome to the store) and, in a session only, the transport (AR-1 time travel; the
@@ -116,9 +120,25 @@ export default function ArOverlay({ store }: ArOverlayProps) {
             </div>
             <TimeOffsetBadge store={store} />
             <CompassIndicator store={store} />
+            <IconButton
+              icon={ChevronLeft}
+              label={t('ar.offset.left')}
+              size="sm"
+              onClick={() => {
+                actions.nudgeArOffset(1);
+              }}
+            />
             <Badge icon={MoveHorizontal}>
               {t('ar.offset.value', { deg: formatDegrees(azOffsetDeg, 0) })}
             </Badge>
+            <IconButton
+              icon={ChevronRight}
+              label={t('ar.offset.right')}
+              size="sm"
+              onClick={() => {
+                actions.nudgeArOffset(-1);
+              }}
+            />
             <IconButton
               icon={RotateCcw}
               label={t('ar.offset.reset')}

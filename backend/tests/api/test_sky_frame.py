@@ -147,6 +147,32 @@ def test_window_outside_the_ephemeris_is_422(api_client: TestClient) -> None:
     assert _problem(edge, 422, "outside-coverage")["range_tt"] == [start, end]
 
 
+def test_the_advertised_bound_is_served_and_one_grid_step_beyond_is_422(
+    api_client: TestClient,
+) -> None:
+    """B-52 (plan D161): `/meta` advertises bounds on the 1e-8 day grid the API rounds `tt` to,
+    so a snapshot at the bound itself answers 200 and the next grid step outward answers 422."""
+    coverage = api_client.get("/api/v1/meta").json()["coverage"]["ephemeris_tt"]
+    start, end = coverage
+    assert round(start, 8) == start
+    assert round(end, 8) == end
+    for bound, step in ((end, 1e-8), (start, -1e-8)):
+        served = _frame(api_client, tt=bound, n=1, bodies="sun")
+        assert served.status_code == 200, served.text
+        assert served.json()["time"]["tt0"] == bound
+        beyond = round(bound + step, 8)
+        assert beyond != bound
+        refused = _problem(
+            _frame(api_client, tt=beyond, n=1, bodies="sun"), 422, "outside-coverage"
+        )
+        assert refused["range_tt"] == coverage
+    # The `tt` canonicalization (1e-8 day) is what makes the bound requestable: a request a
+    # hair inside the bound rounds onto it, never across it.
+    hair = _frame(api_client, tt=end - 4e-9, n=1, bodies="sun")
+    assert hair.status_code == 200, hair.text
+    assert hair.json()["time"]["tt0"] == end
+
+
 def test_time_warnings_at_2100(api_client: TestClient) -> None:
     body = _frame(api_client, tt=2488069.5, n=1, bodies="sun").json()
     warnings = {warning["code"]: warning for warning in body["time"]["warnings"]}

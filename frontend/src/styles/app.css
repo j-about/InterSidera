@@ -68,8 +68,10 @@
   }
 
   /* `prefers-color-scheme: light` lightens the panel family only (brief l.289, backlog B-68):
-     the `sky-*` tokens stay dark by nature, and night mode wins. Contrast on the light panel:
-     foreground 14:1, muted 5.7:1, warn 4.5:1, danger 5.0:1, field text 17:1, on-accent 6.3:1. */
+     the `sky-*` tokens stay dark by nature, and night mode wins. Contrast on the light panel
+     (styles/tokens.test.ts is the gate, plan D157 C8): foreground 14.1:1, muted 5.8:1, warn 4.6:1
+     (#8a5a00 measured 4.49:1 at M6, below the AA floor by a hair), danger 5.0:1, field text
+     17.4:1, on-accent 6.3:1, focus ring 4.8:1. */
   @media (prefers-color-scheme: light) {
     :root:not([data-mode='night']) {
       --color-panel-bg: rgb(240 243 250 / 0.92);
@@ -78,7 +80,7 @@
       --color-muted: #4b5468;
       --color-accent: #1a5fb4;
       --color-on-accent: #ffffff;
-      --color-warn: #8a5a00;
+      --color-warn: #885900;
       --color-danger: #b3261e;
       --color-focus: #1a5fb4;
     }

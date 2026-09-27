@@ -32,8 +32,15 @@ describe('Sheet', () => {
     expect(handle).toHaveAttribute('aria-controls', 'body');
     const body = document.getElementById('body');
     expect(body).toHaveClass('hidden', 'md:block');
-    expect(body).toHaveClass('max-h-[70dvh]', 'overscroll-contain', 'touch-pan-y');
-    expect(screen.getByText('strip')).toBeInTheDocument();
+    // The parent caps the whole sheet; the body is the part that shrinks and scrolls (plan D157 C7).
+    expect(body).toHaveClass('min-h-0', 'overflow-y-auto', 'overscroll-contain', 'touch-pan-y');
+    expect(body).not.toHaveClass('max-h-[70dvh]');
+    expect(handle).toHaveClass('shrink-0');
+    const strip = screen.getByText('strip').parentElement;
+    // The collapsed strip wraps (WCAG 1.4.10 at 320 px, plan D157 C7): never a sideways scroller,
+    // and never squeezed by the cap.
+    expect(strip).toHaveClass('flex-wrap', 'min-h-strip', 'shrink-0', 'md:hidden');
+    expect(strip).not.toHaveClass('overflow-x-auto', 'h-strip');
 
     fireEvent.click(handle);
     expect(onToggle).toHaveBeenCalledWith(true);

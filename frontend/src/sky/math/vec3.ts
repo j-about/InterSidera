@@ -64,8 +64,16 @@ export function cross3(out: Vec3, a: ReadonlyVec3, b: ReadonlyVec3): Vec3 {
   return out;
 }
 
+/**
+ * `|a|` as a plain square root (plan D144): `Math.hypot` guards against overflow and underflow
+ * of the squares, which unit and au-scale vectors never approach, and its varargs handling
+ * allocated 0.9 MB over six seconds in the M6 heap table (`normalize3` runs per body per frame
+ * and per constellation endpoint per overlay tick). `angleBetween3` follows the same rule for
+ * `|a x b|` (the heap table named `length3` alone; the change there is covered at the same
+ * tolerances and recorded with it).
+ */
 export function length3(a: ReadonlyVec3): number {
-  return Math.hypot(a[0], a[1], a[2]);
+  return Math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
 }
 
 /** `out = a / |a|`; throws `RangeError` for a zero (or non-finite) vector. */
@@ -85,7 +93,7 @@ export function angleBetween3(a: ReadonlyVec3, b: ReadonlyVec3): number {
   const cx = a[1] * b[2] - a[2] * b[1];
   const cy = a[2] * b[0] - a[0] * b[2];
   const cz = a[0] * b[1] - a[1] * b[0];
-  return Math.atan2(Math.hypot(cx, cy, cz), dot3(a, b));
+  return Math.atan2(Math.sqrt(cx * cx + cy * cy + cz * cz), dot3(a, b));
 }
 
 /** Angle between two vectors in arcseconds. */

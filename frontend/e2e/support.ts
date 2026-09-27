@@ -98,17 +98,23 @@ export function collectErrors(page: Page): string[] {
 
 /**
  * HTTP(S) requests to any host other than the app's own (OBS-7, brief l.196: the position leaves
- * the browser toward the API alone) and the hostnames in `allow` (the geocoder a test stubs).
+ * the browser toward the API alone) and the hostnames in `allowed`, read at request time (the
+ * `foreignRequests` fixture of fixtures.ts owns a live set its `allow` grows: the geocoder a spec
+ * routes and fulfils itself). Every test carries that fixture; the explicit calls in the specs
+ * are the acceptance-row evidence of docs/testing.md.
  */
 export function collectForeignRequests(
   page: Page,
-  options: { allow?: readonly string[] } = {},
+  allowed: ReadonlySet<string> = new Set(),
 ): string[] {
-  const allowed = new Set(['127.0.0.1', ...(options.allow ?? [])]);
   const foreign: string[] = [];
   page.on('request', (request) => {
     const url = new URL(request.url());
-    if ((url.protocol === 'http:' || url.protocol === 'https:') && !allowed.has(url.hostname)) {
+    if (
+      (url.protocol === 'http:' || url.protocol === 'https:') &&
+      url.hostname !== '127.0.0.1' &&
+      !allowed.has(url.hostname)
+    ) {
       foreign.push(request.url());
     }
   });
@@ -152,6 +158,15 @@ export async function debugState(page: Page): Promise<DebugState> {
   return required(await page.evaluate(() => window.__sky?.state() ?? null), 'state()');
 }
 
+/**
+ * Resolves after `n` further render frames of the engine (plan D140): after a `setView`, two
+ * frames guarantee the new picture was presented; after a `setTime`, the tick that read the new
+ * clock has run. Never a wall-clock wait for something the engine can report.
+ */
+export async function afterFrames(page: Page, n: number): Promise<void> {
+  await page.evaluate((count) => window.__sky?.afterFrames(count), n);
+}
+
 export async function altAzOf(page: Page, id: string): Promise<RenderedAltAz> {
   return required(
     await page.evaluate((target) => window.__sky?.altAzOf(target) ?? null, id),
@@ -165,13 +180,12 @@ export async function renderAt(page: Page, tt: number): Promise<void> {
     window.__sky?.setTime(target);
   }, tt);
   await page.evaluate(() => window.__sky?.waitForFrame());
-  // `state().tt` is the instant of the last render tick, which also evaluated the directions
-  // `altAzOf` reads (SkyEngine.tick), so the probe below sees the requested time.
-  await page.waitForFunction(
-    (target) => Math.abs((window.__sky?.state().tt ?? NaN) - target) < 1e-7,
-    tt,
-    { timeout: 30_000, polling: 100 },
-  );
+  // Two completed frames (plan D140): the first tick after the covering window arrived swaps it
+  // in and evaluates the directions at the paused instant, the second proves that picture was
+  // rendered. `state().tt` is the instant of the last render tick, which also evaluated the
+  // directions `altAzOf` reads (SkyEngine.tick), so the probes see the requested time.
+  await afterFrames(page, 2);
+  expect(Math.abs((await debugState(page)).tt - tt)).toBeLessThan(1e-7);
 }
 
 /** The authoritative rows of `/sky/altaz` for the probe planets from Greenwich at `tt`. */
@@ -230,8 +244,10 @@ export interface CentrePatch {
 /**
  * Brightest and darkest pixels (max over r, g, b) and the per-channel maxima of a `PATCH_PX`
  * square around the canvas centre, read from a screenshot decoded inside the page (a 2D canvas,
- * so no PNG library; plan D89 pixel probe). Works on both backends, which `screenOf` alone cannot
- * prove: it is a pure projection.
+ * so no PNG library; plan D89 pixel probe). The bytes are decoded through `createImageBitmap` on
+ * a `Blob`, a decode rather than a fetch: a `data:` image would be refused by the served
+ * `img-src 'self'` (plan D153). Works on both backends, which `screenOf` alone cannot prove: it
+ * is a pure projection.
  */
 export async function centrePatch(page: Page): Promise<CentrePatch> {
   const box = await page.getByLabel('Sky view').boundingBox();
@@ -247,17 +263,17 @@ export async function centrePatch(page: Page): Promise<CentrePatch> {
     },
   });
   return page.evaluate(async (base64) => {
-    const image = new Image();
-    image.src = `data:image/png;base64,${base64}`;
-    await image.decode();
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
     const canvas = document.createElement('canvas');
-    canvas.width = image.naturalWidth;
-    canvas.height = image.naturalHeight;
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
     const context = canvas.getContext('2d');
     if (context === null) {
       throw new Error('no 2D context to decode the screenshot');
     }
-    context.drawImage(image, 0, 0);
+    context.drawImage(bitmap, 0, 0);
+    bitmap.close();
     const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
     let max = 0;
     let min = 255;
@@ -281,8 +297,11 @@ export async function centrePatch(page: Page): Promise<CentrePatch> {
 
 /**
  * Centre the view on a target at `PROBE_FOV` and check that something bright is drawn there and
- * that the patch is otherwise dark (a uniformly lit canvas fails too). Polled: `setView` lands on
- * the next render tick.
+ * that the patch is otherwise dark (a uniformly lit canvas fails too). The first screenshot is
+ * taken only after two completed frames (plan D140, R97): `setView` lands on the next render
+ * tick and the frame after proves it was presented, so no screenshot is spent on a stale picture
+ * (under a five-worker SwiftShader load one screenshot could eat most of the poll). The poll and
+ * its thresholds stay as they were.
  */
 export async function expectRendered(page: Page, id: string): Promise<void> {
   const rendered = await altAzOf(page, id);
@@ -292,6 +311,7 @@ export async function expectRendered(page: Page, id: string): Promise<void> {
     },
     { az: rendered.az, alt: rendered.alt, fov: PROBE_FOV },
   );
+  await afterFrames(page, 2);
   await expect
     .poll(async () => (await centrePatch(page)).max, { timeout: 10_000 })
     .toBeGreaterThan(LIT_MIN);

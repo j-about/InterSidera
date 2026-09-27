@@ -71,18 +71,31 @@ describe('DateTimeEditor', () => {
     render(<DateTimeEditor store={store} offsetAt={PLUS_TWO} />);
     type('Month', '13');
     apply();
-    expect(screen.getByRole('alert')).toHaveTextContent(i18next.t('time.error.invalidDate'));
+    // The impossible date marks its field (WCAG 3.3.1, plan D157 C6): `aria-invalid`, described
+    // by the message, which is the one alert; the five other fields stay valid.
+    const invalid = i18next.t('time.error.invalidDate');
+    expect(screen.getByRole('alert')).toHaveTextContent(invalid);
+    expect(field('Month')).toHaveAttribute('aria-invalid', 'true');
+    expect(field('Month')).toHaveAccessibleDescription(invalid);
+    for (const name of ['Year', 'Day', 'Hour', 'Minute', 'Second']) {
+      expect(field(name)).not.toHaveAttribute('aria-invalid');
+    }
+    expect(screen.queryByTestId('time-editor-error')).toBeNull();
     expect(store.getState().clock.ttAnchor).toBe(TT);
     expect(store.getState().ui.dialog).toBe('timeEditor');
 
     type('Month', '3');
+    expect(field('Month')).not.toHaveAttribute('aria-invalid');
     type('Year', '-44');
     expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.getByText(i18next.t('time.gregorianNotice'))).toBeInTheDocument();
     apply();
-    expect(screen.getByRole('alert')).toHaveTextContent(
+    // A date outside the coverage is a property of the whole date: the form-level alert, no field.
+    expect(screen.getByTestId('time-editor-error')).toHaveTextContent(
       i18next.t('time.error.range', { start: '1849', end: '2150' }),
     );
+    expect(screen.getByRole('alert')).toBe(screen.getByTestId('time-editor-error'));
+    expect(screen.queryByRole('textbox', { name: 'Year' })).not.toHaveAttribute('aria-invalid');
     expect(store.getState().clock.ttAnchor).toBe(TT);
     expect(store.getState().ui.dialog).toBe('timeEditor');
 
@@ -137,6 +150,7 @@ describe('DateTimeEditor', () => {
     expect(field('Day')).toHaveValue('x');
     fireEvent.submit(field('Day').closest('form') ?? field('Day'));
     expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(field('Day')).toHaveAttribute('aria-invalid', 'true');
     act(() => {
       store.getState().actions.closeDialog();
     });
@@ -145,6 +159,7 @@ describe('DateTimeEditor', () => {
     });
     expect(field('Day')).toHaveValue('8');
     expect(screen.queryByRole('alert')).toBeNull();
+    expect(field('Day')).not.toHaveAttribute('aria-invalid');
     // Now in UTC: the hour is the UTC one.
     expect(field('Hour')).toHaveValue('17');
   });

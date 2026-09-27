@@ -327,6 +327,7 @@ describe('loadCatalogs', () => {
     expect(bundle.stars.hipIndex.get(32349)).toBe(1);
     expect(bundle.stars.magnitudeLimit).toBe(13.9);
     expect(bundle.stars.parseMs).toBeGreaterThanOrEqual(0);
+    expect(bundle.stars.fetchMs).toBeGreaterThanOrEqual(0);
     expect(bundle.starsEtag).toBe('stars-etag');
     expect(bundle.starsStale).toBe(false);
 
@@ -352,6 +353,25 @@ describe('loadCatalogs', () => {
     expect(statusOf('index')).toEqual(['loading', 'ready']);
     expect(statusOf('dso')).toEqual(['loading', 'ready']);
     expect(statusOf('constellations')).toEqual(['loading', 'ready']);
+  });
+
+  it('splits the star timing into the download and the CPU parse (plan D141)', async () => {
+    // `performance.now` reads: the request start, the last byte, the end of the HIP index.
+    const now = vi.spyOn(performance, 'now');
+    now.mockReturnValueOnce(1000).mockReturnValueOnce(1250).mockReturnValueOnce(1262);
+    try {
+      const fetchImpl = router({
+        [STARS_URL]: () => starsResponse(),
+        [INDEX_URL]: () => jsonResponse(INDEX, '"index-etag"'),
+      });
+      const bundle = await loadCatalogs(makeMeta({ dso: null, constellations: null }), {
+        fetchImpl,
+      });
+      expect(bundle.stars.fetchMs).toBe(250);
+      expect(bundle.stars.parseMs).toBe(12);
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it('skips dso and constellations when /meta omits them or carries null (degraded, B-42)', async () => {
