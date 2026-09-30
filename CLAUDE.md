@@ -31,7 +31,7 @@
 
 ## Toolchain pins and why
 
-- Node `24` in `.node-version`; fnm and CI resolve it to the newest 24.x (>= 24.15.0, the jsdom 30 floor; 24.20.0 here). npm stays the bundled 11.x.
+- Node `24` in `.node-version`; fnm and CI resolve it to the newest 24.x (>= 24.15.0, the jsdom 30 floor; 24.21.0 here since the M7 acceptance of 2026-09-30). npm stays the bundled 11.x.
 - Python `3.14` in two `.python-version` files (root and `backend/`, because uv stops at the project boundary); `requires-python = ">=3.14,<3.15"`.
 - TypeScript `~6.0.3` (ADR-0001): TypeScript 7 is the Go port without a compiler API until 7.1; typescript-eslint requires `<6.1.0`.
 - ESLint 10 plus npm `overrides` for `eslint-plugin-jsx-a11y` and `openapi-typescript` (ADR-0002); never `--legacy-peer-deps`.
