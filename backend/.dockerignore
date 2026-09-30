@@ -1,0 +1,17 @@
+# Build context of backend/Dockerfile: pyproject.toml, uv.lock, .python-version, README.md and src/
+# are all the image needs.
+.venv/
+.git/
+tests/
+typings/
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.env
+.env.*
+Dockerfile
+.dockerignore

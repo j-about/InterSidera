@@ -13,8 +13,9 @@ D150: the page is hidden by nginx in production, the API container still serves 
 
 The brief assigns the headers to nginx (l.274); the API adds these two because the dev and
 preview servers proxy `/api` upstream headers unchanged, so nothing else can put `nosniff` on the
-API in those stacks (B-87). At M7 nginx adds the full web-tier set on `/api` too; the API's own
-values are then a second, identical-or-stricter policy the browser intersects with the first.
+API in those stacks (B-87). Behind nginx (the container stack) the full web-tier set is added on
+`/api` too; the API's own values are then a second, identical-or-stricter policy the browser
+intersects with the first.
 
 Starlette's ServerErrorMiddleware sits outside every user middleware, so the 500 handler of
 `middleware/problem.py` adds the same two headers itself through `security_headers()`.

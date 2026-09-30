@@ -33,7 +33,12 @@ SCRIPTS_PRETTIER := --no-config --print-width 100 --single-quote
 PIP_AUDIT := pip-audit==2.10.1
 
 .PHONY: help setup data dev dev-api dev-web check check-backend check-frontend check-i18n \
-        check-contract types notices test e2e build build-e2e audit lighthouse up down format
+        check-delivery check-contract types notices test e2e build build-e2e audit lighthouse \
+        images up down format
+# hadolint as a pinned multi-arch image (ghcr avoids Docker Hub's anonymous pull limits); the same
+# line in the CI docker job.
+HADOLINT := ghcr.io/hadolint/hadolint:v2.15.1
+COMPOSE := docker compose
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
@@ -62,7 +67,7 @@ dev-api: ## Run the API with reload (http://127.0.0.1:8000/api/v1/health)
 dev-web: ## Run the Vite dev server (https://localhost:5173, proxies /api)
 	$(NPM) run dev
 
-check: check-backend check-frontend check-i18n check-contract ## Every quality gate (before each commit, and in CI)
+check: check-backend check-frontend check-i18n check-delivery check-contract ## Every quality gate (before each commit, and in CI)
 
 check-backend:
 	$(UV) lock --check --directory backend
@@ -86,6 +91,10 @@ check-i18n:
 	for f in $(wildcard scripts/*.mjs); do $(NODE) --check $$f; done
 	$(NPM) exec -- prettier $(SCRIPTS_PRETTIER) --check $(CURDIR)/scripts
 	$(NODE) scripts/check_i18n.mjs
+
+# The nginx tree diffed against frontend/security-headers.ts (hermetic: Node and committed files).
+check-delivery:
+	$(NODE) scripts/check_nginx_headers.mjs
 
 check-contract: types notices
 	git ls-files --error-unmatch -- $(GENERATED) >/dev/null
@@ -130,11 +139,29 @@ audit: ## Dependency audits (network): npm audit + pip-audit against scripts/aud
 lighthouse: ## Accessibility audit with Lighthouse (needs the API on 8000 and the e2e preview on 4173: make dev-api, make build-e2e, npm --prefix frontend run preview)
 	$(NODE) scripts/lighthouse.mjs
 
-up: ## docker compose up (arrives in M7)
-	@echo "make up: compose.yaml arrives in M7"; exit 2
+# The CI docker job's twin (Docker and network; never part of `make check`): lint both Dockerfiles,
+# validate the compose files, build both images on the machine's architecture and run the checks of
+# scripts/check_images.mjs (sizes, user, healthcheck, nginx -t, headers, data-less start).
+images: ## Lint, build and check both container images (the CI docker job's twin; needs Docker)
+	docker run --rm -i $(HADOLINT) < backend/Dockerfile
+	docker run --rm -i $(HADOLINT) < frontend/Dockerfile
+	docker build --check -f backend/Dockerfile backend
+	docker build --check -f frontend/Dockerfile frontend
+	$(COMPOSE) config -q
+	$(COMPOSE) -f compose.yaml -f compose.tls.yaml config -q
+	$(COMPOSE) -f compose.yaml -f compose.e2e.yaml config -q
+	$(COMPOSE) build
+	$(NODE) scripts/check_images.mjs --api intersidera-api:local --web intersidera-web:local
 
-down: ## docker compose down (arrives in M7)
-	@echo "make down: compose.yaml arrives in M7"; exit 2
+# compose reads ./.env itself (no --env-file). --wait returns once api is healthy and web started,
+# exits 1 with "dependency failed to start: ... is unhealthy" or "application not healthy after 7m0s".
+up: ## Build the images and start the stack (http://127.0.0.1/, health at /api/v1/health)
+	@test -f $(ENV_FILE) || echo "make up: no .env: code defaults apply (de441.bsp, auto-fetch of 3.3 GB inside the api container; the api is reported unhealthy after about 6.5 min while the download continues). Run 'docker compose run --rm api sky-data fetch' first or copy .env.example to .env for de440s."
+	$(COMPOSE) up --build --detach --wait --wait-timeout 420
+	@echo "up: app http://127.0.0.1/  health http://127.0.0.1/api/v1/health  logs: docker compose logs -f api"
+
+down: ## Stop and remove the containers and the network; the data directory is kept (never -v)
+	$(COMPOSE) down
 
 format: ## Format and auto-fix backend, frontend and scripts/ sources
 	$(PY) ruff format .

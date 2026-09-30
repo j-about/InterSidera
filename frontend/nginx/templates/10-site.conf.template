@@ -1,0 +1,3 @@
+# Rendered into /etc/nginx/conf.d/10-site.conf: SKY_WEB_MODE selects the server set (http: one
+# plain server on :80; tls: the :80 redirect plus the :443 server of compose.tls.yaml).
+include /etc/nginx/sky/mode-${SKY_WEB_MODE}.conf;

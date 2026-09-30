@@ -1,9 +1,13 @@
 # Data directory (DATA_DIR default for development): downloads and caches, never committed.
 # Root-anchored: the committed registry and CSV files live in backend/src/skyapi/data/ (ADR-0005).
-/data/
+/data/*
+!/data/.gitkeep
 
 # Environment and local overrides
 .env
+# Local compose overrides (ports, subnet) and the TLS certificates of compose.tls.yaml.
+/compose.override.yaml
+/certs/
 *.local
 .claude/settings.local.json
 

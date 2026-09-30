@@ -1,0 +1,23 @@
+# ACCEPTANCE overlay, never a deployment: the web image is built with `npm run build:e2e` (the only
+# build exposing window.__sky) and tagged intersidera-web:e2e; both services are published on
+# loopback so frontend/playwright.config.ts (baseURL http://127.0.0.1:4173, API on 127.0.0.1:8000,
+# reuseExistingServer outside CI) reuses the stack and starts nothing. de440s without downloads,
+# as in CI (time.spec.ts expects the year -44 refused). With 8000 published, host clients reach
+# uvicorn directly from the gateway, an address the api does not trust (it trusts web's fixed
+# address alone), so their X-Forwarded-For is ignored: loopback only, acceptance only.
+# Usage: docker compose -f compose.yaml -f compose.e2e.yaml up -d --build --wait --wait-timeout 420
+services:
+  api:
+    environment:
+      SKYAPI_EPHEMERIS: de440s.bsp
+      SKYAPI_AUTO_FETCH: "false"
+    ports:
+      - "127.0.0.1:8000:8000"
+  web:
+    build:
+      context: ./frontend
+      args:
+        BUILD_SCRIPT: build:e2e
+    image: intersidera-web:e2e
+    ports: !override
+      - "127.0.0.1:4173:80"

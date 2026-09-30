@@ -1,14 +1,16 @@
 // The security headers and the Content-Security-Policy of the web tier, defined once (plan D147;
-// the ADR arrives with the M6 documentation area). Node side only: `vite.config.ts` hands the
-// map to `vite preview` (`preview.headers`, what Playwright and CI run against) and to `vite dev`
-// (`server.headers`, with a per-process nonce on `script-src` and `style-src` for the inline
-// Fast Refresh preamble and the dev client's injected `<style>` elements); at M7 the nginx
-// template applies the same values through `add_header ... always` at server level, and a check
-// script diffs the template against `cspHeader()`. Never a `<meta http-equiv>` tag: it cannot
-// carry `frame-ancestors`, cannot know the geocoder origin of the deployment, would conflict with
-// the dev nonce and only covers the HTML document; headers cover every response. No report
-// endpoint (the brief forbids storing requests, l.275), no COEP (nothing needs cross-origin
-// isolation), no HSTS and no `Cache-Control` here (the TLS-terminating nginx owns them at M7).
+// ADR-0018). Node side only: `vite.config.ts` hands the map to `vite preview` (`preview.headers`,
+// what Playwright and CI run against) and to `vite dev` (`server.headers`, with a per-process nonce
+// on `script-src` and `style-src` for the inline Fast Refresh preamble and the dev client's
+// injected `<style>` elements); the nginx template applies the same values at http level through
+// `add_header ... always` (`frontend/nginx/templates/00-headers.conf.template`, rendered by the web
+// image's entrypoint), and `scripts/check_nginx_headers.mjs` diffs the rendered template against
+// `securityHeaders()` on every `make check`. Never a `<meta http-equiv>` tag: it cannot carry
+// `frame-ancestors`, cannot know the geocoder origin of the deployment, would conflict with the dev
+// nonce and only covers the HTML document; headers cover every response. No report endpoint (the
+// brief forbids storing requests, l.275), no COEP (nothing needs cross-origin isolation), no HSTS
+// and no `Cache-Control` here: nginx owns them through the `$sky_hsts` and `$sky_cache_control`
+// maps of the same template (ADR-0024).
 //
 // The one variable is `SKY_GEOCODER_ORIGIN` (plan D148): an origin, never a URL, equal to the
 // origin of `SKYAPI_GEOCODER_URL`, read by `vite.config.ts` through `loadEnv` (prefix-filtered, no

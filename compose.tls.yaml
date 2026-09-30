@@ -1,0 +1,23 @@
+# nginx terminates TLS: SKY_WEB_MODE=tls selects the :443 server and the :80 redirect
+# (frontend/nginx/sky/mode-tls.conf); certificates at SKY_TLS_DIR/{fullchain,privkey}.pem, read
+# by the root master, which runs without CAP_DAC_OVERRIDE (compose.yaml cap_drop): the files must
+# be root-owned (a root-owned 600 key is fine) or readable by others; a 600 key owned by another
+# user fails with `nginx: [emerg] cannot load certificate key ... Permission denied` and the
+# container restarts until it is fixed. Mount root-owned COPIES of the two files (`cp -L` from
+# certbot's live/<domain>/, whose entries are symlinks into ../../archive/ that dangle inside the
+# container: never bind-mount that directory); rotation = copy again, then
+# `docker compose exec web nginx -s reload`. HSTS is sent on TLS only, never preload.
+# Usage: docker compose -f compose.yaml -f compose.tls.yaml up -d --build --wait
+services:
+  web:
+    environment:
+      SKY_WEB_MODE: tls
+    ports:
+      - "443:443"
+    volumes:
+      - type: bind
+        source: ${SKY_TLS_DIR:-./certs}
+        target: /etc/nginx/certs
+        read_only: true
+        bind:
+          create_host_path: false

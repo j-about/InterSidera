@@ -1,0 +1,16 @@
+# Build context of frontend/Dockerfile: the sources, the configs and the lockfile; never a local
+# build, the browsers' output or an environment file.
+node_modules/
+dist/
+dist-*/
+e2e/
+test-results/
+playwright-report/
+coverage/
+.vite/
+**/.vite/
+*.log
+.env
+.env.*
+Dockerfile
+.dockerignore

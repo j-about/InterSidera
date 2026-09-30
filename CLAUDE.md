@@ -11,7 +11,7 @@
 ## Authoritative documents
 
 - `docs/brief.xml` is the specification. When sections conflict (brief l.11): legal and licensing > security and privacy > api_contract > architecture > [M] functional > non-functional budgets > [S] > style.
-- `docs/plan.md` is the durable memory across sessions: status, decisions D1-D168, milestones, risks, open questions, progress log. Read it first in every session; update it in every milestone commit.
+- `docs/plan.md` is the durable memory across sessions: status, decisions D1-D200, milestones, risks, open questions, progress log. Read it first in every session; update it in every milestone commit.
 - `docs/decisions/` holds one ADR per notable decision; `docs/backlog.md` records every deviation from the brief with its reason and the deferred [L] items.
 
 ## Commands (root `Makefile`)
@@ -19,13 +19,13 @@
 - `make setup`: Python 3.14 via uv, Node 24 via fnm, `uv sync`, `npm ci`, Playwright browsers, `.env` from `.env.example`.
 - `make data`: `sky-data fetch` then `sky-data build-caches` into `DATA_DIR` (loads `.env`; `sky-data fetch --full` adds de441).
 - `make dev`: API (`fastapi dev`, port 8000) and Vite (port 5173, HTTPS, proxies `/api`) together; `make dev-api` / `make dev-web` separately.
-- `make check`: every gate, before each commit and in CI: `uv lock --check`, ruff format/check (backend and `scripts/*.py`), pyright (backend, then `scripts/*.py` as explicit files), `pytest -m "not slow"` with coverage (astro and catalogs >= 90 %, `quaternions.py` and `formats.py` 100 %), `tsc -b`, eslint + prettier, `npm run test` (vitest with coverage: 100 % on `sky/math/**` and `state/url.ts`), `node --check`, prettier and a run of `scripts/check_i18n.mjs`, `make types` + `make notices` + drift gate on the generated files.
+- `make check`: every gate, before each commit and in CI: `uv lock --check`, ruff format/check (backend and `scripts/*.py`), pyright (backend, then `scripts/*.py` as explicit files), `pytest -m "not slow"` with coverage (astro and catalogs >= 90 %, `quaternions.py` and `formats.py` 100 %), `tsc -b`, eslint + prettier, `npm run test` (vitest with coverage: 100 % on `sky/math/**` and `state/url.ts`), `node --check`, prettier and a run of `scripts/check_i18n.mjs`, `make check-delivery` (`scripts/check_nginx_headers.mjs`: the nginx tree diffed against `frontend/security-headers.ts`, hermetic), `make types` + `make notices` + drift gate on the generated files.
 - `make test`: full pytest (slow and conformance included) + vitest.
 - `make e2e`: `make build-e2e` (`vite build --mode e2e`, the only build with `window.__sky`) then Playwright on `chromium-desktop` and `chromium-mobile` against a locally started stack; `webkit`, `chromium-webgpu` and `perf` are manual projects.
 - `make types`: regenerate `docs/openapi.json` and `frontend/src/api/schema.d.ts`. `make notices`: regenerate `THIRD_PARTY_NOTICES.md` and `frontend/src/data/credits.json` (the About screen's credits) from the data registry.
 - `make build`: production frontend build, followed by a grep proving `dist/assets` contains no `__sky`.
 - `make audit`: `npm audit` + `pip-audit` (`uv tool run pip-audit==2.10.1`) checked by `scripts/check_audit.mjs` against `scripts/audit-allowlist.json` (network; outside `make check`; the CI `audit` job, weekly). `make lighthouse`: `scripts/lighthouse.mjs` (Lighthouse 13.5.0 through `npm exec --package`, never a root `npx`) on six URLs against the API on 8000 and the e2e preview on 4173; score >= 0.9, the CI e2e job's last step.
-- `make up` / `make down`: docker compose (arrive in M7).
+- `make images`: the CI `docker` job's twin (Docker and network; outside `make check`): hadolint (`ghcr.io/hadolint/hadolint:v2.15.1`) on both Dockerfiles, `docker build --check` x2, `docker compose config -q` on `compose.yaml` and both overlays, `docker compose build`, then `scripts/check_images.mjs` (the sizes against l.299, the user, the healthcheck, `nginx -t` in both modes, the headers on the running web image, the data-less api start). `make up`: `docker compose up --build --detach --wait --wait-timeout 420` (a warning without `.env`; fetch first with `docker compose run --rm api sky-data fetch`); `make down`: `docker compose down` (never `-v`).
 - `make format`: ruff format + fix, prettier + eslint --fix.
 - uv and npm run only through make, or as `uv run --directory backend ...` / `npm --prefix frontend ...`; Node always through `fnm exec --using=<repo>/.node-version`; never `cd` in a recipe; never a root `npx` (it fetches a floating version).
 
@@ -37,7 +37,7 @@
 - ESLint 10 plus npm `overrides` for `eslint-plugin-jsx-a11y` and `openapi-typescript` (ADR-0002); never `--legacy-peer-deps`.
 - `fastapi[standard-no-fastapi-cloud-cli]` and a lazily built module attribute `app` (PEP 562) under the factory (ADR-0003): fastapi-cli has no `--factory`; importing `skyapi.main` reads no environment.
 - Implied tooling dependencies (`@testing-library/dom`, `@eslint/js`, `globals`, `@types/*`, `httpx2`) are recorded in ADR-0004; nothing else without an ADR.
-- Committed factual data lives inside the package (`backend/src/skyapi/data/`, ADR-0005); pyright strict is kept over Skyfield/jplephem through hand-written stubs in `backend/typings/` plus `pandas-stubs` (ADR-0006); planetary observer frames are our own IAU rotation model from the text PCK because Skyfield 1.55 only builds frames from binary PCKs (ADR-0007); the data is loaded by a background bootstrap thread so `/health` can report `starting` with progress (ADR-0008); sky geometry stays in ENU under one frozen reflection world matrix (ADR-0009).
+- Committed factual data lives inside the package (`backend/src/skyapi/data/`, ADR-0005); pyright strict is kept over Skyfield/jplephem through hand-written stubs in `backend/typings/` plus `pandas-stubs` (ADR-0006); planetary observer frames are our own IAU rotation model from the text PCK because Skyfield 1.55 only builds frames from binary PCKs (ADR-0007); the data is loaded by a background bootstrap thread so `/health` can report `starting` with progress (ADR-0008); sky geometry stays in ENU under one frozen reflection world matrix (ADR-0009); the container images and docker gates, the nginx edge and compose are ADR-0023, ADR-0024 and ADR-0025 (M7, which also amends ADR-0003, 0005, 0008, 0017 and 0018).
 - `vitest` and `@vitest/coverage-v8` are pinned exact (`4.1.11`) and move together; Vitest 5 waits for jest-dom #738 (ADR-0004 amendment). `@babylonjs/core ^9.25.0`, `zustand ^5.0.15`, `@playwright/test ^1.63.0`, `lucide-react ^1.43.0` (brief l.405; the accessible name goes on the button, never on the icon).
 - Do not bump TypeScript to 7, npm to 12 or Python to 3.15, and do not remove the overrides, until the ADR revisit trigger fires. Never pre-releases.
 
@@ -60,7 +60,8 @@
 - Every UI string goes through `t()` with a key present in both `en.json` and `fr.json`; `scripts/check_i18n.mjs` fails on missing or unused keys and on a dynamic key without a literal prefix (`t(\`constellations.${abbr}\`)`; the dynamic keys are typed in `i18n/keys.ts`).
 - Documentation changes ship in the same commit as the code they describe.
 - Augmented reality (M5): `sky/ar/**` is Babylon-free and reached only through the dynamic import in `SkyEngine` (chunk `arController`); `sky/engine/xr/` is the only Babylon XR importer (chunk `XrBridge`); `App` loads `ui/ar/ArOverlay.tsx` with `lazy()`; the `ar` store slice is transient (no URL parameter); `make build` runs `scripts/check_chunks.mjs` to prove the split.
-- Security headers and the CSP are defined once in `frontend/security-headers.ts` (served by `vite dev` with a nonce and by `vite preview`; the nginx template at M7 mirrors it), the API adds `nosniff` and a deny-all CSP in `middleware/headers.py` outside CORS; every e2e spec imports `test` and `expect` from `e2e/fixtures.ts` (the `cspViolations`, `foreignRequests` and `noStorage` auto fixtures), never from `@playwright/test`.
+- Security headers and the CSP are defined once in `frontend/security-headers.ts` (served by `vite dev` with a nonce and by `vite preview`; `frontend/nginx/templates/00-headers.conf.template` mirrors it byte for byte, gated by `scripts/check_nginx_headers.mjs`), the API adds `nosniff` and a deny-all CSP in `middleware/headers.py` outside CORS; every e2e spec imports `test` and `expect` from `e2e/fixtures.ts` (the `cspViolations`, `foreignRequests` and `noStorage` auto fixtures), never from `@playwright/test`.
+- Containers and the edge (M7; ADR-0023, ADR-0024, ADR-0025; `.claude/rules/deploy.md`): `backend/Dockerfile` (uv 0.12.19, bytecode compiled, `uv sync --locked --no-dev`, uid 1000, the `/api/v1/health` healthcheck, no ENTRYPOINT), `frontend/Dockerfile` (`node:24` build, `nginx:stable-alpine-slim`, `.gz` siblings), `frontend/nginx.conf` + `frontend/nginx/**` (the nine `add_header ... always` once at http level with `map` variables, `gzip off` + `gzip_static`, the JSON access log with the path only, the `resolve` upstream), `compose.yaml` + `compose.tls.yaml` + `compose.e2e.yaml` (`web` at the fixed address `10.213.0.3`, the one address the api trusts for `X-Forwarded-For`; `memswap_limit` equal to the memory limit); data is bind-mounted (`SKY_DATA_DIR` -> `/data`), never baked; the runbook and the release checklist live in `docs/architecture.md` "Deployment", the probe outcomes and image figures in `docs/testing.md` "Delivery (M7)"; Docker never restarts an unhealthy container.
 
 ## Do not
 
@@ -77,10 +78,11 @@
 - Import `sky/ar/**`, `sky/engine/xr/**` or `ui/ar/ArOverlay.tsx` statically from the main graph (types excepted); add an `ar` URL parameter; call `Date.now()` or read a ref during a React render (the react-hooks compiler rules are on).
 - Let pytest inherit `.env` or the CI environment (`--env-file` only on run targets; the autouse `clean_env` fixture stays).
 - Call Nominatim or JPL Horizons from tests or CI.
+- Bake data files into an image; run the api container as root; `add_header` below http level or `gzip on` in the edge; a `.hadolint.yaml` (inline `# hadolint ignore=` with a reason only); a `PORT` variable; publish a port beyond 80 in `compose.yaml` (443 only through `compose.tls.yaml`; the e2e overlay binds loopback); `FORWARDED_ALLOW_IPS` set to `*` or to the whole compose network (the api trusts `web`'s fixed address alone); `docker compose down -v`; a digest pin or a `--platform` in a Dockerfile.
 
 ## File-specific rules
 
-`.claude/rules/*.md` carry `paths:` frontmatter and apply to the files they name: `backend.md`, `backend-tests.md`, `frontend.md`, `sky-math.md`, `frontend-tests.md`, `tooling.md`, `docs.md`.
+`.claude/rules/*.md` carry `paths:` frontmatter and apply to the files they name: `backend.md`, `backend-tests.md`, `frontend.md`, `sky-math.md`, `frontend-tests.md`, `tooling.md`, `docs.md`, `deploy.md`.
 
 ## Working agreement
 

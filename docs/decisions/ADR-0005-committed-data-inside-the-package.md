@@ -47,3 +47,7 @@ its role as the gitignored `DATA_DIR` of downloaded files and caches.
 
 - `uv_build` gains a first-class way to include a directory outside the module as importable
   package data, or the brief's layout is revised.
+
+## Amendment (M7)
+
+Plan D169 (ADR-0023), 2026-09-28. The container confirms the decision: `backend/Dockerfile` copies `/app/.venv` (the `skyapi` wheel built by `uv_build`, the packaged `data/` files inside it) and `/app/pyproject.toml` into the final stage and nothing else; no second data path, no `COPY` of a `backend/data/` directory, no settings entry (the M6 hand-off item "`backend/data/` COPY or packaging per the M1 decision (Q16)" closes as "packaging"). The root `data/` directory keeps its role as the gitignored `DATA_DIR`: compose bind-mounts `SKY_DATA_DIR` (default `./data`, tracked as the empty `data/.gitkeep`, backlog B-103) at `/data` and the image sets `SKYAPI_DATA_DIR=/data`; the `.gitignore` rule becomes `/data/*` plus `!/data/.gitkeep`. The decision text above is unchanged.

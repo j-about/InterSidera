@@ -1,0 +1,113 @@
+# InterSidera compose stack (docs/architecture.md "Deployment"). `api` listens on the compose
+# network only; `web` serves the SPA on :80 and proxies /api to api:8000. The data directory is a
+# host directory bind-mounted at /data (SKY_DATA_DIR in .env, default ./data): the host's
+# `uv run --directory backend sky-data fetch` and `docker compose run --rm api sky-data fetch`
+# fill the same files; no data is ever baked into an image. `docker compose` reads ./.env for the
+# ${...} values below and hands the same file to the api container (env_file).
+# Overlays: compose.tls.yaml (nginx terminates TLS), compose.e2e.yaml (acceptance run only),
+# compose.override.yaml (local, gitignored: ports, subnet).
+name: intersidera
+
+x-sky:
+  # The compose network and web's fixed address on it, written once. The api trusts
+  # X-Forwarded-For from that one address (uvicorn FORWARDED_ALLOW_IPS; never the whole network,
+  # whose gateway relays the host's connections, never "*"): uvicorn then stops at the address
+  # nginx itself appends, so a client cannot forge its rate-limit key. Outside Docker's default
+  # pools and WSL 2's NAT range; "Pool overlaps": change every use through compose.override.yaml.
+  subnet: &sky_subnet 10.213.0.0/24
+  web_address: &sky_web 10.213.0.3
+
+services:
+  api:
+    build:
+      context: ./backend
+    image: intersidera-api:local
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      SKYAPI_DATA_DIR: /data
+      FORWARDED_ALLOW_IPS: *sky_web
+    command:
+      ["fastapi", "run", "--host", "0.0.0.0", "--port", "8000", "--workers", "${SKYAPI_WORKERS:-1}"]
+    volumes:
+      - type: bind
+        source: ${SKY_DATA_DIR:-./data}
+        target: /data
+        bind:
+          create_host_path: false
+    user: "${SKY_UID:-1000}:${SKY_GID:-1000}"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges=true]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import sys, urllib.request as u; sys.exit(0 if u.build_opener(u.ProxyHandler({})).open('http://127.0.0.1:8000/api/v1/health', timeout=4).status == 200 else 1)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 300s
+      start_interval: 5s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${SKY_API_MEMORY_LIMIT:-2G}
+    # Equal to the memory limit: no swap for the api (Docker would otherwise grant as much swap
+    # again; an anonymous overrun is an OOM kill and a restart, never host swap thrash).
+    memswap_limit: ${SKY_API_MEMORY_LIMIT:-2G}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    build:
+      context: ./frontend
+    image: intersidera-web:local
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      SKY_GEOCODER_ORIGIN: ${SKY_GEOCODER_ORIGIN:-https://nominatim.openstreetmap.org}
+      SKY_WEB_MODE: ${SKY_WEB_MODE:-http}
+    ports:
+      - "80:80"
+    networks:
+      default:
+        ipv4_address: *sky_web
+    read_only: true
+    tmpfs:
+      - /etc/nginx/conf.d:size=1m,mode=0755
+      - /var/cache/nginx:size=256m,mode=0755
+      - /run:size=1m,mode=0755
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETGID, SETUID, NET_BIND_SERVICE, KILL]
+    security_opt: [no-new-privileges=true]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+      start_interval: 2s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: *sky_subnet
