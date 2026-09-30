@@ -90,7 +90,13 @@ export default defineConfig(({ command, mode, isPreview }) => {
       ...(nonce === undefined ? {} : { headers: securityHeaders({ geocoderOrigin, nonce }) }),
     },
     // `preview.proxy` inherits `server.proxy`, so the e2e smoke test reaches the API through 4173.
+    // The preview binds 127.0.0.1 explicitly: Playwright's `webServer.url`, the CI curl loop and
+    // scripts/lighthouse.mjs all address 127.0.0.1:4173, and Vite's default `localhost` is
+    // resolved by Node in the resolver's order, ::1 first on GitHub's ubuntu-latest (the first
+    // remote e2e job waited 60 s for a server listening on IPv6 only). `--host` still overrides
+    // it for a phone on the LAN (docs/dev-wsl2.md).
     preview: {
+      host: '127.0.0.1',
       port: 4173,
       strictPort: true,
       headers: securityHeaders({ geocoderOrigin }),
