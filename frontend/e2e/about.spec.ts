@@ -85,7 +85,8 @@ test('About: versions, repository, server attributions and credits; Escape retur
     await expect(dialog).toContainText(meta.geocoder.attribution);
     await expect(dialog).toContainText('CC BY-SA 4.0');
     await expect(dialog).toContainText('OpenNGC');
-    await expect(dialog).toContainText('OpenStreetMap');
+    // The wording the brief mandates (l.193, l.318), as the API serves it.
+    await expect(dialog).toContainText('© OpenStreetMap contributors');
     await expect(dialog).toContainText('Lucide');
     // Every external source is a new-tab link that never leaks a referrer.
     const links = dialog.getByRole('link');

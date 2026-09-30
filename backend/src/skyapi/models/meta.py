@@ -162,7 +162,7 @@ class GeocoderMeta(_Record):
     email: str | None = Field(
         default=None, description="Contact e-mail to send as the Nominatim `email` parameter."
     )
-    attribution: str = Field(examples=["Geocoding: (c) OpenStreetMap contributors, via Nominatim"])
+    attribution: str = Field(examples=["Geocoding: © OpenStreetMap contributors, via Nominatim"])
     min_interval_ms: int = Field(
         description="Minimum interval between two geocoder requests.", examples=[1000]
     )

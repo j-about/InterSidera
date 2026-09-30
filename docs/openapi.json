@@ -1097,7 +1097,7 @@
         "properties": {
           "attribution": {
             "examples": [
-              "Geocoding: (c) OpenStreetMap contributors, via Nominatim"
+              "Geocoding: © OpenStreetMap contributors, via Nominatim"
             ],
             "title": "Attribution",
             "type": "string"

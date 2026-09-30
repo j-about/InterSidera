@@ -235,7 +235,7 @@ test('geolocation, manual coordinates, the mocked geocoder, a body switch and a 
       await expect(result).toBeVisible();
       // Scoped to the observer tab: the About dialog (closed) carries the same attribution.
       await expect(
-        page.getByRole('tabpanel', { name: 'Observer' }).getByText(/OpenStreetMap contributors/),
+        page.getByRole('tabpanel', { name: 'Observer' }).getByText(/© OpenStreetMap contributors/),
       ).toBeVisible();
       await expect(page.getByRole('link', { name: 'OpenStreetMap copyright' })).toHaveAttribute(
         'href',
@@ -272,7 +272,7 @@ test('geolocation, manual coordinates, the mocked geocoder, a body switch and a 
       await expect(page.getByRole('textbox', { name: 'Place name' })).toHaveCount(0);
       // Scoped to the observer tab: the About dialog (closed) carries the same attribution.
       await expect(
-        page.getByRole('tabpanel', { name: 'Observer' }).getByText(/OpenStreetMap contributors/),
+        page.getByRole('tabpanel', { name: 'Observer' }).getByText(/© OpenStreetMap contributors/),
       ).toBeVisible();
     });
   }

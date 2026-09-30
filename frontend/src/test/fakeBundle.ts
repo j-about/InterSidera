@@ -264,7 +264,7 @@ export function fakeMeta(options: FakeMetaOptions = {}): MetaResponse {
     geocoder: {
       enabled: true,
       url: 'https://nominatim.openstreetmap.org',
-      attribution: 'Geocoding: (c) OpenStreetMap contributors, via Nominatim',
+      attribution: 'Geocoding: © OpenStreetMap contributors, via Nominatim',
       min_interval_ms: 1000,
     },
     limits: {

@@ -4,8 +4,8 @@
 // Parsing is defensive (brief l.552): an unknown or invalid parameter is simply absent from the
 // result and the store keeps its default, so a hand-edited URL never breaks the page. Numbers are
 // rounded on the way out (coordinates and alt/az 0.01 deg, fov 0.1 deg, tt 1e-6 day) to keep
-// URLs short, and default-valued keys are omitted except the observer, `t` and the view, which
-// are always written so a copied link is self-describing (plan Q32).
+// URLs short, and default-valued keys are omitted except the observer, `t`, the view and `lang`,
+// which are always written so a copied link is self-describing (plan Q32).
 //
 // Out-of-range numbers are dropped, not clamped: `lat`, `alt`, `fov`, `maglim` and `elev` at
 // their physical or contract bounds, `t` within the widest ephemeris span (`TT_MIN`..`TT_MAX`)
@@ -40,7 +40,12 @@ export const URL_KEYS: readonly (keyof UrlState)[] = [
   'sel',
 ];
 
-/** Keys written even when they hold their default value (plan Q32). */
+/**
+ * Keys written even when they hold their default value (plan Q32). `lang` is one of them because
+ * a URL without it takes the language of `navigator.languages` (UX-1): like the observer, its
+ * default belongs to the browser, so omitting it would not restore the view "from the URL alone"
+ * (OBS-8, brief l.197; acceptance l.574) once the user has chosen the other language.
+ */
 const ALWAYS_WRITTEN: ReadonlySet<keyof UrlState> = new Set<keyof UrlState>([
   'body',
   'lat',
@@ -50,6 +55,7 @@ const ALWAYS_WRITTEN: ReadonlySet<keyof UrlState> = new Set<keyof UrlState>([
   'az',
   'alt',
   'fov',
+  'lang',
 ]);
 
 /** Inverse of the rounding step per numeric key (`Math.round(v * inv) / inv` avoids 0.1 * 3 noise). */
@@ -346,7 +352,7 @@ function encodeReadable(text: string): string {
 
 /**
  * Serialize a state in the fixed `URL_KEYS` order without the leading `?`. Keys equal to their
- * default are omitted, except the observer, `t` and the view (plan Q32).
+ * default are omitted, except the observer, `t`, the view and `lang` (`ALWAYS_WRITTEN`, plan Q32).
  */
 export function serializeUrlState(state: UrlState, defaults: UrlState): string {
   const parts: string[] = [];

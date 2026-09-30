@@ -295,10 +295,20 @@ describe('serializeUrlState', () => {
     night: false,
   };
 
-  it('always writes the observer, t and the view, and omits other default-valued keys', () => {
+  it('always writes the observer, t, the view and lang, and omits other default-valued keys', () => {
     expect(serializeUrlState(defaults, defaults)).toBe(
-      'body=earth&lat=51.48&lon=0&elev=0&t=live&az=0&alt=20&fov=60',
+      'body=earth&lat=51.48&lon=0&elev=0&t=live&az=0&alt=20&fov=60&lang=en',
     );
+  });
+
+  it('writes lang whatever the default: a URL without it takes the language of the browser', () => {
+    // OBS-8, acceptance l.574: on a browser that prefers French a choice of English must travel
+    // in the URL, or a reload and a copied link would come back in French.
+    expect(serializeUrlState({ lang: 'en' }, defaults)).toBe('lang=en');
+    expect(serializeUrlState({ lang: 'fr' }, defaults)).toBe('lang=fr');
+    expect(serializeUrlState({ lang: 'fr' }, { ...defaults, lang: 'fr' })).toBe('lang=fr');
+    // Parsing is unchanged: no `lang` in the query, none in the result (the detection decides).
+    expect(parseUrlState('az=10')).not.toHaveProperty('lang');
   });
 
   it('writes an empty state as an empty string (no leading ?)', () => {

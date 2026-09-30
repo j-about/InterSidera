@@ -21,7 +21,7 @@ import './styles/app.css';
 
 // Application wiring (plan D87, D95, D109): the URL is the only per-user state (OBS-8, UX-2), so
 // the store is created from it before anything renders; the language is the URL's, else the
-// browser's first supported one (written back to the URL only when it is not the default); the
+// browser's first supported one (always written back to the URL: its default is the browser's); the
 // document mirror applies language and night mode before the first paint; the synchroniser
 // writes every later change back at <= 2 Hz; a URL without an observer starts the geolocation
 // request on the same tick as the boot; the AR-1 capability probe (plan D125, main bundle, a

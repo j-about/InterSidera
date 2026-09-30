@@ -351,8 +351,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 - Source: <https://nominatim.openstreetmap.org>
 - Version or date: public service, usage policy as read on 2026-09-03
 - License: ODbL-1.0 (data); Nominatim usage policy
-- Copyright: (c) OpenStreetMap contributors
-- Attribution: Geocoding: (c) OpenStreetMap contributors, via Nominatim
+- Copyright: © OpenStreetMap contributors
+- Attribution: Geocoding: © OpenStreetMap contributors, via Nominatim
 - Notes: Browser-only, never called or proxied by the API (brief l.318); at most 1 request/s, no client-side autocomplete, identifying Referer, `email=` when configured; policy: https://operations.osmfoundation.org/policies/nominatim/. Configured through `/meta.geocoder` so it can be switched off without an app update.
 
 ## Lucide icons (lucide-react) (`lucide`)

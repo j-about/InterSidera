@@ -170,7 +170,9 @@ export default function DateTimeEditor({ store, offsetAt }: DateTimeEditorProps)
               id={`time-editor-${field}`}
               label={labels[field]}
               value={draft[field]}
-              inputMode="numeric"
+              // The year takes a sign (astronomical years, brief l.575) and phone numeric keypads
+              // have no minus key: a text keyboard there, like the coordinate fields.
+              inputMode={field === 'year' ? 'text' : 'numeric'}
               autoComplete="off"
               spellCheck={false}
               error={fieldError(field)}

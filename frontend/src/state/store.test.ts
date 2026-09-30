@@ -1063,7 +1063,7 @@ describe('urlStateOf and defaultsUrlState', () => {
   it('serializes the default store to the always-written keys only', () => {
     const store = createSkyStore({}, T0);
     expect(serializeUrlState(urlStateOf(store.getState()), defaultsUrlState())).toBe(
-      'body=earth&lat=51.48&lon=0&elev=0&t=live&az=0&alt=20&fov=60',
+      'body=earth&lat=51.48&lon=0&elev=0&t=live&az=0&alt=20&fov=60&lang=en',
     );
   });
 
@@ -1124,7 +1124,7 @@ describe('urlStateOf and defaultsUrlState', () => {
     expect(url).not.toHaveProperty('lon');
     expect(url).not.toHaveProperty('elev');
     expect(url).toMatchObject({ t: 'live', az: 0, alt: 20, fov: 60 });
-    expect(serializeUrlState(url, defaultsUrlState())).toBe('t=live&az=0&alt=20&fov=60');
+    expect(serializeUrlState(url, defaultsUrlState())).toBe('t=live&az=0&alt=20&fov=60&lang=en');
     actions.setGeo('granted');
     expect(urlStateOf(store.getState())).toMatchObject({
       body: 'earth',

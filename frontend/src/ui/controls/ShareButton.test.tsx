@@ -71,7 +71,10 @@ describe('ShareButton', () => {
     const field = await screen.findByRole('textbox', { name: 'Shareable link' });
     expect(field).toHaveAttribute('readonly');
     expect(field).toHaveValue(shareUrl(store.getState()));
-    expect(field).toHaveFocus();
+    // The focus moves in an effect after the clipboard's rejection settles: wait for it.
+    await waitFor(() => {
+      expect(field).toHaveFocus();
+    });
     expect(store.getState().ui.toast?.key).toBe('share.failed');
   });
 

@@ -262,8 +262,8 @@
     "fallback_urls": [],
     "version_or_date": "public service, usage policy as read on 2026-09-03",
     "license": "ODbL-1.0 (data); Nominatim usage policy",
-    "copyright": "(c) OpenStreetMap contributors",
-    "attribution": "Geocoding: (c) OpenStreetMap contributors, via Nominatim",
+    "copyright": "© OpenStreetMap contributors",
+    "attribution": "Geocoding: © OpenStreetMap contributors, via Nominatim",
     "license_text": null,
     "notes": "Browser-only, never called or proxied by the API (brief l.318); at most 1 request/s, no client-side autocomplete, identifying Referer, `email=` when configured; policy: https://operations.osmfoundation.org/policies/nominatim/. Configured through `/meta.geocoder` so it can be switched off without an app update."
   },

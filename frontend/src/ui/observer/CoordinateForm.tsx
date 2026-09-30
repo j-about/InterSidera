@@ -149,7 +149,9 @@ export default function CoordinateForm({ store }: CoordinateFormProps) {
         id="observer-elev"
         label={t('observer.elevation')}
         value={drafts.elev}
-        inputMode="decimal"
+        // Signed like the two fields above (down to -12000 m): phone decimal keypads have no
+        // minus key.
+        inputMode="text"
         autoComplete="off"
         spellCheck={false}
         error={parsed.elev.ok ? null : t(`coords.error.${parsed.elev.error}`)}

@@ -68,7 +68,7 @@ export function makeMeta(overrides: Partial<MetaResponse> = {}): MetaResponse {
     geocoder: {
       enabled: true,
       url: 'https://nominatim.example.test',
-      attribution: 'Geocoding: (c) OpenStreetMap contributors, via Nominatim',
+      attribution: 'Geocoding: © OpenStreetMap contributors, via Nominatim',
       min_interval_ms: 1000,
     },
     limits: {

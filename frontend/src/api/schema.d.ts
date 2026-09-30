@@ -739,7 +739,7 @@ export interface components {
         GeocoderMeta: {
             /**
              * Attribution
-             * @example Geocoding: (c) OpenStreetMap contributors, via Nominatim
+             * @example Geocoding: © OpenStreetMap contributors, via Nominatim
              */
             attribution: string;
             /**

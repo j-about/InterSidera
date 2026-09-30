@@ -52,7 +52,7 @@ describe('PlaceSearch', () => {
           enabled: true,
           url: 'https://nominatim.example.test',
           email: 'ops@example.test',
-          attribution: 'Geocoding: (c) OpenStreetMap contributors, via Nominatim',
+          attribution: 'Geocoding: © OpenStreetMap contributors, via Nominatim',
           min_interval_ms: 1000,
         },
       }),
@@ -98,7 +98,7 @@ describe('PlaceSearch', () => {
     fireEvent.submit(input.closest('form') ?? input);
     expect(geocode).toHaveBeenCalledTimes(2);
 
-    expect(screen.getByText(/OpenStreetMap contributors/)).toBeInTheDocument();
+    expect(screen.getByText(/© OpenStreetMap contributors/)).toBeInTheDocument();
     const link = screen.getByRole('link', { name: i18next.t('geocoder.attributionLink') });
     expect(link).toHaveAttribute('href', OSM_COPYRIGHT_URL);
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
@@ -151,7 +151,7 @@ describe('PlaceSearch', () => {
     expect(store.getState().geocoder.enabled).toBe(false);
     expect(screen.queryByRole('textbox')).toBeNull();
     // The attribution stays.
-    expect(screen.getByText(/OpenStreetMap contributors/)).toBeInTheDocument();
+    expect(screen.getByText(/© OpenStreetMap contributors/)).toBeInTheDocument();
     view.unmount();
 
     const disabled = createSkyStore();

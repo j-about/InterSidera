@@ -38,3 +38,11 @@ Records plan rows D79, D108, D110 and D115 (with backlog B-58, B-60, B-73 and op
 - A maintainer answer to plan questions 22 (night brightness in the URL) or 24 (presets) changing the parameter list; a new UX-2 parameter; a platform rule making `replaceState` rate-limited below 2 Hz (WebKit's 100 calls per 10 s is the known bound, `urlSync.ts` header).
 
 Pointers: `docs/architecture.md` ("Store", "About, credits and share link"), `.claude/rules/sky-math.md` (the codec is a gated pure module), `docs/plan.md` section 3 (the rows above), `docs/backlog.md` (B-58, B-60, B-73).
+
+## Amendment (M7, 2026-09-30)
+
+Plan D79, D109 and Q32, amended by the M7 acceptance fix; the decision text above is unchanged.
+
+`lang` joined the always-written keys (`state/url.ts::ALWAYS_WRITTEN`: `body, lat, lon, elev, t, az, alt, fov, lang`). The rule "default-valued keys are omitted" assumes a constant default, and the default of `lang` is not one: a URL without it takes the first supported language of `navigator.languages` (`main.tsx`, UX-1). With `lang` omitted at `en`, a user of a browser preferring French who chose English got a URL without `lang`, so a reload and the copied link came back in French, against "a reload restores the view from the URL alone" (OBS-8, brief l.197) and acceptance l.574. The observer keys were already always written for the same reason (their default is the geolocation). Consequences: every URL the application writes and every copied link carries `lang`, so a link reproduces the sender's language on any browser; a URL typed without `lang` keeps following the browser until the first write completes it; parsing and detection are unchanged.
+
+Proofs: `state/url.test.ts` ("writes lang whatever the default"), `state/urlSync.test.ts` (a query loaded without `lang` gains it once), and the `url-state.spec.ts` test under `test.use({ locale: 'fr-FR' })`, which fails on the old serializer (`Expected: "en", Received: null`) and passes on both gate projects. Found by the adversarial check of the acceptance evidence, not by a gate: no earlier test ran under a non-English browser.

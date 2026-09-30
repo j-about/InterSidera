@@ -8,7 +8,8 @@ import DateTimeEditor from './DateTimeEditor';
 
 // The editor: the draft from the clock on open (UTC or a fixed zone), Apply pausing at the
 // instant, month 13 and an out-of-range year refused with the URL state untouched, a negative
-// year accepted without coverage, the Gregorian notice, the local/UTC switch.
+// year accepted without coverage, the Gregorian notice, the local/UTC switch, the year's text
+// keyboard.
 
 const T0 = 1_757_000_000_000;
 const TT = 2460409.25;
@@ -162,5 +163,17 @@ describe('DateTimeEditor', () => {
     expect(field('Day')).not.toHaveAttribute('aria-invalid');
     // Now in UTC: the hour is the UTC one.
     expect(field('Hour')).toHaveValue('17');
+  });
+
+  it('gives the year a text keyboard (phone numeric keypads have no minus key)', () => {
+    const store = createSkyStore({ t: TT, speed: 0 }, T0);
+    render(<DateTimeEditor store={store} offsetAt={PLUS_TWO} />);
+    act(() => {
+      store.getState().actions.openDialog('timeEditor');
+    });
+    expect(field('Year')).toHaveAttribute('inputmode', 'text');
+    for (const name of ['Month', 'Day', 'Hour', 'Minute', 'Second']) {
+      expect(field(name)).toHaveAttribute('inputmode', 'numeric');
+    }
   });
 });

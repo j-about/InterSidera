@@ -30,6 +30,10 @@ describe('CoordinateForm', () => {
     expect(lat).toHaveValue('51.48');
     expect(lon).toHaveValue('0');
     expect(elev).toHaveValue('0');
+    // Every field takes a sign, so none asks for a numeric keypad (no minus key on phones).
+    for (const field of [lat, lon, elev]) {
+      expect(field).toHaveAttribute('inputmode', 'text');
+    }
 
     fireEvent.change(lat, { target: { value: '48°51\'24"N' } });
     fireEvent.change(lon, { target: { value: '2°21\'03"E' } });

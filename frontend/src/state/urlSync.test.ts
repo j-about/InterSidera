@@ -44,7 +44,7 @@ describe('startUrlSync', () => {
     // Exactly three writes: the leading one at t = 0, the trailing ones at t = 500 and 1000 ms.
     expect(env.replaceState).toHaveBeenCalledTimes(3);
     expect(lastUrl(env.replaceState)).toBe(
-      '/?body=earth&lat=51.48&lon=0&elev=0&t=live&az=100&alt=20&fov=60',
+      '/?body=earth&lat=51.48&lon=0&elev=0&t=live&az=100&alt=20&fov=60&lang=en',
     );
     expect(env.replaceState).toHaveBeenCalledWith(null, '', expect.any(String));
     stop();
@@ -97,21 +97,37 @@ describe('startUrlSync', () => {
     store.getState().actions.setView({ fov: 45 });
     const url = lastUrl(env.replaceState);
     expect(url).toBe(
-      '/sky/?body=earth&lat=51.48&lon=0&elev=0&t=live&az=0&alt=20&fov=45#engine=webgl2',
+      '/sky/?body=earth&lat=51.48&lon=0&elev=0&t=live&az=0&alt=20&fov=45&lang=en#engine=webgl2',
     );
     expect(url.split('?')).toHaveLength(2);
     stop();
   });
 
   it('does not rewrite the URL it started from when the state serializes identically', () => {
-    const search = '?body=earth&lat=51.48&lon=0&elev=0&t=2460409.25&az=0&alt=20&fov=60';
+    const search = '?body=earth&lat=51.48&lon=0&elev=0&t=2460409.25&az=0&alt=20&fov=60&lang=en';
     const store = createSkyStore({ t: 2460409.25 }, T0);
     const env = fakeEnvironment(search);
     const stop = startUrlSync(store, { history: env.history, location: env.location });
     store.getState().actions.publishTt(2460409.25 + 1e-7, NaN);
     store.getState().actions.setBoot({ phase: 'ready' });
+    // A change below the rounding step reaches the writer and serializes to the same query.
+    store.getState().actions.setView({ alt: 20.001 });
     vi.advanceTimersByTime(1000);
     expect(env.replaceState).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it('completes a query loaded without lang with the first change that reaches the writer', () => {
+    // `lang` is always written (its default is the browser's): a URL typed without it gains it
+    // once, and nothing else in the query moves.
+    const search = '?body=earth&lat=51.48&lon=0&elev=0&t=2460409.25&az=0&alt=20&fov=60';
+    const store = createSkyStore({ t: 2460409.25 }, T0);
+    const env = fakeEnvironment(search);
+    const stop = startUrlSync(store, { history: env.history, location: env.location });
+    store.getState().actions.setView({ alt: 20.001 });
+    vi.advanceTimersByTime(1000);
+    expect(env.replaceState).toHaveBeenCalledTimes(1);
+    expect(lastUrl(env.replaceState)).toBe(`/${search}&lang=en`);
     stop();
   });
 
@@ -145,7 +161,7 @@ describe('startUrlSync', () => {
     store.getState().actions.setView({ az: 91 });
     expect(env.replaceState).toHaveBeenCalledTimes(2);
     expect(lastUrl(env.replaceState)).toBe(
-      '/?body=mars&lat=18.44&lon=77.45&elev=-2500&t=2460409.25&az=91&alt=45&fov=30&layers=stars',
+      '/?body=mars&lat=18.44&lon=77.45&elev=-2500&t=2460409.25&az=91&alt=45&fov=30&layers=stars&lang=en',
     );
     stop();
   });

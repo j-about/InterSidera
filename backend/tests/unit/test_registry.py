@@ -88,6 +88,13 @@ def test_every_entry_has_license_and_attribution() -> None:
         assert entry.version_or_date.strip(), entry.key
 
 
+def test_the_nominatim_attribution_is_the_wording_the_brief_mandates() -> None:
+    # Brief l.193 and l.318: display "© OpenStreetMap contributors" (the sign, not "(c)").
+    entry = load_registry().by_key("nominatim")
+    assert "© OpenStreetMap contributors" in entry.attribution
+    assert entry.copyright == "© OpenStreetMap contributors"
+
+
 def test_every_download_has_url_filename_and_minimum_size() -> None:
     for entry in load_registry().files:
         if entry.is_download:

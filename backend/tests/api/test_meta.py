@@ -176,7 +176,8 @@ def test_geocoder_and_limits(meta: dict[str, Any]) -> None:
     geocoder = meta["geocoder"]
     assert isinstance(geocoder["enabled"], bool)
     assert geocoder["url"].startswith("https://")
-    assert geocoder["attribution"]
+    # Brief l.193, l.318: the attribution carries "© OpenStreetMap contributors" verbatim.
+    assert "© OpenStreetMap contributors" in geocoder["attribution"]
     # Brief l.193 (OBS-4): at least one second between two Nominatim requests.
     assert geocoder["min_interval_ms"] == 1000
     # No e-mail is configured for the test app: the optional field is absent, not `null`.

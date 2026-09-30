@@ -1,12 +1,14 @@
 import { expect, test } from './fixtures.ts';
+import { collectErrors } from './support.ts';
 import type { Page } from '@playwright/test';
 import type { SkyDebugApi } from '../src/debug/skyDebugApi.ts';
 
 // URL round trip (UX-2, brief l.246, l.574; OBS-8, l.197; plan D79, D89): every M3 parameter
 // reaches the store, a view change rewrites the query within the 2 Hz budget, a reload restores
 // it from the browser-cached catalogs (acceptance l.573, plan D137: a 304 each, the same body),
-// the language is applied to the document, the dev/e2e hash stays out of the query, and no
-// browser storage is touched. Page-side functions reach the hook through `window.__sky`.
+// the language is applied to the document and always written to the query (its default belongs
+// to the browser), the dev/e2e hash stays out of the query, and no browser storage is touched.
+// Page-side functions reach the hook through `window.__sky`.
 
 const TT = 2460409.25;
 const LOADED =
@@ -110,6 +112,10 @@ test('every M3 parameter round-trips through the store, the URL and a reload', a
   expect(restored.mode).toBe('paused');
   expect(Math.abs(restored.tt - TT)).toBeLessThan(1e-6);
   expect(restored.observer).toEqual({ body: 'earth', lat: 48.86, lon: 2.35, elev: 35 });
+  // The layer flags come back from the reloaded query too (seven on, the others off).
+  expect(restored.layers).toEqual(loaded.layers);
+  expect(restored.layers.azgrid).toBe(true);
+  expect(restored.layers.dso).toBe(false);
   expect(await page.evaluate(() => document.documentElement.lang)).toBe('fr');
 
   // The catalogs are cached by the browser (acceptance l.573, plan D137): `cache: 'no-cache'`
@@ -137,8 +143,8 @@ test('every M3 parameter round-trips through the store, the URL and a reload', a
 
 // M4 additions (UX-1, UX-2, UX-3; plan D108-D110): the copy-link button writes the serialised
 // state (origin + path + query, never the dev/e2e hash) to the clipboard on Chromium and falls
-// back to a selectable field elsewhere; the language toggle writes `lang=fr` and `<html lang>`;
-// `night=0.6` round-trips through a view change.
+// back to a selectable field elsewhere; the language toggle writes `lang` and `<html lang>` in
+// both directions; `night=0.6` round-trips through a view change.
 const PAUSED =
   '/?body=earth&lat=51.48&lon=0&elev=0&t=2460409.25&speed=0&az=0&alt=45&fov=60&atm=0&refr=0&night=0.6#engine=webgl2';
 
@@ -151,13 +157,24 @@ test('copy link, language toggle and night level round trip', async ({
   await waitReady(page);
   // The URL is rewritten on the first change only, so the loaded query stands as typed; the share
   // link is the canonical serialisation of the store, which omits `speed` while paused (plan
-  // D79) and never carries the hash.
+  // D79), always carries `lang` (at its place before `night`: a link without it would take the
+  // language of the browser that opens it) and never carries the hash.
   const current = new URL(page.url());
   expect(current.searchParams.get('night')).toBe('0.6');
+  expect(current.searchParams.get('lang')).toBeNull();
   expect(current.hash).toBe('#engine=webgl2');
-  const canonical = new URLSearchParams(current.search);
-  canonical.delete('speed');
+  const canonical = new URLSearchParams();
+  for (const [key, value] of current.searchParams) {
+    if (key === 'speed') {
+      continue;
+    }
+    if (key === 'night') {
+      canonical.set('lang', 'en');
+    }
+    canonical.set(key, value);
+  }
   const expected = `${current.origin}${current.pathname}?${canonical.toString()}`;
+  expect(expected).toContain('&refr=0&lang=en&night=0.6');
 
   await test.step('copy link -> the serialised state without the hash', async () => {
     const copy = page.getByRole('button', { name: 'Copy a link to this view' });
@@ -177,7 +194,7 @@ test('copy link, language toggle and night level round trip', async ({
     }
   });
 
-  await test.step('language toggle -> lang=fr in the URL and on the document', async () => {
+  await test.step('language toggle -> lang in the URL and on the document, both ways', async () => {
     expect(await page.evaluate(() => document.documentElement.lang)).toBe('en');
     await page.getByRole('button', { name: 'Français' }).click();
     await expect
@@ -186,10 +203,11 @@ test('copy link, language toggle and night level round trip', async ({
     expect(await page.evaluate(() => document.documentElement.lang)).toBe('fr');
     // The top bar is visible in both layouts (the tabs sit inside the collapsed sheet on phones).
     await expect(page.getByRole('button', { name: 'Copier un lien vers cette vue' })).toBeVisible();
+    // English is written too, never omitted as a default: the default of `lang` is the browser's.
     await page.getByRole('button', { name: 'English' }).click();
     await expect
       .poll(() => new URL(page.url()).searchParams.get('lang'), { timeout: 3000 })
-      .toBeNull();
+      .toBe('en');
     expect(await page.evaluate(() => document.documentElement.lang)).toBe('en');
   });
 
@@ -210,5 +228,83 @@ test('copy link, language toggle and night level round trip', async ({
     expect(restored.night).toBe(true);
     expect(restored.nightLevel).toBeCloseTo(0.6, 6);
     expect(await page.evaluate(() => document.documentElement.dataset.mode ?? null)).toBe('night');
+  });
+});
+
+// A browser that prefers French (UX-1, l.245; OBS-8, l.197; acceptance l.574): without `lang` the
+// page follows `navigator.languages`, and the language the user then chooses travels in the URL,
+// so the copied link opened afresh and a reload both keep it instead of falling back to French.
+test.describe('on a browser that prefers French', () => {
+  test.use({ locale: 'fr-FR' });
+
+  test('an explicit language choice survives the copied link and a reload', async ({
+    page,
+    context,
+    browserName,
+  }) => {
+    const errors = collectErrors(page);
+    await page.goto(
+      '/?body=earth&lat=51.48&lon=0&elev=0&t=2460409.25&speed=0&az=0&alt=45&fov=60&atm=0&refr=0#engine=webgl2',
+    );
+    await waitReady(page);
+    expect(await page.evaluate(() => navigator.languages[0])).toBe('fr-FR');
+    expect(await page.evaluate(() => document.documentElement.lang)).toBe('fr');
+    await expect(page.getByRole('button', { name: 'Copier un lien vers cette vue' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'English' }).click();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('lang'), { timeout: 3000 })
+      .toBe('en');
+    expect(await page.evaluate(() => document.documentElement.lang)).toBe('en');
+    const chosen = await debugState(page);
+
+    await test.step('the copied link, opened afresh, is the same view in English', async () => {
+      const copy = page.getByRole('button', { name: 'Copy a link to this view' });
+      let link: string;
+      if (browserName === 'chromium') {
+        await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+        await copy.click();
+        await expect(page.getByRole('status', { name: 'Notifications' })).toContainText(
+          'Link copied',
+        );
+        link = await page.evaluate(() => navigator.clipboard.readText());
+      } else {
+        await copy.click();
+        link = await page.getByRole('textbox', { name: 'Shareable link' }).inputValue();
+      }
+      expect(new URL(link).searchParams.get('lang')).toBe('en');
+      // A full load of the link alone (no storage exists to help it): the blank page in between
+      // keeps the second `goto` from being a same-document navigation.
+      await page.goto('about:blank');
+      await page.goto(`${link}#engine=webgl2`);
+      await waitReady(page);
+      expect(await page.evaluate(() => document.documentElement.lang)).toBe('en');
+      await expect(page.getByRole('button', { name: 'Copy a link to this view' })).toBeVisible();
+      const opened = await debugState(page);
+      expect(opened.observer).toEqual(chosen.observer);
+      expect(opened.view).toEqual(chosen.view);
+      expect(opened.layers).toEqual(chosen.layers);
+      expect(opened.mode).toBe('paused');
+      expect(Math.abs(opened.tt - chosen.tt)).toBeLessThan(1e-6);
+      expect(opened.night).toBe(chosen.night);
+    });
+
+    await test.step('a reload keeps English, and the way back to French holds too', async () => {
+      await page.reload();
+      await waitReady(page);
+      expect(await page.evaluate(() => document.documentElement.lang)).toBe('en');
+      await page.getByRole('button', { name: 'Français' }).click();
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get('lang'), { timeout: 3000 })
+        .toBe('fr');
+      await page.reload();
+      await waitReady(page);
+      expect(await page.evaluate(() => document.documentElement.lang)).toBe('fr');
+      await expect(
+        page.getByRole('button', { name: 'Copier un lien vers cette vue' }),
+      ).toBeVisible();
+    });
+
+    expect(errors).toEqual([]);
   });
 });
