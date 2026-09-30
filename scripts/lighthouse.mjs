@@ -59,9 +59,17 @@ const LIGHTHOUSE_VERSION = '13.5.0';
 /** The e2e boot state of e2e/support.ts::appUrl (Greenwich, paused, north, atmosphere off). */
 const APP_QUERY = 'body=earth&lat=51.48&lon=0&elev=0&t=2460409.25&speed=0&az=0&alt=45&fov=60&atm=0';
 const ENGINE_HASH = '#engine=webgl2';
-/** Headless Chromium with the SwiftShader WebGL2 the Playwright projects rely on. */
+/**
+ * Headless Chromium with the SwiftShader WebGL2 the Playwright projects rely on. `--no-sandbox`
+ * is what Playwright passes by default (`chromiumSandbox: false`): Ubuntu 24.04 and later, the CI
+ * runner included, restrict unprivileged user namespaces through AppArmor, the Playwright binary
+ * ships no AppArmor profile, and chrome-launcher then never sees the DevTools port ("waiting for
+ * dynamic debugging port in chrome-err.log", the first remote e2e job). The audit loads the
+ * project's own pages on loopback, so the sandbox buys nothing here.
+ */
 const CHROME_FLAGS = [
   '--headless=new',
+  '--no-sandbox',
   '--use-angle=swiftshader',
   '--enable-unsafe-swiftshader',
   '--ignore-gpu-blocklist',
